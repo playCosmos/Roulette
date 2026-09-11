@@ -5,18 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#170a06" />
   <meta name="color-scheme" content="dark" />
-  <title>Lucky Teeth Roulette</title>
+  <title>먀로또 추첨기</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <main class="app-shell">
-    <section class="stage-card" aria-label="이빨 룰렛 화면">
-      <div class="character-stage" id="characterStage">
+    <section class="stage-card" aria-label="먀로또 추첨 화면">
+      <div
+        class="character-stage"
+        id="characterStage"
+        role="button"
+        tabindex="0"
+        aria-label="회전 시작 또는 정지"
+      >
         <img
           class="character-image"
           id="characterImage"
           src="./assets/Frame.png"
-          alt="럭키 룰렛 프레임"
+          alt="먀로또 룰렛 프레임"
           draggable="false"
         />
 
@@ -24,17 +30,13 @@
           <canvas id="teethCanvas" aria-hidden="true"></canvas>
         </div>
 
-        <div class="stage-status" id="stageStatus" aria-live="polite">SPIN을 눌러 시작</div>
+        <div class="stage-status" id="stageStatus" aria-live="polite">이미지를 클릭하거나 Space 키를 눌러 시작</div>
       </div>
     </section>
 
     <aside class="control-card">
       <header class="control-header">
-        <div>
-          <p class="eyebrow">LUCKY DRAW</p>
-          <h1>이빨 룰렛</h1>
-        </div>
-        <button class="icon-button" id="soundToggle" type="button" aria-pressed="true" title="효과음 켜기/끄기">🔊</button>
+        <h1>먀로또 추첨기</h1>
       </header>
 
       <section class="settings-row" aria-label="추첨 설정">
@@ -50,17 +52,6 @@
           <span>중복 허용</span>
         </label>
       </section>
-
-      <div class="action-grid">
-        <button class="primary-action spin" id="spinButton" type="button">
-          <span class="button-label">SPIN</span>
-          <span class="button-sub">7개 이빨 동시 회전</span>
-        </button>
-        <button class="primary-action stop" id="stopButton" type="button" disabled>
-          <span class="button-label">STOP</span>
-          <span class="button-sub">왼쪽부터 순차 정지</span>
-        </button>
-      </div>
 
       <section class="result-panel" aria-labelledby="resultTitle">
         <div class="section-heading">
@@ -90,7 +81,7 @@
         <p class="empty-history" id="emptyHistory">아직 기록이 없습니다.</p>
       </section>
 
-      <p class="keyboard-hint"><kbd>Space</kbd> SPIN / STOP</p>
+      <p class="keyboard-hint">이미지 클릭 또는 <kbd>Space</kbd> : 회전 / 정지</p>
     </aside>
   </main>
 

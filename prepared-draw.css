@@ -17,6 +17,11 @@
   gap: 9px;
 }
 
+.prepared-editor[hidden],
+.prepared-ready[hidden] {
+  display: none !important;
+}
+
 .prepared-bonus-row {
   display: grid;
   grid-template-columns: 1fr minmax(110px, .72fr);
@@ -44,9 +49,7 @@
 .prepared-bonus-field input { width: 100%; }
 .prepared-bonus-field.bonus-field-disabled { opacity: .45; }
 
-.prepared-primary-action {
-  width: 100%;
-}
+.prepared-primary-action { width: 100%; }
 
 .prepared-ready {
   min-height: 58px;
@@ -59,8 +62,6 @@
   border-radius: 12px;
   background: linear-gradient(145deg, rgba(115, 44, 18, .30), rgba(0, 0, 0, .18));
 }
-
-.prepared-ready[hidden] { display: none; }
 
 .prepared-ready span {
   display: block;

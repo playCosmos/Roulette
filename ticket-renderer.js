@@ -16,15 +16,15 @@
   const maxInput = document.getElementById("maxNumber");
   const countInput = document.getElementById("drawCount");
 
-  // AI 생성 시트마다 번호 칸의 크기·찌그러짐이 다르므로
-  // 중심 좌표뿐 아니라 마킹 형상/경계 추적 파라미터도 색상별로 따로 둔다.
+  // AI 생성 시트별 번호 칸 중심과 경계 추적 기준.
+  // acceptScore/minDrop을 높이고 inset/traceClamp를 낮춰 내부 명암을 경계로 오인하는 현상을 줄인다.
   const TEMPLATES = [
     {
       id: "yellow",
       label: "yellow",
       paths: ["./assets/yellow.png", "./assets/lotto-yellow.png", "./assets/lotto-gold.png"],
       nickname: { x: 1418, y: 342, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 24.5, ry: 21.8, exponent: 2.45, search: 8.0, inset: 2.2, traceClamp: 7.0, samples: 72, fontSize: 21.5, textDx: 0, textDy: 0.5 },
+      mark: { rx: 24.5, ry: 21.8, exponent: 2.45, search: 7.0, inset: 1.1, traceClamp: 5.5, acceptScore: 15, minDrop: 9, samples: 72, fontSize: 21.5, textDx: 0, textDy: 0.5 },
       grid: [
         [747,531],[829,539],[909,539],[992,532],[1069,535],[1150,532],[1227,543],
         [747,601],[831,599],[909,597],[991,601],[1067,601],[1150,599],[1231,599],
@@ -38,7 +38,7 @@
       label: "red",
       paths: ["./assets/red.png", "./assets/lotto-red.png", "./assets/lotto-pink.png"],
       nickname: { x: 1414, y: 340, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 24.2, ry: 21.0, exponent: 2.7, search: 8.5, inset: 2.3, traceClamp: 7.2, samples: 72, fontSize: 21.5, textDx: 0, textDy: 0.5 },
+      mark: { rx: 24.2, ry: 21.0, exponent: 2.7, search: 7.5, inset: 1.2, traceClamp: 5.8, acceptScore: 16, minDrop: 10, samples: 72, fontSize: 21.5, textDx: 0, textDy: 0.5 },
       grid: [
         [753,531],[831,535],[908,532],[987,530],[1066,530],[1148,535],[1227,538],
         [753,597],[829,595],[908,597],[989,604],[1071,598],[1148,599],[1227,601],
@@ -52,7 +52,7 @@
       label: "green",
       paths: ["./assets/green.png", "./assets/lotto-green.png"],
       nickname: { x: 1406, y: 341, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 23.6, ry: 21.7, exponent: 2.3, search: 8.0, inset: 2.1, traceClamp: 6.8, samples: 72, fontSize: 21.0, textDx: 0, textDy: 0.3 },
+      mark: { rx: 23.6, ry: 21.7, exponent: 2.3, search: 7.0, inset: 1.0, traceClamp: 5.3, acceptScore: 15, minDrop: 9, samples: 72, fontSize: 21.0, textDx: 0, textDy: 0.3 },
       grid: [
         [748,523],[823,521],[904,527],[980,523],[1064,521],[1141,527],[1220,529],
         [746,595],[825,595],[907,591],[982,589],[1059,591],[1141,596],[1217,591],
@@ -66,7 +66,7 @@
       label: "blue",
       paths: ["./assets/blue.png", "./assets/lotto-blue.png"],
       nickname: { x: 1406, y: 337, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 23.8, ry: 20.9, exponent: 2.6, search: 8.5, inset: 2.2, traceClamp: 7.0, samples: 72, fontSize: 21.0, textDx: 0, textDy: 0.4 },
+      mark: { rx: 23.8, ry: 20.9, exponent: 2.6, search: 7.5, inset: 1.1, traceClamp: 5.5, acceptScore: 16, minDrop: 10, samples: 72, fontSize: 21.0, textDx: 0, textDy: 0.4 },
       grid: [
         [753,530],[830,530],[907,525],[982,523],[1063,529],[1139,529],[1214,530],
         [753,591],[830,589],[907,591],[983,591],[1058,592],[1136,589],[1213,590],
@@ -148,7 +148,7 @@
     }
 
     outputHint.textContent = ready
-      ? "이미지 출력 ON · 선택된 시트의 실제 번호 칸 경계를 따라 검게 채움"
+      ? "이미지 출력 ON · 강화된 경계 판정으로 번호 칸 안쪽을 채움"
       : "이미지 출력은 번호 범위 1~28 / 발급 7개 설정에서 사용";
     outputHint.classList.toggle("ready", ready);
   }
@@ -304,6 +304,8 @@
     const search = profile.search * scale;
     const inset = profile.inset * scale;
     const clampRange = profile.traceClamp * scale;
+    const acceptScore = profile.acceptScore ?? 15;
+    const minDrop = profile.minDrop ?? 9;
     const samples = Math.max(40, profile.samples || 64);
     const step = Math.max(0.65, 0.8 * scale);
     const radii = [];
@@ -333,12 +335,11 @@
         const current = sampleLuma(pixels, cx + cos * radius, cy + sin * radius);
         const outer = sampleLuma(pixels, cx + cos * outerRadius, cy + sin * outerRadius);
 
-        // 번호 칸 내부 -> 테두리로 넘어갈 때 생기는 밝기 하락을 우선 사용한다.
-        // 바깥 배경이 복잡해도 예상 경계에서 멀어질수록 페널티를 주어 다른 선을 잡지 않게 한다.
         const inwardDrop = inner - current;
         const localContrast = Math.abs(inner - current) + Math.abs(current - outer) * 0.35;
-        const distancePenalty = Math.abs(radius - expected) * 0.72;
-        const score = inwardDrop * 0.9 + localContrast * 0.35 - distancePenalty;
+        const distancePenalty = Math.abs(radius - expected) * 0.85;
+        const weakDropPenalty = inwardDrop < minDrop ? (minDrop - inwardDrop) * 1.15 : 0;
+        const score = inwardDrop * 0.95 + localContrast * 0.32 - distancePenalty - weakDropPenalty;
 
         if (score > bestScore) {
           bestScore = score;
@@ -346,15 +347,16 @@
         }
       }
 
-      if (bestScore < 7) bestRadius = expected;
+      if (bestScore < acceptScore) bestRadius = expected;
       const traced = Math.max(expected - clampRange, Math.min(expected + clampRange, bestRadius));
       radii.push(Math.max(3, traced - inset));
     }
 
+    // 경계 추적값이 일부 각도에서 안쪽 잡음을 따라가더라도 기본 시트 형상으로 복원한다.
     const smoothed = radii.map((radius, index) => {
       const median = circularMedian(radii, index, 2);
       const expected = expectedRadii[index] - inset;
-      return median * 0.86 + expected * 0.14;
+      return median * 0.68 + expected * 0.32;
     });
 
     ctx.beginPath();

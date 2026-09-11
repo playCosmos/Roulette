@@ -8,7 +8,7 @@
   <title>먀로또 추첨기</title>
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./draw-modes.css" />
-  <link rel="stylesheet" href="./prepared-draw.css" />
+  <link rel="stylesheet" href="./live-draw.css" />
 </head>
 <body>
   <main class="app-shell">
@@ -113,50 +113,39 @@
           <p class="keyboard-hint">이미지 클릭 또는 <kbd>Space</kbd> : 발급 시작 / 정지</p>
         </section>
 
-        <section class="tab-panel checker-panel" id="checkPanel" role="tabpanel" aria-labelledby="checkTab" hidden>
-          <section class="checker-entry prepared-entry" aria-labelledby="preparedTitle">
-            <div class="section-heading">
-              <h2 id="preparedTitle">미리 만든 추첨 번호</h2>
-              <span class="prepared-step-badge">하나씩 공개</span>
-            </div>
-
-            <div id="preparedEditor" class="prepared-editor">
-              <label class="checker-field">
-                <span>추첨할 번호</span>
-                <input id="preparedNumbers" type="text" inputmode="numeric" autocomplete="off" placeholder="예: 3 8 12 21 34 42" />
-              </label>
-
-              <div class="prepared-bonus-row">
-                <label class="bonus-mode-toggle" for="preparedUseBonus">
-                  <input id="preparedUseBonus" type="checkbox" />
-                  <span>보너스 번호 사용</span>
-                </label>
-
-                <label class="checker-field prepared-bonus-field bonus-field-disabled" id="preparedBonusField">
-                  <span>보너스 번호</span>
-                  <input id="preparedBonusNumber" type="number" min="1" max="999" inputmode="numeric" placeholder="미사용" disabled />
-                </label>
+        <section class="tab-panel live-panel" id="checkPanel" role="tabpanel" aria-labelledby="checkTab" hidden>
+          <section class="settings-row live-settings" aria-label="실시간 추첨 설정">
+            <label>
+              <span>번호 범위</span>
+              <div class="range-input">
+                <strong>1</strong><span>~</span>
+                <input id="liveMaxNumber" type="number" min="1" max="999" value="45" inputmode="numeric" />
               </div>
+            </label>
 
-              <button class="check-action prepared-primary-action" id="prepareDrawButton" type="button">추첨 준비</button>
-              <p class="checker-help" id="preparedHelp">번호를 1~7개 입력한 뒤 준비하세요. 준비 후 번호는 화면에서 숨겨지고, 첫 입력으로 전체 릴을 돌린 다음 한 번 누를 때마다 왼쪽부터 하나씩 공개합니다.</p>
-            </div>
-
-            <div class="prepared-ready" id="preparedReady" hidden>
-              <div>
-                <span>준비 상태</span>
-                <strong id="preparedReadyText">번호 준비됨</strong>
+            <label>
+              <span>추첨 개수</span>
+              <div class="range-input count-input">
+                <input id="liveDrawCount" type="number" min="1" max="7" value="7" inputmode="numeric" />
+                <span>개</span>
               </div>
-              <button class="ghost-button" id="editPreparedButton" type="button">번호 다시 입력</button>
-            </div>
+            </label>
           </section>
 
-          <section class="result-panel prepared-result-panel" aria-labelledby="preparedResultTitle">
+          <section class="live-guide" aria-labelledby="liveGuideTitle">
             <div class="section-heading">
-              <h2 id="preparedResultTitle">추첨 결과</h2>
-              <span class="prepared-progress" id="preparedProgress">준비 전</span>
+              <h2 id="liveGuideTitle">실시간 하나씩 추첨</h2>
+              <span class="live-badge">중복 없음</span>
             </div>
-            <div class="result-numbers" id="preparedResultNumbers" aria-live="polite"></div>
+            <p>첫 입력으로 모든 릴을 회전시킨 뒤, 다음 입력부터 실제 번호를 그 순간 하나씩 무작위 추첨해 왼쪽 릴부터 정지합니다.</p>
+          </section>
+
+          <section class="result-panel live-result-panel" aria-labelledby="liveResultTitle">
+            <div class="section-heading">
+              <h2 id="liveResultTitle">추첨 결과</h2>
+              <span class="live-progress" id="liveProgress">대기 중</span>
+            </div>
+            <div class="result-numbers" id="liveResultNumbers" aria-live="polite"></div>
           </section>
 
           <section class="checker-summary" id="checkerSummary" hidden aria-live="polite">
@@ -174,33 +163,33 @@
             </div>
           </section>
 
-          <section class="checker-results-panel prepared-history-results" aria-labelledby="checkerResultsTitle">
+          <section class="checker-results-panel live-history-results" aria-labelledby="checkerResultsTitle">
             <div class="section-heading">
               <h2 id="checkerResultsTitle">자동 발급 번호 확인</h2>
               <button class="ghost-button" id="recheckStoredButton" type="button" disabled>다시 확인</button>
             </div>
             <ol class="checker-results" id="checkerResults"></ol>
-            <p class="empty-history" id="emptyChecker">추첨을 완료하면 자동 발급 기록과 바로 비교합니다.</p>
+            <p class="empty-history" id="emptyChecker">실시간 추첨을 완료하면 자동 발급 기록과 비교합니다.</p>
           </section>
 
-          <section class="batch-checker-entry prepared-batch-entry" aria-labelledby="batchCheckerTitle">
-            <div class="section-heading batch-heading">
+          <section class="live-batch-entry" aria-labelledby="batchCheckerTitle">
+            <div class="section-heading">
               <h2 id="batchCheckerTitle">외부 번호 일괄 확인</h2>
               <button class="ghost-button" id="loadSavedHistoryButton" type="button">발급 기록 넣기</button>
             </div>
 
-            <label class="checker-field batch-records-field">
+            <label class="checker-field live-records-field">
               <span>번호 붙여넣기</span>
               <textarea id="batchRecords" rows="4" spellcheck="false" placeholder="한 줄에 한 조합씩 붙여넣으세요.&#10;03 08 12 21 34 42&#10;01 05 11 19 27 44"></textarea>
             </label>
 
-            <div class="batch-actions">
-              <button class="check-action batch-check-action" id="checkPastedRecordsButton" type="button">붙여넣은 번호 확인</button>
+            <div class="live-batch-actions">
+              <button class="check-action" id="checkPastedRecordsButton" type="button">붙여넣은 번호 확인</button>
               <button class="ghost-button" id="clearBatchRecordsButton" type="button">입력 지우기</button>
             </div>
           </section>
 
-          <p class="keyboard-hint">추첨 준비 후 이미지 클릭 또는 <kbd>Space</kbd> : 회전 시작 / 다음 릴 공개</p>
+          <p class="keyboard-hint">이미지 클릭 또는 <kbd>Space</kbd> : 전체 회전 시작 / 다음 번호 실시간 추첨</p>
         </section>
       </div>
     </aside>
@@ -209,7 +198,7 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="./roulette-core.js" defer></script>
   <script src="./roulette-draw.js" defer></script>
-  <script src="./prepared-draw.js" defer></script>
+  <script src="./live-draw.js" defer></script>
   <script src="./roulette-ui.js" defer></script>
 </body>
 </html>

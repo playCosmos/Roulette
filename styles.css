@@ -318,7 +318,7 @@ h2 { font-size: 16px; }
 .ghost-button.danger { color: #ff988f; }
 
 .result-numbers {
-  margin-top: 10px;
+  margin-top: 8px;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;

@@ -7,6 +7,7 @@
   <meta name="color-scheme" content="dark" />
   <title>먀로또 추첨기</title>
   <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./draw-modes.css" />
   <link rel="stylesheet" href="./batch-checker.css" />
   <link rel="stylesheet" href="./bonus-mode.css" />
 </head>
@@ -66,6 +67,34 @@
             </label>
           </section>
 
+          <section class="draw-mode-settings" aria-labelledby="drawModeTitle">
+            <div class="draw-mode-heading">
+              <span id="drawModeTitle">추첨 방식</span>
+              <div class="auto-repeat-setting" id="autoRepeatSetting" hidden>
+                <span>연속 횟수</span>
+                <input id="autoDrawCount" type="number" min="1" max="100" value="5" inputmode="numeric" />
+                <span>회</span>
+              </div>
+            </div>
+
+            <div class="draw-mode-selector" role="radiogroup" aria-label="추첨 방식">
+              <label>
+                <input type="radio" name="drawMode" value="normal" checked />
+                <span>기본</span>
+              </label>
+              <label>
+                <input type="radio" name="drawMode" value="continuous" />
+                <span>연속 자동</span>
+              </label>
+              <label>
+                <input type="radio" name="drawMode" value="manual" />
+                <span>하나씩 뽑기</span>
+              </label>
+            </div>
+
+            <p class="mode-description" id="modeDescription">1회 시작 후 다시 눌러 전체 릴을 왼쪽부터 순차 정지합니다.</p>
+          </section>
+
           <section class="result-panel" aria-labelledby="resultTitle">
             <div class="section-heading">
               <h2 id="resultTitle">이번 추첨</h2>
@@ -86,7 +115,7 @@
             <p class="empty-history" id="emptyHistory">아직 기록이 없습니다.</p>
           </section>
 
-          <p class="keyboard-hint">이미지 클릭 또는 <kbd>Space</kbd> : 회전 / 정지</p>
+          <p class="keyboard-hint">이미지 클릭 또는 <kbd>Space</kbd> : 회전 / 정지 / 다음 릴</p>
         </section>
 
         <section class="tab-panel checker-panel" id="checkPanel" role="tabpanel" aria-labelledby="checkTab" hidden>
@@ -162,7 +191,9 @@
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="./app.js" defer></script>
+  <script src="./roulette-core.js" defer></script>
+  <script src="./roulette-draw.js" defer></script>
+  <script src="./roulette-ui.js" defer></script>
   <script src="./batch-checker.js" defer></script>
   <script src="./bonus-mode.js" defer></script>
 </body>

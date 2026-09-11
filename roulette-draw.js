@@ -11,6 +11,8 @@
   const AUTO_SPIN_MS = 900;
   const AUTO_NEXT_MS = 650;
 
+  if (!Array.isArray(S.lastAutoResult)) S.lastAutoResult = [];
+
   function getMaxNumber() {
     const parsed = Number.parseInt(E.maxNumberInput.value, 10);
     return Number.isFinite(parsed) ? Math.min(999, Math.max(1, parsed)) : A.DEFAULT_MAX;
@@ -30,11 +32,11 @@
 
   function getDrawMode() {
     const selected = E.drawModeInputs.find((input) => input.checked)?.value;
-    return ["normal", "continuous", "manual"].includes(selected) ? selected : DEFAULT_MODE;
+    return ["normal", "continuous"].includes(selected) ? selected : DEFAULT_MODE;
   }
 
   function setDrawModeInput(mode) {
-    const normalized = ["normal", "continuous", "manual"].includes(mode) ? mode : DEFAULT_MODE;
+    const normalized = ["normal", "continuous"].includes(mode) ? mode : DEFAULT_MODE;
     E.drawModeInputs.forEach((input) => {
       input.checked = input.value === normalized;
     });
@@ -49,7 +51,7 @@
       let max = Number.parseInt(parsed.max, 10);
       let count = Number.parseInt(parsed.count, 10);
       let autoRuns = Number.parseInt(parsed.autoRuns, 10);
-      const mode = ["normal", "continuous", "manual"].includes(parsed.mode) ? parsed.mode : DEFAULT_MODE;
+      const mode = ["normal", "continuous"].includes(parsed.mode) ? parsed.mode : DEFAULT_MODE;
       max = Number.isFinite(max) ? Math.min(999, Math.max(1, max)) : A.DEFAULT_MAX;
       count = Number.isFinite(count) ? Math.min(A.MAX_REELS, Math.max(1, count)) : A.DEFAULT_COUNT;
       autoRuns = Number.isFinite(autoRuns) ? Math.min(MAX_AUTO_RUNS, Math.max(1, autoRuns)) : DEFAULT_AUTO_RUNS;
@@ -98,19 +100,21 @@
     }
   }
 
-  function buildResultCells(count) {
-    E.resultNumbers.textContent = "";
+  function buildResultCells(count, container = E.resultNumbers) {
+    if (!container) return;
+    container.textContent = "";
     for (let i = 0; i < count; i++) {
       const cell = document.createElement("span");
       cell.textContent = "—";
-      E.resultNumbers.appendChild(cell);
+      container.appendChild(cell);
     }
   }
 
-  function setResultPlaceholders() {
-    [...E.resultNumbers.children].forEach((cell) => {
+  function setResultPlaceholders(container = E.resultNumbers) {
+    if (!container) return;
+    [...container.children].forEach((cell) => {
       cell.textContent = "—";
-      cell.classList.remove("pop");
+      cell.classList.remove("pop", "bonus-result");
     });
   }
 
@@ -166,7 +170,7 @@
     E.autoDrawCountInput.value = String(autoRuns);
 
     if (max < count) {
-      if (showError) A.showToast(`중복 없이 ${count}개를 뽑으려면 번호 범위가 최소 ${count}까지 필요합니다.`);
+      if (showError) A.showToast(`중복 없이 ${count}개를 발급하려면 번호 범위가 최소 ${count}까지 필요합니다.`);
       return null;
     }
     return { max, count, mode, autoRuns };
@@ -181,18 +185,16 @@
 
   function updateModeUi(mode = getDrawMode()) {
     const descriptions = {
-      normal: "1회 시작 후 다시 눌러 전체 릴을 왼쪽부터 순차 정지합니다.",
-      continuous: "한 번 시작하면 지정한 횟수만큼 현재 추첨을 자동 반복합니다. 실행 중 다시 누르면 현재 회차 후 중지합니다.",
-      manual: "첫 1회로 모든 릴을 돌린 뒤, 이후 한 번 누를 때마다 왼쪽 릴부터 하나씩 공개합니다."
+      normal: "1회 시작 후 다시 눌러 자동 발급 번호를 왼쪽부터 순차 확정합니다.",
+      continuous: "한 번 시작하면 지정한 횟수만큼 자동 번호 발급을 반복합니다. 실행 중 다시 누르면 현재 회차 후 중지합니다."
     };
     E.autoRepeatSetting.hidden = mode !== "continuous";
     E.modeDescription.textContent = descriptions[mode] || descriptions.normal;
   }
 
   function getIdleStatus(mode, count, autoRuns) {
-    if (mode === "continuous") return `연속 자동 ${autoRuns}회 · 이미지 클릭 또는 Space로 시작`;
-    if (mode === "manual") return `${count}개 하나씩 공개 · 이미지 클릭 또는 Space로 회전 시작`;
-    return "이미지 클릭 또는 Space 키로 시작";
+    if (mode === "continuous") return `자동 번호 ${count}개 × ${autoRuns}회 · 이미지 클릭 또는 Space로 시작`;
+    return `자동 번호 ${count}개 발급 · 이미지 클릭 또는 Space로 시작`;
   }
 
   function normalizeAndSaveSettings() {
@@ -239,7 +241,7 @@
     S.manualNextIndex = 0;
     S.manualStopPending = false;
     S.appState = "spinning";
-    S.currentResult = mode === "manual" ? drawUniqueNumbers(settings.count, settings.max) : [];
+    S.currentResult = [];
 
     E.stage.classList.remove("final-win");
     buildResultCells(settings.count);
@@ -249,13 +251,9 @@
     setSettingsDisabled(true);
     E.copyCurrentButton.disabled = true;
 
-    if (mode === "manual") {
-      E.stageStatus.textContent = `${settings.count}개 릴 회전 중 · 다시 눌러 1번째 릴 공개`;
-    } else if (mode === "continuous") {
-      E.stageStatus.textContent = `연속 자동 ${S.autoDrawCompleted + 1}/${S.autoDrawTarget}회차 · 회전 중`;
-    } else {
-      E.stageStatus.textContent = `${settings.count}개 릴 회전 중 · 다시 클릭하거나 Space로 정지`;
-    }
+    E.stageStatus.textContent = mode === "continuous"
+      ? `연속 자동 ${S.autoDrawCompleted + 1}/${S.autoDrawTarget}회차 · 회전 중`
+      : `${settings.count}개 자동 번호 발급 중 · 다시 눌러 확정`;
     return true;
   }
 
@@ -279,20 +277,8 @@
     if (S.appState !== "spinning") return;
     S.currentResult = drawUniqueNumbers(S.currentDrawSettings.count, S.currentDrawSettings.max);
     S.appState = "stopping";
-    E.stageStatus.textContent = "왼쪽 릴부터 하나씩 정지 중…";
+    E.stageStatus.textContent = "자동 발급 번호를 왼쪽부터 확정 중…";
     scheduleSequentialStops(false);
-  }
-
-  function stopNextManualReel() {
-    if (S.currentDrawSettings.mode !== "manual" || S.manualStopPending) return;
-    if (S.manualNextIndex >= S.activeReels.length) return;
-
-    const resultIndex = S.manualNextIndex;
-    const reelIndex = S.activeReels[resultIndex];
-    S.appState = "manual";
-    S.manualStopPending = true;
-    E.stageStatus.textContent = `${resultIndex + 1}번째 릴 정지 중…`;
-    A.reels[reelIndex].beginStop(S.currentResult[resultIndex], performance.now(), 760 + resultIndex * 28);
   }
 
   function startAutoRound() {
@@ -305,7 +291,7 @@
       if (!S.autoDrawRunning || S.appState !== "spinning") return;
       S.currentResult = drawUniqueNumbers(S.currentDrawSettings.count, S.currentDrawSettings.max);
       S.appState = "stopping";
-      E.stageStatus.textContent = `연속 자동 ${S.autoDrawCompleted + 1}/${S.autoDrawTarget}회차 · 순차 정지 중`;
+      E.stageStatus.textContent = `연속 자동 ${S.autoDrawCompleted + 1}/${S.autoDrawTarget}회차 · 번호 확정 중`;
       scheduleSequentialStops(true);
     }, AUTO_SPIN_MS);
   }
@@ -335,10 +321,10 @@
           S.autoDrawRunning = false;
           S.autoCancelRequested = false;
           setSettingsDisabled(false);
-          E.copyCurrentButton.disabled = !S.currentResult.length;
+          E.copyCurrentButton.disabled = !S.lastAutoResult.length;
           E.stageStatus.textContent = `연속 자동 중지 · ${S.autoDrawCompleted}/${S.autoDrawTarget}회 완료`;
         } else {
-          E.stageStatus.textContent = `연속 자동 중지 요청 · 현재 회차 후 중지 (${S.autoDrawCompleted}/${S.autoDrawTarget}회 완료)`;
+          E.stageStatus.textContent = `중지 요청 · 현재 회차 후 종료 (${S.autoDrawCompleted}/${S.autoDrawTarget}회 완료)`;
         }
         return;
       }
@@ -347,21 +333,64 @@
     }
 
     if (["idle", "result"].includes(S.appState)) {
-      startSpin(mode);
+      startSpin("normal");
       return;
     }
 
-    if (mode === "manual") {
-      if (S.appState === "spinning" || S.appState === "manual") stopNextManualReel();
-      return;
-    }
+    if (S.appState === "spinning" && S.currentDrawSettings?.mode === "normal") stopAllSequential();
+  }
 
-    if (S.appState === "spinning") stopAllSequential();
+  function beginPrepared(targets, max) {
+    if (!Array.isArray(targets) || targets.length < 1 || targets.length > A.MAX_REELS) return false;
+    if (!["idle", "result"].includes(S.appState) || S.autoDrawRunning) return false;
+
+    const safeMax = Math.max(A.DEFAULT_MAX, Number(max) || A.DEFAULT_MAX, ...targets);
+    S.currentDrawSettings = { max: safeMax, count: targets.length, mode: "prepared", autoRuns: 1 };
+    S.visibleReelCount = targets.length;
+    S.activeReels = Array.from({ length: targets.length }, (_, i) => i);
+    S.manualNextIndex = 0;
+    S.manualStopPending = false;
+    S.currentResult = targets.slice();
+    S.appState = "spinning";
+
+    E.stage.classList.remove("final-win");
+    A.reels.forEach((reel) => reel.reset());
+    S.activeReels.forEach((index) => A.reels[index].start(safeMax));
+    setSettingsDisabled(true);
+    E.stageStatus.textContent = `${targets.length}개 릴 회전 중 · 다시 눌러 1번째 번호 공개`;
+    A.prepared?.onSpinStarted?.();
+    return true;
+  }
+
+  function stopNextPrepared() {
+    if (S.currentDrawSettings?.mode !== "prepared" || S.manualStopPending) return false;
+    if (!["spinning", "manual"].includes(S.appState)) return false;
+    if (S.manualNextIndex >= S.activeReels.length) return false;
+
+    const resultIndex = S.manualNextIndex;
+    const reelIndex = S.activeReels[resultIndex];
+    S.appState = "manual";
+    S.manualStopPending = true;
+    E.stageStatus.textContent = `${resultIndex + 1}번째 번호 공개 중…`;
+    return A.reels[reelIndex].beginStop(S.currentResult[resultIndex], performance.now(), 760 + resultIndex * 28);
   }
 
   A.handleReelStopped = (reelIndex) => {
     const resultIndex = S.activeReels.indexOf(reelIndex);
     if (resultIndex < 0) return;
+
+    if (S.currentDrawSettings?.mode === "prepared") {
+      A.prepared?.onReelStopped?.(resultIndex, S.currentResult[resultIndex]);
+      if (resultIndex !== S.manualNextIndex) return;
+      S.manualStopPending = false;
+      S.manualNextIndex += 1;
+      if (S.manualNextIndex >= S.activeReels.length) {
+        A.finalizeDraw();
+      } else {
+        E.stageStatus.textContent = `${S.manualNextIndex}/${S.activeReels.length}개 공개 · 다시 눌러 ${S.manualNextIndex + 1}번째 번호 공개`;
+      }
+      return;
+    }
 
     const cell = E.resultNumbers.children[resultIndex];
     if (cell && S.currentResult[resultIndex] != null) {
@@ -371,22 +400,10 @@
       cell.classList.add("pop");
     }
 
-    if (S.currentDrawSettings.mode === "manual") {
-      if (resultIndex !== S.manualNextIndex) return;
-      S.manualStopPending = false;
-      S.manualNextIndex += 1;
-      if (S.manualNextIndex >= S.activeReels.length) {
-        A.finalizeDraw();
-      } else {
-        E.stageStatus.textContent = `${S.manualNextIndex}/${S.activeReels.length}개 공개 · 다시 눌러 ${S.manualNextIndex + 1}번째 릴 공개`;
-      }
-      return;
-    }
-
     if (resultIndex < S.activeReels.length - 1) {
       E.stageStatus.textContent = S.currentDrawSettings.mode === "continuous"
-        ? `연속 자동 ${S.autoDrawCompleted + 1}/${S.autoDrawTarget}회차 · ${resultIndex + 1}/${S.activeReels.length} 정지`
-        : `${resultIndex + 1}/${S.activeReels.length} 정지 · 다음 릴 감속 중…`;
+        ? `연속 자동 ${S.autoDrawCompleted + 1}/${S.autoDrawTarget}회차 · ${resultIndex + 1}/${S.activeReels.length} 확정`
+        : `${resultIndex + 1}/${S.activeReels.length} 확정 · 다음 릴 감속 중…`;
     } else {
       E.stageStatus.textContent = "마지막 번호 확정!";
     }
@@ -394,9 +411,19 @@
 
   A.finalizeDraw = () => {
     if (!["stopping", "manual"].includes(S.appState)) return;
+    const mode = S.currentDrawSettings?.mode;
     S.appState = "result";
 
+    if (mode === "prepared") {
+      setSettingsDisabled(false);
+      E.stage.classList.add("final-win");
+      window.setTimeout(() => E.stage.classList.remove("final-win"), 1000);
+      A.prepared?.onComplete?.(S.currentResult.slice(), S.currentDrawSettings.max);
+      return;
+    }
+
     const record = { max: S.currentDrawSettings.max, numbers: S.currentResult.slice() };
+    S.lastAutoResult = record.numbers.slice();
     S.history.unshift(record);
     S.history = S.history.slice(0, 200);
     saveHistory();
@@ -405,17 +432,17 @@
     E.stage.classList.add("final-win");
     window.setTimeout(() => E.stage.classList.remove("final-win"), 1000);
 
-    if (S.currentDrawSettings.mode === "continuous" && S.autoDrawRunning) {
+    if (mode === "continuous" && S.autoDrawRunning) {
       S.autoDrawCompleted += 1;
       if (S.autoCancelRequested || S.autoDrawCompleted >= S.autoDrawTarget) {
         S.autoDrawRunning = false;
         S.autoCancelRequested = false;
         setSettingsDisabled(false);
         E.copyCurrentButton.disabled = false;
-        E.stageStatus.textContent = `연속 자동 완료 · ${S.autoDrawCompleted}회 추첨`;
+        E.stageStatus.textContent = `연속 자동 완료 · ${S.autoDrawCompleted}회 발급`;
         return;
       }
-      E.stageStatus.textContent = `연속 자동 ${S.autoDrawCompleted}/${S.autoDrawTarget}회 완료 · 다음 추첨 준비`;
+      E.stageStatus.textContent = `연속 자동 ${S.autoDrawCompleted}/${S.autoDrawTarget}회 완료 · 다음 발급 준비`;
       window.clearTimeout(S.autoTimer);
       S.autoTimer = window.setTimeout(startAutoRound, AUTO_NEXT_MS);
       return;
@@ -423,7 +450,7 @@
 
     setSettingsDisabled(false);
     E.copyCurrentButton.disabled = false;
-    E.stageStatus.textContent = `완료 · ${A.formatRecordNumbers(record)}`;
+    E.stageStatus.textContent = `발급 완료 · ${A.formatRecordNumbers(record)}`;
   };
 
   A.initDraw = () => {
@@ -452,6 +479,9 @@
     toggleDraw,
     normalizeAndSaveSettings,
     renderHistory,
-    saveHistory
+    saveHistory,
+    buildResultCells,
+    beginPrepared,
+    stopNextPrepared
   };
 })();

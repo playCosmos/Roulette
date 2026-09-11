@@ -5,8 +5,14 @@
   const S = A.state;
   if (!A?.ticket || typeof A.finalizeDraw !== "function") return;
 
-  const originalFinalizeDraw = A.finalizeDraw;
+  function syncTicketInputLock() {
+    const busy = S.activeTab === "draw" && (
+      S.autoDrawRunning || !["idle", "result"].includes(S.appState)
+    );
+    A.ticket.setDisabled?.(busy);
+  }
 
+  const originalFinalizeDraw = A.finalizeDraw;
   A.finalizeDraw = () => {
     const shouldIssueTicket =
       ["stopping", "manual"].includes(S.appState) &&
@@ -22,9 +28,22 @@
       : null;
 
     originalFinalizeDraw();
+    syncTicketInputLock();
 
     if (record) A.ticket.enqueue(record);
   };
 
-  requestAnimationFrame(() => A.ticket.refreshHint?.());
+  if (A.draw && typeof A.draw.toggleDraw === "function") {
+    const originalToggleDraw = A.draw.toggleDraw;
+    A.draw.toggleDraw = (...args) => {
+      const result = originalToggleDraw(...args);
+      syncTicketInputLock();
+      return result;
+    };
+  }
+
+  requestAnimationFrame(() => {
+    A.ticket.refreshHint?.();
+    syncTicketInputLock();
+  });
 })();

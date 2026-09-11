@@ -48,10 +48,12 @@
       if (!parsed || typeof parsed !== "object") {
         return { max: A.DEFAULT_MAX, count: A.DEFAULT_COUNT, mode: DEFAULT_MODE, autoRuns: DEFAULT_AUTO_RUNS };
       }
+
       let max = Number.parseInt(parsed.max, 10);
       let count = Number.parseInt(parsed.count, 10);
       let autoRuns = Number.parseInt(parsed.autoRuns, 10);
       const mode = ["normal", "continuous"].includes(parsed.mode) ? parsed.mode : DEFAULT_MODE;
+
       max = Number.isFinite(max) ? Math.min(999, Math.max(1, max)) : A.DEFAULT_MAX;
       count = Number.isFinite(count) ? Math.min(A.MAX_REELS, Math.max(1, count)) : A.DEFAULT_COUNT;
       autoRuns = Number.isFinite(autoRuns) ? Math.min(MAX_AUTO_RUNS, Math.max(1, autoRuns)) : DEFAULT_AUTO_RUNS;
@@ -79,6 +81,7 @@
     try {
       const parsed = JSON.parse(localStorage.getItem(A.HISTORY_STORAGE_KEY) || "[]");
       if (!Array.isArray(parsed)) return [];
+
       return parsed
         .filter((record) => record && Array.isArray(record.numbers) && record.numbers.length >= 1 && record.numbers.length <= A.MAX_REELS)
         .map((record) => ({
@@ -114,7 +117,7 @@
     if (!container) return;
     [...container.children].forEach((cell) => {
       cell.textContent = "—";
-      cell.classList.remove("pop", "bonus-result");
+      cell.classList.remove("pop");
     });
   }
 
@@ -173,6 +176,7 @@
       if (showError) A.showToast(`중복 없이 ${count}개를 발급하려면 번호 범위가 최소 ${count}까지 필요합니다.`);
       return null;
     }
+
     return { max, count, mode, autoRuns };
   }
 
@@ -188,6 +192,7 @@
       normal: "1회 시작 후 다시 눌러 자동 발급 번호를 왼쪽부터 순차 확정합니다.",
       continuous: "한 번 시작하면 지정한 횟수만큼 자동 번호 발급을 반복합니다. 실행 중 다시 누르면 현재 회차 후 중지합니다."
     };
+
     E.autoRepeatSetting.hidden = mode !== "continuous";
     E.modeDescription.textContent = descriptions[mode] || descriptions.normal;
   }
@@ -267,6 +272,7 @@
         ? 720 + resultIndex * 30 + (isLast ? 180 : 0)
         : 900 + resultIndex * 45 + (isLast ? 260 : 0);
       const target = S.currentResult[resultIndex];
+
       window.setTimeout(() => {
         A.reels[reelIndex].beginStop(target, performance.now(), duration);
       }, delay);
@@ -299,6 +305,7 @@
   function startAutoSequence() {
     const settings = getValidatedSettings(true);
     if (!settings) return;
+
     S.autoDrawTarget = getAutoDrawCount();
     S.autoDrawCompleted = 0;
     S.autoDrawRunning = true;
@@ -328,6 +335,7 @@
         }
         return;
       }
+
       if (["idle", "result"].includes(S.appState)) startAutoSequence();
       return;
     }
@@ -340,54 +348,20 @@
     if (S.appState === "spinning" && S.currentDrawSettings?.mode === "normal") stopAllSequential();
   }
 
-  function beginPrepared(targets, max) {
-    if (!Array.isArray(targets) || targets.length < 1 || targets.length > A.MAX_REELS) return false;
-    if (!["idle", "result"].includes(S.appState) || S.autoDrawRunning) return false;
-
-    const safeMax = Math.max(A.DEFAULT_MAX, Number(max) || A.DEFAULT_MAX, ...targets);
-    S.currentDrawSettings = { max: safeMax, count: targets.length, mode: "prepared", autoRuns: 1 };
-    S.visibleReelCount = targets.length;
-    S.activeReels = Array.from({ length: targets.length }, (_, i) => i);
-    S.manualNextIndex = 0;
-    S.manualStopPending = false;
-    S.currentResult = targets.slice();
-    S.appState = "spinning";
-
-    E.stage.classList.remove("final-win");
-    A.reels.forEach((reel) => reel.reset());
-    S.activeReels.forEach((index) => A.reels[index].start(safeMax));
-    setSettingsDisabled(true);
-    E.stageStatus.textContent = `${targets.length}개 릴 회전 중 · 다시 눌러 1번째 번호 공개`;
-    A.prepared?.onSpinStarted?.();
-    return true;
-  }
-
-  function stopNextPrepared() {
-    if (S.currentDrawSettings?.mode !== "prepared" || S.manualStopPending) return false;
-    if (!["spinning", "manual"].includes(S.appState)) return false;
-    if (S.manualNextIndex >= S.activeReels.length) return false;
-
-    const resultIndex = S.manualNextIndex;
-    const reelIndex = S.activeReels[resultIndex];
-    S.appState = "manual";
-    S.manualStopPending = true;
-    E.stageStatus.textContent = `${resultIndex + 1}번째 번호 공개 중…`;
-    return A.reels[reelIndex].beginStop(S.currentResult[resultIndex], performance.now(), 760 + resultIndex * 28);
-  }
-
   A.handleReelStopped = (reelIndex) => {
     const resultIndex = S.activeReels.indexOf(reelIndex);
     if (resultIndex < 0) return;
 
-    if (S.currentDrawSettings?.mode === "prepared") {
-      A.prepared?.onReelStopped?.(resultIndex, S.currentResult[resultIndex]);
+    if (S.currentDrawSettings?.mode === "live") {
+      A.live?.onReelStopped?.(resultIndex, S.currentResult[resultIndex]);
       if (resultIndex !== S.manualNextIndex) return;
       S.manualStopPending = false;
       S.manualNextIndex += 1;
+
       if (S.manualNextIndex >= S.activeReels.length) {
         A.finalizeDraw();
       } else {
-        E.stageStatus.textContent = `${S.manualNextIndex}/${S.activeReels.length}개 공개 · 다시 눌러 ${S.manualNextIndex + 1}번째 번호 공개`;
+        E.stageStatus.textContent = `${S.manualNextIndex}/${S.activeReels.length}개 추첨 · 다시 눌러 ${S.manualNextIndex + 1}번째 번호 추첨`;
       }
       return;
     }
@@ -414,11 +388,10 @@
     const mode = S.currentDrawSettings?.mode;
     S.appState = "result";
 
-    if (mode === "prepared") {
-      setSettingsDisabled(false);
+    if (mode === "live") {
       E.stage.classList.add("final-win");
       window.setTimeout(() => E.stage.classList.remove("final-win"), 1000);
-      A.prepared?.onComplete?.(S.currentResult.slice(), S.currentDrawSettings.max);
+      A.live?.onComplete?.(S.currentResult.slice(), S.currentDrawSettings.max);
       return;
     }
 
@@ -442,6 +415,7 @@
         E.stageStatus.textContent = `연속 자동 완료 · ${S.autoDrawCompleted}회 발급`;
         return;
       }
+
       E.stageStatus.textContent = `연속 자동 ${S.autoDrawCompleted}/${S.autoDrawTarget}회 완료 · 다음 발급 준비`;
       window.clearTimeout(S.autoTimer);
       S.autoTimer = window.setTimeout(startAutoRound, AUTO_NEXT_MS);
@@ -481,7 +455,6 @@
     renderHistory,
     saveHistory,
     buildResultCells,
-    beginPrepared,
-    stopNextPrepared
+    setResultPlaceholders
   };
 })();

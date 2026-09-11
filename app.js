@@ -36,8 +36,8 @@
   class ToothReel {
     constructor(index) {
       this.index = index;
-      this.position = index * 2.31;
-      this.speed = 26 + index * 0.9;
+      this.position = index * 1.73;
+      this.speed = 25 + index * 0.85;
       this.mode = "idle";
       this.max = DEFAULT_MAX;
       this.target = null;
@@ -50,8 +50,8 @@
     }
 
     reset() {
-      this.position = this.index * 2.31;
-      this.speed = 26 + this.index * 0.9;
+      this.position = this.index * 1.73;
+      this.speed = 25 + this.index * 0.85;
       this.mode = "idle";
       this.target = null;
       this.stopStart = 0;
@@ -64,8 +64,8 @@
 
     start(max) {
       this.max = max;
-      this.position = randomFloat(0, 80) + this.index * 0.37;
-      this.speed = randomFloat(27, 36) + this.index * 0.75;
+      this.position = randomFloat(0, 80) + this.index * 0.31;
+      this.speed = randomFloat(26, 35) + this.index * 0.72;
       this.mode = "spinning";
       this.target = null;
       this.flash = 0;
@@ -79,7 +79,7 @@
       this.mode = "stopping";
       this.stopStart = now;
       this.stopFrom = this.position;
-      this.stopTo = Math.ceil(this.position) + 15 + this.index * 2 + secureRandomInt(0, 5);
+      this.stopTo = Math.ceil(this.position) + 16 + this.index * 2 + secureRandomInt(0, 5);
       this.stopDuration = duration;
       this.stopNotified = false;
     }
@@ -143,57 +143,48 @@
     return { dpr, width: rect.width, height: rect.height };
   }
 
-  function mouthClipPath(w, h) {
+  function roundedRectPath(width, height, radius) {
     const p = new Path2D();
-    p.moveTo(w * 0.02, h * 0.06);
-    p.bezierCurveTo(w * 0.18, h * 0.015, w * 0.82, h * 0.015, w * 0.98, h * 0.06);
-    p.lineTo(w * 0.98, h * 0.56);
-    p.bezierCurveTo(w * 0.96, h * 0.86, w * 0.82, h * 0.96, w * 0.50, h * 0.98);
-    p.bezierCurveTo(w * 0.18, h * 0.96, w * 0.04, h * 0.86, w * 0.02, h * 0.56);
+    const x = -width / 2;
+    const y = -height / 2;
+    const r = Math.min(radius, width / 2, height / 2);
+
+    p.moveTo(x + r, y);
+    p.lineTo(x + width - r, y);
+    p.quadraticCurveTo(x + width, y, x + width, y + r);
+    p.lineTo(x + width, y + height - r);
+    p.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    p.lineTo(x + r, y + height);
+    p.quadraticCurveTo(x, y + height, x, y + height - r);
+    p.lineTo(x, y + r);
+    p.quadraticCurveTo(x, y, x + r, y);
     p.closePath();
     return p;
   }
 
-  function toothPath(width, height) {
-    const p = new Path2D();
-    const r = Math.min(width, height) * 0.16;
-    const taper = width * 0.055;
-
-    p.moveTo(-width / 2 + r, -height / 2);
-    p.quadraticCurveTo(-width / 2, -height / 2, -width / 2, -height / 2 + r);
-    p.lineTo(-width / 2 + taper, height / 2 - r);
-    p.quadraticCurveTo(-width / 2 + taper, height / 2, -width / 2 + taper + r, height / 2);
-    p.lineTo(width / 2 - taper - r, height / 2);
-    p.quadraticCurveTo(width / 2 - taper, height / 2, width / 2 - taper, height / 2 - r);
-    p.lineTo(width / 2, -height / 2 + r);
-    p.quadraticCurveTo(width / 2, -height / 2, width / 2 - r, -height / 2);
-    p.closePath();
-
-    return p;
-  }
-
-  function fillToothFace(path, faceHeight, value, max, alpha = 1) {
-    const g = ctx.createLinearGradient(0, -faceHeight / 2, 0, faceHeight / 2);
-    g.addColorStop(0, "rgba(255,255,250,.98)");
-    g.addColorStop(0.48, "rgba(255,245,231,.99)");
-    g.addColorStop(1, "rgba(228,198,177,.98)");
+  function drawReelFace(width, height, value, max, alpha = 1) {
+    const face = roundedRectPath(width, height, Math.min(width, height) * 0.12);
+    const gradient = ctx.createLinearGradient(0, -height / 2, 0, height / 2);
+    gradient.addColorStop(0, "rgba(255,255,251,.99)");
+    gradient.addColorStop(0.48, "rgba(255,246,232,.99)");
+    gradient.addColorStop(1, "rgba(226,195,173,.99)");
 
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = g;
-    ctx.shadowColor = "rgba(83, 18, 8, .36)";
-    ctx.shadowBlur = Math.max(1, faceHeight * 0.055);
-    ctx.fill(path);
+    ctx.fillStyle = gradient;
+    ctx.shadowColor = "rgba(74, 15, 7, .30)";
+    ctx.shadowBlur = Math.max(1, height * 0.045);
+    ctx.fill(face);
 
-    ctx.lineWidth = Math.max(0.35, faceHeight * 0.018);
-    ctx.strokeStyle = "rgba(125, 61, 39, .28)";
-    ctx.stroke(path);
+    ctx.lineWidth = Math.max(0.35, height * 0.016);
+    ctx.strokeStyle = "rgba(123, 61, 38, .26)";
+    ctx.stroke(face);
 
     if (value != null) {
-      ctx.fillStyle = "#7d2d18";
+      ctx.fillStyle = "#762818";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.font = `900 ${Math.min(faceHeight * 0.47, 19)}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
-      ctx.shadowColor = "rgba(255,255,255,.6)";
+      ctx.font = `900 ${Math.min(height * 0.48, width * 0.58)}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+      ctx.shadowColor = "rgba(255,255,255,.58)";
       ctx.shadowBlur = 1;
       ctx.fillText(formatDisplayNumber(value, max), 0, 0);
     }
@@ -207,83 +198,79 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    const clip = mouthClipPath(w, h);
+    // Frame.png의 입 구멍은 거의 사각형이다. 릴 자체도 사각형 영역 전체를 사용하고,
+    // 최종 외곽은 위에 놓인 PNG 프레임의 투명 입 구멍이 마스크한다.
     ctx.save();
-    ctx.clip(clip);
+    ctx.beginPath();
+    ctx.rect(0, 0, w, h);
+    ctx.clip();
 
     const count = Math.max(1, Math.min(MAX_REELS, visibleReelCount));
-    const centerLeft = w * 0.08;
-    const centerRight = w * 0.92;
-    const normalSlotW = (w * 0.95) / MAX_REELS;
-    const baseW = normalSlotW * 0.91;
-    const baseH = h * 0.90;
-    const centerY = h * 0.48;
-    const rowStep = baseH * 0.84;
-    const faceH = baseH * 0.80;
+    const normalSlotW = (w * 0.96) / MAX_REELS;
+    const groupW = normalSlotW * count;
+    const groupLeft = (w - groupW) / 2;
+    const faceW = normalSlotW * 0.91;
+    const faceH = h * 0.82;
+    const centerY = h * 0.5;
+    const rowStep = faceH * 0.92;
+
+    ctx.fillStyle = "rgba(18, 2, 4, .98)";
+    ctx.fillRect(0, 0, w, h);
 
     for (let i = 0; i < count; i++) {
       const reel = reels[i];
-      const x = count === 1
-        ? w * 0.5
-        : lerp(centerLeft, centerRight, i / (count - 1));
-      const arch = Math.abs(i - (count - 1) / 2) * h * 0.012;
-      const y = centerY + arch;
-      const outerTooth = toothPath(baseW, baseH);
+      const x = groupLeft + normalSlotW * (i + 0.5);
 
       ctx.save();
-      ctx.translate(x, y);
-      ctx.clip(outerTooth);
-
-      ctx.fillStyle = "rgba(30, 5, 6, .92)";
-      ctx.fillRect(-baseW, -baseH, baseW * 2, baseH * 2);
+      ctx.beginPath();
+      ctx.rect(
+        x - normalSlotW * 0.49,
+        0,
+        normalSlotW * 0.98,
+        h
+      );
+      ctx.clip();
 
       if (reel.mode === "idle") {
-        const face = toothPath(baseW * 0.96, faceH);
-        fillToothFace(face, faceH, null, reel.max);
+        ctx.save();
+        ctx.translate(x, centerY);
+        drawReelFace(faceW, faceH, null, reel.max);
+        ctx.restore();
       } else {
         const base = Math.floor(reel.position);
         const frac = reel.position - base;
 
         for (let offset = -2; offset <= 2; offset++) {
           const step = base + offset;
-          const faceY = (offset - frac) * rowStep;
-          const distance = Math.abs(faceY / rowStep);
-          const alpha = Math.max(0.34, 1 - distance * 0.23);
-          const value = reel.visualValue(step);
+          const y = centerY + (offset - frac) * rowStep;
+          const distance = Math.abs((y - centerY) / rowStep);
+          const alpha = Math.max(0.28, 1 - distance * 0.22);
 
           ctx.save();
-          ctx.translate(0, faceY);
-          const face = toothPath(baseW * 0.96, faceH);
-          fillToothFace(face, faceH, value, reel.max, alpha);
+          ctx.translate(x, y);
+          drawReelFace(faceW, faceH, reel.visualValue(step), reel.max, alpha);
           ctx.restore();
         }
       }
 
-      const topShade = ctx.createLinearGradient(0, -baseH / 2, 0, -baseH * 0.05);
-      topShade.addColorStop(0, "rgba(45, 6, 8, .72)");
-      topShade.addColorStop(1, "rgba(45, 6, 8, 0)");
+      const topShade = ctx.createLinearGradient(0, 0, 0, h * 0.42);
+      topShade.addColorStop(0, "rgba(28, 2, 4, .78)");
+      topShade.addColorStop(1, "rgba(28, 2, 4, 0)");
       ctx.fillStyle = topShade;
-      ctx.fillRect(-baseW / 2, -baseH / 2, baseW, baseH * 0.46);
+      ctx.fillRect(x - normalSlotW / 2, 0, normalSlotW, h * 0.42);
 
-      const bottomShade = ctx.createLinearGradient(0, baseH * 0.05, 0, baseH / 2);
-      bottomShade.addColorStop(0, "rgba(45, 6, 8, 0)");
-      bottomShade.addColorStop(1, "rgba(45, 6, 8, .64)");
+      const bottomShade = ctx.createLinearGradient(0, h * 0.58, 0, h);
+      bottomShade.addColorStop(0, "rgba(28, 2, 4, 0)");
+      bottomShade.addColorStop(1, "rgba(28, 2, 4, .72)");
       ctx.fillStyle = bottomShade;
-      ctx.fillRect(-baseW / 2, baseH * 0.05, baseW, baseH * 0.45);
+      ctx.fillRect(x - normalSlotW / 2, h * 0.58, normalSlotW, h * 0.42);
 
-      ctx.restore();
-
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.lineWidth = Math.max(0.45, w * 0.0018);
-      ctx.strokeStyle = "rgba(125, 61, 39, .38)";
-      ctx.stroke(outerTooth);
       ctx.restore();
 
       if (reel.flash > 0) {
-        const glow = ctx.createRadialGradient(x, y, 0, x, y, normalSlotW * 0.95);
-        glow.addColorStop(0, `rgba(255, 243, 179, ${0.72 * reel.flash})`);
-        glow.addColorStop(1, "rgba(255, 173, 44, 0)");
+        const glow = ctx.createRadialGradient(x, centerY, 0, x, centerY, normalSlotW);
+        glow.addColorStop(0, `rgba(255, 242, 174, ${0.68 * reel.flash})`);
+        glow.addColorStop(1, "rgba(255, 169, 40, 0)");
         ctx.fillStyle = glow;
         ctx.fillRect(x - normalSlotW, 0, normalSlotW * 2, h);
       }
@@ -468,18 +455,13 @@
     return { max, count };
   }
 
-  function normalizeAndSaveSettings(changedField) {
+  function normalizeAndSaveSettings() {
     let max = getMaxNumber();
-    let count = getDrawCount();
+    const count = getDrawCount();
 
     if (max < count) {
-      if (changedField === "max") {
-        max = count;
-        showToast(`번호 범위를 ${count}까지로 조정했습니다.`);
-      } else {
-        max = count;
-        showToast(`번호 범위를 ${count}까지로 함께 늘렸습니다.`);
-      }
+      max = count;
+      showToast(`번호 범위를 ${count}까지로 함께 조정했습니다.`);
     }
 
     maxNumberInput.value = String(max);
@@ -542,8 +524,7 @@
       copy.type = "button";
       copy.className = "ghost-button history-copy";
       copy.textContent = "복사";
-      copy.addEventListener("click", (event) => {
-        event.stopPropagation();
+      copy.addEventListener("click", () => {
         copyText(formatRecordNumbers(record), "해당 번호를 복사했습니다.");
       });
 
@@ -683,8 +664,10 @@
 
   copyCurrentButton.addEventListener("click", () => {
     if (!currentResult.length) return;
-    const record = { max: getMaxNumber(), numbers: currentResult };
-    copyText(formatRecordNumbers(record), "이번 추첨 번호를 복사했습니다.");
+    copyText(
+      formatRecordNumbers({ max: getMaxNumber(), numbers: currentResult }),
+      "이번 추첨 번호를 복사했습니다."
+    );
   });
 
   copyAllButton.addEventListener("click", () => {
@@ -702,8 +685,8 @@
     showToast("추첨 기록을 초기화했습니다.");
   });
 
-  maxNumberInput.addEventListener("change", () => normalizeAndSaveSettings("max"));
-  drawCountInput.addEventListener("change", () => normalizeAndSaveSettings("count"));
+  maxNumberInput.addEventListener("change", normalizeAndSaveSettings);
+  drawCountInput.addEventListener("change", normalizeAndSaveSettings);
 
   saveSettings(savedSettings);
   buildResultCells(savedSettings.count);

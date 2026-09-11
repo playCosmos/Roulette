@@ -8,6 +8,7 @@
   const REQUIRED_MAX = 28;
   const REQUIRED_COUNT = 7;
 
+  const outputEnabledInput = document.getElementById("ticketOutputEnabled");
   const nicknameInput = document.getElementById("ticketNickname");
   const outputHint = document.getElementById("ticketOutputHint");
   const maxInput = document.getElementById("maxNumber");
@@ -81,6 +82,7 @@
     try {
       const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
       if (parsed && typeof parsed.nickname === "string") nicknameInput.value = parsed.nickname;
+      if (parsed && typeof parsed.enabled === "boolean") outputEnabledInput.checked = parsed.enabled;
     } catch {
       // 기본값 유지
     }
@@ -88,9 +90,12 @@
 
   function saveState() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ nickname: nicknameInput.value }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        nickname: nicknameInput.value,
+        enabled: Boolean(outputEnabledInput.checked)
+      }));
     } catch {
-      // 닉네임 저장 실패가 발급 자체를 막지는 않는다.
+      // 출력 설정 저장 실패가 발급 자체를 막지는 않는다.
     }
   }
 
@@ -105,6 +110,10 @@
 
   function currentNickname() {
     return nicknameInput.value.trim() || "익명";
+  }
+
+  function isEnabled() {
+    return Boolean(outputEnabledInput?.checked);
   }
 
   function isRecordCompatible(record) {
@@ -122,14 +131,24 @@
     const max = Number.parseInt(maxInput.value, 10);
     const count = Number.parseInt(countInput.value, 10);
     const ready = max === REQUIRED_MAX && count === REQUIRED_COUNT;
+    const enabled = isEnabled();
+
+    if (!enabled) {
+      outputHint.textContent = "체크하면 발급 완료 시 yellow / red / green / blue 중 랜덤 1장 PNG 저장";
+      outputHint.classList.remove("ready");
+      return;
+    }
+
     outputHint.textContent = ready
-      ? "yellow / red / green / blue 중 1장을 랜덤 선택해 발급 완료 시 PNG 자동 저장"
-      : "티켓 이미지는 번호 범위 1~28 / 발급 7개일 때 자동 저장";
+      ? "이미지 출력 ON · 랜덤 색상 시트를 발급 완료 시 PNG로 저장"
+      : "이미지 출력은 번호 범위 1~28 / 발급 7개 설정에서 사용";
     outputHint.classList.toggle("ready", ready);
   }
 
   function setDisabled(disabled) {
-    nicknameInput.disabled = Boolean(disabled);
+    const next = Boolean(disabled);
+    nicknameInput.disabled = next;
+    outputEnabledInput.disabled = next;
   }
 
   function shuffledTemplateIndexes() {
@@ -275,17 +294,20 @@
     window.setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
 
-  async function issueTicket(record) {
+  async function issueTicket(job) {
+    if (!job?.enabled) return null;
+    const record = job.record;
+
     if (!isRecordCompatible(record)) {
       const key = `${record?.max}:${record?.numbers?.length}`;
       if (compatibilityWarningKey !== key) {
         compatibilityWarningKey = key;
-        A.showToast("티켓 PNG는 번호 범위 1~28, 발급 7개 설정에서 자동 저장됩니다.");
+        A.showToast("티켓 PNG는 번호 범위 1~28, 발급 7개 설정에서 출력됩니다.");
       }
       return null;
     }
 
-    const nickname = currentNickname();
+    const nickname = job.nickname || "익명";
     try {
       const { template, image } = await pickRandomAvailableTemplate();
       const canvas = renderTicket(image, template, record, nickname);
@@ -306,12 +328,19 @@
   }
 
   function enqueue(record) {
-    const snapshot = {
-      max: Number(record?.max),
-      numbers: Array.isArray(record?.numbers) ? record.numbers.slice() : []
+    const job = {
+      enabled: isEnabled(),
+      nickname: currentNickname(),
+      record: {
+        max: Number(record?.max),
+        numbers: Array.isArray(record?.numbers) ? record.numbers.slice() : []
+      }
     };
+
+    if (!job.enabled) return Promise.resolve(null);
+
     downloadQueue = downloadQueue
-      .then(() => issueTicket(snapshot))
+      .then(() => issueTicket(job))
       .catch((error) => {
         console.error(error);
         return null;
@@ -320,6 +349,10 @@
   }
 
   nicknameInput.addEventListener("input", saveState);
+  outputEnabledInput.addEventListener("change", () => {
+    saveState();
+    refreshHint();
+  });
   maxInput.addEventListener("change", refreshHint);
   countInput.addEventListener("change", refreshHint);
   loadSavedState();
@@ -329,6 +362,7 @@
     enqueue,
     setDisabled,
     refreshHint,
+    isEnabled,
     templates: TEMPLATES.map(({ id, label, paths }) => ({ id, label, paths: paths.slice() }))
   };
 })();

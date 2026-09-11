@@ -3,32 +3,27 @@
 
   const A = window.MyaLotto;
   const S = A.state;
-  const STORAGE_KEY = "mya-lotto.live-draw.v1";
+  const SETTINGS_STORAGE_KEY = "mya-lotto.live-draw.v1";
+  const PARTICIPANTS_STORAGE_KEY = "mya-lotto.participants.v1";
+  const MAX_PARTICIPANTS = 50;
 
   const el = {
     max: document.getElementById("liveMaxNumber"),
     count: document.getElementById("liveDrawCount"),
     resultNumbers: document.getElementById("liveResultNumbers"),
     progress: document.getElementById("liveProgress"),
-    summary: document.getElementById("checkerSummary"),
-    checkedCount: document.getElementById("checkedCount"),
-    bestResult: document.getElementById("bestResult"),
-    prizeCount: document.getElementById("prizeCount"),
-    prizeCountLabel: document.getElementById("prizeCountLabel"),
-    results: document.getElementById("checkerResults"),
-    empty: document.getElementById("emptyChecker"),
-    recheckStored: document.getElementById("recheckStoredButton"),
-    batch: document.getElementById("batchRecords"),
-    loadHistory: document.getElementById("loadSavedHistoryButton"),
-    checkBatch: document.getElementById("checkPastedRecordsButton"),
-    clearBatch: document.getElementById("clearBatchRecordsButton")
+    addParticipant: document.getElementById("addParticipantButton"),
+    participantList: document.getElementById("participantList"),
+    participantCount: document.getElementById("participantCount"),
+    emptyParticipants: document.getElementById("emptyParticipants")
   };
 
   const L = {
     max: A.DEFAULT_MAX,
     count: A.DEFAULT_COUNT,
     completed: false,
-    numbers: []
+    numbers: [],
+    participants: []
   };
 
   function getMax() {
@@ -43,7 +38,7 @@
 
   function loadSettings() {
     try {
-      const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+      const parsed = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || "null");
       if (!parsed || typeof parsed !== "object") return;
 
       let max = Number.parseInt(parsed.max, 10);
@@ -60,9 +55,40 @@
 
   function saveSettings() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ max: L.max, count: L.count }));
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ max: L.max, count: L.count }));
     } catch {
       // 설정 저장 실패는 추첨 자체를 막지 않는다.
+    }
+  }
+
+  function createParticipantId() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    return `p-${Date.now()}-${A.secureRandomInt(1000, 999999)}`;
+  }
+
+  function normalizeParticipant(raw, index) {
+    return {
+      id: typeof raw?.id === "string" && raw.id ? raw.id : createParticipantId(),
+      name: typeof raw?.name === "string" && raw.name.trim() ? raw.name : `참가자 ${index + 1}`,
+      numbersText: typeof raw?.numbersText === "string" ? raw.numbersText : ""
+    };
+  }
+
+  function loadParticipants() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(PARTICIPANTS_STORAGE_KEY) || "[]");
+      if (!Array.isArray(parsed)) return [];
+      return parsed.slice(0, MAX_PARTICIPANTS).map(normalizeParticipant);
+    } catch {
+      return [];
+    }
+  }
+
+  function saveParticipants() {
+    try {
+      localStorage.setItem(PARTICIPANTS_STORAGE_KEY, JSON.stringify(L.participants));
+    } catch {
+      A.showToast("참가자 번호를 브라우저에 저장하지 못했습니다.");
     }
   }
 
@@ -84,7 +110,7 @@
     el.count.value = String(count);
     saveSettings();
     buildResultCells();
-    clearComparison();
+    renderAllParticipantResults();
 
     if (S.activeTab === "check") restoreIdleStage();
   }
@@ -96,14 +122,6 @@
 
   function buildResultCells() {
     A.draw.buildResultCells(L.count, el.resultNumbers);
-  }
-
-  function clearComparison() {
-    el.summary.hidden = true;
-    el.results.textContent = "";
-    el.empty.hidden = false;
-    el.empty.textContent = "실시간 추첨을 완료하면 자동 발급 기록과 비교합니다.";
-    el.recheckStored.disabled = true;
   }
 
   function restoreIdleStage() {
@@ -138,6 +156,12 @@
       reel.stopTo = 0;
     });
 
+    buildResultCells();
+    L.numbers.forEach((value, index) => {
+      const cell = el.resultNumbers.children[index];
+      if (cell) cell.textContent = A.formatDisplayNumber(value, L.max);
+    });
+
     el.progress.textContent = "추첨 완료";
     A.el.stageStatus.textContent = `실시간 추첨 완료 · ${A.formatRecordNumbers({ max: L.max, numbers: L.numbers })}`;
   }
@@ -170,7 +194,7 @@
     A.reels.forEach((reel) => reel.reset());
     S.activeReels.forEach((index) => A.reels[index].start(L.max));
     buildResultCells();
-    clearComparison();
+    renderAllParticipantResults();
     setInputsDisabled(true);
     el.progress.textContent = `0/${L.count} 추첨`;
     A.el.stageStatus.textContent = `${L.count}개 릴 회전 중 · 다시 눌러 1번째 번호 실시간 추첨`;
@@ -194,10 +218,8 @@
 
     const resultIndex = S.manualNextIndex;
     const reelIndex = S.activeReels[resultIndex];
-
-    // 핵심: 목표 번호는 회전 시작 시 미리 정하지 않고,
-    // 사용자가 이 릴을 멈추는 바로 이 순간에 생성한다.
     const target = drawNextNumber();
+
     S.currentResult[resultIndex] = target;
     S.appState = "manual";
     S.manualStopPending = true;
@@ -231,119 +253,225 @@
     el.progress.textContent = `${index + 1}/${L.count} 추첨`;
   }
 
-  function parseNumberList(raw, label = "번호") {
+  function parseTicketLine(raw, lineNumber) {
     const tokens = String(raw || "").trim().split(/[\s,;]+/).filter(Boolean);
-    if (tokens.length < 1 || tokens.length > A.MAX_REELS) {
-      return { error: `${label}는 1~${A.MAX_REELS}개를 입력하세요.` };
+    if (!tokens.length) return { empty: true };
+    if (tokens.length > A.MAX_REELS) {
+      return { error: `${lineNumber}번째 줄은 최대 ${A.MAX_REELS}개까지 입력할 수 있습니다.` };
     }
 
     const numbers = tokens.map((token) => Number.parseInt(token, 10));
-    if (numbers.some((number) => !Number.isFinite(number) || number < 1 || number > 999)) {
-      return { error: `${label}에는 1~999 사이의 숫자만 사용할 수 있습니다.` };
+    if (numbers.some((number) => !Number.isFinite(number) || number < 1 || number > L.max)) {
+      return { error: `${lineNumber}번째 줄에는 1~${L.max} 사이의 숫자만 사용할 수 있습니다.` };
     }
     if (new Set(numbers).size !== numbers.length) {
-      return { error: `${label}에는 중복 숫자를 사용할 수 없습니다.` };
+      return { error: `${lineNumber}번째 줄에 중복 번호가 있습니다.` };
     }
+
     return { numbers };
   }
 
-  function evaluateRecord(record) {
+  function parseParticipantTickets(participant) {
+    const rawLines = String(participant.numbersText || "").split(/\r?\n/);
+    const tickets = [];
+    const errors = [];
+
+    rawLines.forEach((line, index) => {
+      if (!line.trim()) return;
+      const parsed = parseTicketLine(line, index + 1);
+      if (parsed.error) errors.push(parsed.error);
+      else if (parsed.numbers) tickets.push({ lineNumber: index + 1, numbers: parsed.numbers });
+    });
+
+    return { tickets, errors };
+  }
+
+  function evaluateTicket(ticket) {
     const winningSet = new Set(L.numbers);
-    const matched = record.numbers.filter((number) => winningSet.has(number));
+    const matched = ticket.numbers.filter((number) => winningSet.has(number));
     return {
-      matchCount: matched.length,
-      rank: `${matched.length}개 일치`,
-      isHit: matched.length > 0
+      numbers: ticket.numbers,
+      lineNumber: ticket.lineNumber,
+      matched,
+      matchCount: matched.length
     };
   }
 
-  function renderComparison(records, reverseNumbering) {
-    el.results.textContent = "";
+  function createNumberPill(number, matched) {
+    const pill = document.createElement("span");
+    pill.className = `participant-number${matched ? " match" : ""}`;
+    pill.textContent = A.formatDisplayNumber(number, L.max);
+    return pill;
+  }
 
-    if (!records.length) {
-      el.summary.hidden = true;
-      el.empty.hidden = false;
-      el.empty.textContent = "비교할 자동 발급 기록이 없습니다.";
+  function renderParticipantResult(participant, resultRoot, summaryRoot) {
+    resultRoot.textContent = "";
+    const parsed = parseParticipantTickets(participant);
+
+    if (!L.completed) {
+      summaryRoot.textContent = parsed.tickets.length
+        ? `${parsed.tickets.length}개 조합 · 추첨 대기`
+        : "번호를 입력하세요";
+      if (parsed.errors.length) summaryRoot.textContent += ` · 입력 오류 ${parsed.errors.length}줄`;
       return;
     }
 
-    const evaluations = records.map(evaluateRecord);
-    let bestIndex = 0;
-    for (let i = 1; i < evaluations.length; i++) {
-      if (evaluations[i].matchCount > evaluations[bestIndex].matchCount) bestIndex = i;
+    if (!parsed.tickets.length) {
+      summaryRoot.textContent = parsed.errors.length ? "입력 오류" : "번호 없음";
+      parsed.errors.forEach((message) => {
+        const error = document.createElement("p");
+        error.className = "participant-error";
+        error.textContent = message;
+        resultRoot.appendChild(error);
+      });
+      return;
     }
 
-    const matchedRecords = evaluations.filter((result) => result.isHit).length;
-    el.checkedCount.textContent = String(records.length);
-    el.bestResult.textContent = evaluations[bestIndex].rank;
-    el.prizeCountLabel.textContent = "일치 기록";
-    el.prizeCount.textContent = `${matchedRecords}개`;
-    el.summary.hidden = false;
-    el.empty.hidden = true;
+    const evaluations = parsed.tickets.map(evaluateTicket);
+    const best = evaluations.reduce((max, result) => Math.max(max, result.matchCount), 0);
+    const hitTickets = evaluations.filter((result) => result.matchCount > 0).length;
+    summaryRoot.textContent = `최고 ${best}개 일치 · ${hitTickets}/${evaluations.length}조합 적중`;
 
-    records.forEach((record, index) => {
-      const result = evaluations[index];
-      const li = document.createElement("li");
-      li.className = "checker-result-item";
+    evaluations.forEach((result) => {
+      const row = document.createElement("div");
+      row.className = "participant-ticket-result";
 
       const head = document.createElement("div");
-      head.className = "checker-result-head";
+      head.className = "participant-ticket-head";
 
-      const rank = document.createElement("span");
-      rank.className = `checker-rank${result.matchCount === 0 ? " miss" : ""}`;
-      const displayIndex = reverseNumbering ? records.length - index : index + 1;
-      rank.textContent = `#${displayIndex} · ${result.rank}`;
+      const label = document.createElement("span");
+      label.textContent = `${result.lineNumber}번 조합`;
 
-      const count = document.createElement("span");
-      count.className = "match-count";
-      count.textContent = `일치 ${result.matchCount}개`;
-      head.append(rank, count);
+      const score = document.createElement("strong");
+      score.className = result.matchCount > 0 ? "has-match" : "";
+      score.textContent = `${result.matchCount}개 일치`;
+      head.append(label, score);
 
-      const numberRow = document.createElement("div");
-      numberRow.className = "checker-number-row";
-      record.numbers.forEach((number) => {
-        const pill = document.createElement("span");
-        pill.className = "checker-number";
-        pill.textContent = A.formatDisplayNumber(number, record.max);
-        if (L.numbers.includes(number)) pill.classList.add("match");
-        numberRow.appendChild(pill);
+      const numbers = document.createElement("div");
+      numbers.className = "participant-ticket-numbers";
+      result.numbers.forEach((number) => {
+        numbers.appendChild(createNumberPill(number, result.matched.includes(number)));
       });
 
-      li.append(head, numberRow);
-      el.results.appendChild(li);
+      row.append(head, numbers);
+      resultRoot.appendChild(row);
+    });
+
+    parsed.errors.forEach((message) => {
+      const error = document.createElement("p");
+      error.className = "participant-error";
+      error.textContent = message;
+      resultRoot.appendChild(error);
     });
   }
 
-  function compareStored() {
-    if (!L.completed) return A.showToast("먼저 실시간 추첨을 완료하세요.");
-    renderComparison(S.history, true);
+  function renderParticipantCard(participant, index) {
+    const card = document.createElement("article");
+    card.className = "participant-card";
+    card.dataset.participantId = participant.id;
+
+    const top = document.createElement("div");
+    top.className = "participant-card-top";
+
+    const nameWrap = document.createElement("label");
+    nameWrap.className = "participant-name-field";
+    const nameLabel = document.createElement("span");
+    nameLabel.textContent = "이름";
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.maxLength = 40;
+    nameInput.value = participant.name;
+    nameInput.placeholder = `참가자 ${index + 1}`;
+    nameWrap.append(nameLabel, nameInput);
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "ghost-button danger participant-remove";
+    remove.textContent = "삭제";
+    top.append(nameWrap, remove);
+
+    const numberWrap = document.createElement("label");
+    numberWrap.className = "participant-number-field";
+    const numberLabel = document.createElement("span");
+    numberLabel.textContent = "보유 번호";
+    const textarea = document.createElement("textarea");
+    textarea.rows = 3;
+    textarea.spellcheck = false;
+    textarea.value = participant.numbersText;
+    textarea.placeholder = "한 줄에 한 조합씩 입력\n03 08 12 21 34 42\n01 05 11 19 27 44";
+    numberWrap.append(numberLabel, textarea);
+
+    const resultHead = document.createElement("div");
+    resultHead.className = "participant-result-head";
+    const resultLabel = document.createElement("span");
+    resultLabel.textContent = "결과";
+    const resultSummary = document.createElement("strong");
+    resultHead.append(resultLabel, resultSummary);
+
+    const resultRoot = document.createElement("div");
+    resultRoot.className = "participant-results";
+
+    const sync = () => {
+      participant.name = nameInput.value.trim() || `참가자 ${index + 1}`;
+      participant.numbersText = textarea.value;
+      saveParticipants();
+      renderParticipantResult(participant, resultRoot, resultSummary);
+    };
+
+    nameInput.addEventListener("input", sync);
+    textarea.addEventListener("input", sync);
+    remove.addEventListener("click", () => removeParticipant(participant.id));
+
+    card.append(top, numberWrap, resultHead, resultRoot);
+    renderParticipantResult(participant, resultRoot, resultSummary);
+    return card;
   }
 
-  function parseBatch(raw) {
-    const lines = String(raw || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    if (!lines.length) return { error: "확인할 번호를 붙여넣어 주세요." };
+  function renderParticipants() {
+    el.participantList.textContent = "";
+    el.participantCount.textContent = `${L.participants.length}명`;
+    el.emptyParticipants.hidden = L.participants.length > 0;
 
-    const records = [];
-    for (let i = 0; i < lines.length; i++) {
-      const parsed = parseNumberList(lines[i], `${i + 1}번째 줄`);
-      if (parsed.error) return { error: parsed.error };
-      records.push({ max: Math.max(A.DEFAULT_MAX, ...parsed.numbers), numbers: parsed.numbers });
+    L.participants.forEach((participant, index) => {
+      el.participantList.appendChild(renderParticipantCard(participant, index));
+    });
+  }
+
+  function renderAllParticipantResults() {
+    if (!el.participantList) return;
+    const cards = [...el.participantList.querySelectorAll(".participant-card")];
+    cards.forEach((card) => {
+      const participant = L.participants.find((item) => item.id === card.dataset.participantId);
+      if (!participant) return;
+      const resultRoot = card.querySelector(".participant-results");
+      const summaryRoot = card.querySelector(".participant-result-head strong");
+      if (resultRoot && summaryRoot) renderParticipantResult(participant, resultRoot, summaryRoot);
+    });
+  }
+
+  function addParticipant() {
+    if (L.participants.length >= MAX_PARTICIPANTS) {
+      A.showToast(`참가자는 최대 ${MAX_PARTICIPANTS}명까지 추가할 수 있습니다.`);
+      return;
     }
-    return { records };
+
+    const participant = {
+      id: createParticipantId(),
+      name: `참가자 ${L.participants.length + 1}`,
+      numbersText: ""
+    };
+    L.participants.push(participant);
+    saveParticipants();
+    renderParticipants();
+
+    const card = el.participantList.lastElementChild;
+    card?.querySelector(".participant-name-field input")?.focus();
   }
 
-  function checkBatch() {
-    if (!L.completed) return A.showToast("먼저 실시간 추첨을 완료하세요.");
-    const parsed = parseBatch(el.batch.value);
-    if (parsed.error) return A.showToast(parsed.error);
-    renderComparison(parsed.records, false);
-    A.showToast(`${parsed.records.length}개 번호를 확인했습니다.`);
-  }
-
-  function loadHistoryIntoBatch() {
-    if (!S.history.length) return A.showToast("자동 발급 기록이 없습니다.");
-    el.batch.value = S.history.map(A.formatRecordNumbers).join("\n");
-    A.showToast(`${S.history.length}개 발급 기록을 넣었습니다.`);
+  function removeParticipant(id) {
+    L.participants = L.participants.filter((participant) => participant.id !== id);
+    saveParticipants();
+    renderParticipants();
   }
 
   function onComplete(numbers, max) {
@@ -352,40 +480,31 @@
     L.max = max;
     setInputsDisabled(false);
     el.progress.textContent = "추첨 완료";
-    el.recheckStored.disabled = false;
     A.el.stageStatus.textContent = `실시간 추첨 완료 · ${A.formatRecordNumbers({ max: L.max, numbers: L.numbers })}`;
-    renderComparison(S.history, true);
+    renderAllParticipantResults();
   }
 
   function onTabActivated() {
-    if (L.completed && L.numbers.length === L.count) {
-      restoreCompletedStage();
-      renderComparison(S.history, true);
-    } else {
-      restoreIdleStage();
-    }
+    if (L.completed && L.numbers.length === L.count) restoreCompletedStage();
+    else restoreIdleStage();
+    renderAllParticipantResults();
   }
 
   function refreshComparison() {
-    if (L.completed) renderComparison(S.history, true);
+    renderAllParticipantResults();
   }
 
   function init() {
     loadSettings();
+    L.participants = loadParticipants();
     el.max.value = String(L.max);
     el.count.value = String(L.count);
     buildResultCells();
-    clearComparison();
+    renderParticipants();
 
     el.max.addEventListener("change", normalizeSettings);
     el.count.addEventListener("change", normalizeSettings);
-    el.recheckStored.addEventListener("click", compareStored);
-    el.loadHistory.addEventListener("click", loadHistoryIntoBatch);
-    el.checkBatch.addEventListener("click", checkBatch);
-    el.clearBatch.addEventListener("click", () => {
-      el.batch.value = "";
-      el.batch.focus();
-    });
+    el.addParticipant.addEventListener("click", addParticipant);
   }
 
   A.live = {
@@ -394,7 +513,6 @@
     onReelStopped,
     onComplete,
     onTabActivated,
-    refreshComparison,
-    isCompleted: () => L.completed
+    refreshComparison
   };
 })();

@@ -140,7 +140,7 @@
     }
 
     outputHint.textContent = ready
-      ? "이미지 출력 ON · 랜덤 색상 시트를 발급 완료 시 PNG로 저장"
+      ? "이미지 출력 ON · 각 조합마다 랜덤 색상 시트를 PNG로 저장"
       : "이미지 출력은 번호 범위 1~28 / 발급 7개 설정에서 사용";
     outputHint.classList.toggle("ready", ready);
   }
@@ -327,25 +327,51 @@
     }
   }
 
-  function enqueue(record) {
-    const job = {
-      enabled: isEnabled(),
-      nickname: currentNickname(),
+  function makeJob(record, enabled, nickname) {
+    return {
+      enabled,
+      nickname,
       record: {
         max: Number(record?.max),
         numbers: Array.isArray(record?.numbers) ? record.numbers.slice() : []
       }
     };
+  }
 
+  function enqueue(record) {
+    const job = makeJob(record, isEnabled(), currentNickname());
     if (!job.enabled) return Promise.resolve(null);
 
-    downloadQueue = downloadQueue
-      .then(() => issueTicket(job))
-      .catch((error) => {
-        console.error(error);
-        return null;
-      });
-    return downloadQueue;
+    const task = downloadQueue.then(() => issueTicket(job));
+    downloadQueue = task.catch((error) => {
+      console.error(error);
+      return null;
+    });
+    return task;
+  }
+
+  function enqueueMany(records) {
+    const enabled = isEnabled();
+    const nickname = currentNickname();
+    const jobs = Array.isArray(records)
+      ? records.map((record) => makeJob(record, enabled, nickname))
+      : [];
+
+    if (!enabled || !jobs.length) return Promise.resolve([]);
+
+    const task = downloadQueue.then(async () => {
+      const results = [];
+      for (const job of jobs) {
+        results.push(await issueTicket(job));
+      }
+      return results;
+    });
+
+    downloadQueue = task.then(() => null).catch((error) => {
+      console.error(error);
+      return null;
+    });
+    return task;
   }
 
   nicknameInput.addEventListener("input", saveState);
@@ -360,6 +386,7 @@
 
   A.ticket = {
     enqueue,
+    enqueueMany,
     setDisabled,
     refreshHint,
     isEnabled,

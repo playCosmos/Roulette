@@ -26,11 +26,11 @@
           draggable="false"
         />
 
-        <div class="teeth-roulette" id="teethRoulette" aria-label="회전하는 7개의 이빨">
+        <div class="teeth-roulette" id="teethRoulette" aria-label="회전하는 이빨 릴">
           <canvas id="teethCanvas" aria-hidden="true"></canvas>
         </div>
 
-        <div class="stage-status" id="stageStatus" aria-live="polite">이미지를 클릭하거나 Space 키를 눌러 시작</div>
+        <div class="stage-status" id="stageStatus" aria-live="polite">이미지 클릭 또는 Space 키로 시작</div>
       </div>
     </section>
 
@@ -44,34 +44,30 @@
           <span>번호 범위</span>
           <div class="range-input">
             <strong>1</strong><span>~</span>
-            <input id="maxNumber" type="number" min="7" max="999" value="45" inputmode="numeric" />
+            <input id="maxNumber" type="number" min="1" max="999" value="45" inputmode="numeric" />
           </div>
         </label>
-        <label class="check-setting">
-          <input id="allowDuplicates" type="checkbox" />
-          <span>중복 허용</span>
+
+        <label>
+          <span>뽑는 개수</span>
+          <div class="range-input count-input">
+            <input id="drawCount" type="number" min="1" max="7" value="7" inputmode="numeric" />
+            <span>개</span>
+          </div>
         </label>
       </section>
 
       <section class="result-panel" aria-labelledby="resultTitle">
         <div class="section-heading">
-          <div>
-            <p class="section-kicker">CURRENT</p>
-            <h2 id="resultTitle">이번 추첨</h2>
-          </div>
+          <h2 id="resultTitle">이번 추첨</h2>
           <button class="ghost-button" id="copyCurrentButton" type="button" disabled>복사</button>
         </div>
-        <div class="result-numbers" id="resultNumbers" aria-live="polite">
-          <span>—</span><span>—</span><span>—</span><span>—</span><span>—</span><span>—</span><span>—</span>
-        </div>
+        <div class="result-numbers" id="resultNumbers" aria-live="polite"></div>
       </section>
 
       <section class="history-panel" aria-labelledby="historyTitle">
         <div class="section-heading">
-          <div>
-            <p class="section-kicker">HISTORY</p>
-            <h2 id="historyTitle">추첨 기록</h2>
-          </div>
+          <h2 id="historyTitle">추첨 기록</h2>
           <div class="history-actions">
             <button class="ghost-button" id="copyAllButton" type="button">전체 복사</button>
             <button class="ghost-button danger" id="clearHistoryButton" type="button">초기화</button>

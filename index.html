@@ -67,14 +67,20 @@
             </label>
           </section>
 
-          <section class="ticket-output-settings" aria-label="자동 티켓 이미지 설정">
+          <section class="ticket-output-settings" aria-label="티켓 이미지 출력 설정">
+            <label class="ticket-output-toggle" for="ticketOutputEnabled">
+              <input id="ticketOutputEnabled" type="checkbox" />
+              <span>이미지 출력</span>
+            </label>
+
             <label class="ticket-nickname-field">
               <span>닉네임</span>
               <input id="ticketNickname" type="text" maxlength="24" autocomplete="off" placeholder="미입력 시 익명" />
             </label>
+
             <div class="ticket-output-state">
-              <strong>랜덤 시트 PNG 자동 저장</strong>
-              <span id="ticketOutputHint">1~28에서 7개 발급 시 사용</span>
+              <strong>랜덤 시트 PNG</strong>
+              <span id="ticketOutputHint">이미지 출력 체크 시 사용</span>
             </div>
           </section>
 
@@ -97,7 +103,16 @@
                 <input type="radio" name="drawMode" value="continuous" />
                 <span>연속 자동</span>
               </label>
+              <label>
+                <input type="radio" name="drawMode" value="manual" />
+                <span>수동</span>
+              </label>
             </div>
+
+            <label class="manual-number-setting" id="manualNumberSetting" hidden>
+              <span>사용자 지정 번호</span>
+              <input id="manualNumbers" type="text" inputmode="numeric" autocomplete="off" placeholder="예: 1 5 9 13 18 24 28" />
+            </label>
 
             <p class="mode-description" id="modeDescription">1회 시작 후 다시 눌러 자동 발급 번호를 왼쪽부터 순차 확정합니다.</p>
           </section>

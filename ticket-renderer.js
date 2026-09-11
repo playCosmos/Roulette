@@ -15,9 +15,9 @@
 
   const TEMPLATES = [
     {
-      id: "gold",
-      label: "gold",
-      paths: ["./assets/lotto-gold.png", "./assets/gold.png"],
+      id: "yellow",
+      label: "yellow",
+      paths: ["./assets/yellow.png", "./assets/lotto-yellow.png", "./assets/lotto-gold.png"],
       nickname: { x: 1418, y: 342, maxWidth: 126, maxHeight: 52 },
       markRadius: 25,
       grid: [
@@ -29,9 +29,9 @@
       selected: [[752,869],[832,871],[922,871],[1010,871],[1088,865],[1178,871],[1258,869]]
     },
     {
-      id: "pink",
-      label: "pink",
-      paths: ["./assets/lotto-pink.png", "./assets/pink.png"],
+      id: "red",
+      label: "red",
+      paths: ["./assets/red.png", "./assets/lotto-red.png", "./assets/lotto-pink.png"],
       nickname: { x: 1414, y: 340, maxWidth: 126, maxHeight: 52 },
       markRadius: 25,
       grid: [
@@ -45,7 +45,7 @@
     {
       id: "green",
       label: "green",
-      paths: ["./assets/lotto-green.png", "./assets/green.png"],
+      paths: ["./assets/green.png", "./assets/lotto-green.png"],
       nickname: { x: 1406, y: 341, maxWidth: 126, maxHeight: 52 },
       markRadius: 25,
       grid: [
@@ -59,7 +59,7 @@
     {
       id: "blue",
       label: "blue",
-      paths: ["./assets/lotto-blue.png", "./assets/blue.png"],
+      paths: ["./assets/blue.png", "./assets/lotto-blue.png"],
       nickname: { x: 1406, y: 337, maxWidth: 126, maxHeight: 52 },
       markRadius: 25,
       grid: [
@@ -123,7 +123,7 @@
     const count = Number.parseInt(countInput.value, 10);
     const ready = max === REQUIRED_MAX && count === REQUIRED_COUNT;
     outputHint.textContent = ready
-      ? "4색 시트 중 1장을 랜덤 선택해 발급 완료 시 PNG 자동 저장"
+      ? "yellow / red / green / blue 중 1장을 랜덤 선택해 발급 완료 시 PNG 자동 저장"
       : "티켓 이미지는 번호 범위 1~28 / 발급 7개일 때 자동 저장";
     outputHint.classList.toggle("ready", ready);
   }
@@ -299,7 +299,7 @@
       console.error(error);
       if (!missingAssetNotified) {
         missingAssetNotified = true;
-        A.showToast("티켓 이미지를 찾지 못했습니다. assets의 lotto-gold/pink/green/blue.png 파일을 확인하세요.");
+        A.showToast("티켓 이미지를 찾지 못했습니다. assets/yellow.png, red.png, green.png, blue.png 파일을 확인하세요.");
       }
       return null;
     }

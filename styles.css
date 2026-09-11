@@ -330,7 +330,7 @@ h2 { font-size: 16px; }
 .result-numbers span {
   display: grid;
   place-items: center;
-  width: clamp(34px, 3.2vw, 45px);
+  width: clamp(34px, 3.2vw, 42px);
   aspect-ratio: 1;
   flex: 0 0 auto;
   border-radius: 999px;

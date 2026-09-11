@@ -102,6 +102,7 @@ button { color: inherit; }
   height: 3.85%;
   z-index: 1;
   pointer-events: none;
+  transform: rotate(-1.5deg);
 }
 
 #teethCanvas {

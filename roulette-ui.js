@@ -17,7 +17,7 @@
 
   function handleStageAction() {
     if (S.activeTab === "draw") A.draw.toggleDraw();
-    else A.prepared?.toggle?.();
+    else A.live?.toggle?.();
   }
 
   function restoreAutomaticStageContext() {
@@ -61,8 +61,8 @@
         ? `최근 발급 · ${A.formatRecordNumbers({ max: A.draw.getMaxNumber(), numbers: S.lastAutoResult })}`
         : A.draw.getIdleStatus(A.draw.getDrawMode(), A.draw.getDrawCount(), A.draw.getAutoDrawCount());
     } else {
-      E.stage.setAttribute("aria-label", "미리 만든 번호를 하나씩 추첨");
-      A.prepared?.onTabActivated?.();
+      E.stage.setAttribute("aria-label", "실시간으로 번호를 하나씩 추첨");
+      A.live?.onTabActivated?.();
     }
   }
 
@@ -110,7 +110,7 @@
       S.history = [];
       A.draw.saveHistory();
       A.draw.renderHistory();
-      A.prepared?.onHistoryChanged?.();
+      A.live?.refreshComparison?.();
       A.showToast("자동 발급 기록을 초기화했습니다.");
     });
 
@@ -125,7 +125,7 @@
   }
 
   A.initDraw();
-  A.prepared?.init?.();
+  A.live?.init?.();
   bindEvents();
   switchTab("draw");
   A.startAnimation();

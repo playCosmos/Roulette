@@ -7,6 +7,8 @@
   const REFERENCE_HEIGHT = 1024;
   const REQUIRED_MAX = 28;
   const REQUIRED_COUNT = 7;
+  const TICKET_FONT_FAMILY = "MyaTicketFont";
+  const TICKET_FONT_PATH = "./assets/font.ttf";
 
   const outputEnabledInput = document.getElementById("ticketOutputEnabled");
   const nicknameInput = document.getElementById("ticketNickname");
@@ -77,6 +79,9 @@
   let downloadQueue = Promise.resolve();
   let compatibilityWarningKey = "";
   let missingAssetNotified = false;
+  let ticketFontPromise = null;
+  let ticketFontReady = false;
+  let fontWarningShown = false;
 
   function loadSavedState() {
     try {
@@ -151,6 +156,40 @@
     outputEnabledInput.disabled = next;
   }
 
+  function ensureTicketFont() {
+    if (ticketFontPromise) return ticketFontPromise;
+
+    ticketFontPromise = (async () => {
+      try {
+        if (!("FontFace" in window) || !document.fonts) {
+          throw new Error("FontFace API is not supported in this browser.");
+        }
+
+        const face = new FontFace(TICKET_FONT_FAMILY, `url("${TICKET_FONT_PATH}")`);
+        const loadedFace = await face.load();
+        document.fonts.add(loadedFace);
+        await document.fonts.load(`16px "${TICKET_FONT_FAMILY}"`);
+        ticketFontReady = true;
+        return true;
+      } catch (error) {
+        console.error(error);
+        ticketFontReady = false;
+        if (!fontWarningShown) {
+          fontWarningShown = true;
+          A.showToast("assets/font.ttf를 불러오지 못해 기본 글꼴로 출력합니다.");
+        }
+        return false;
+      }
+    })();
+
+    return ticketFontPromise;
+  }
+
+  function applyCanvasFont(ctx, sizePx, weight, fallbackFamily) {
+    const family = ticketFontReady ? `"${TICKET_FONT_FAMILY}"` : fallbackFamily;
+    ctx.font = `${weight} ${sizePx}px ${family}`;
+  }
+
   function shuffledTemplateIndexes() {
     const indexes = TEMPLATES.map((_, index) => index);
     for (let i = indexes.length - 1; i > 0; i--) {
@@ -213,10 +252,10 @@
     ctx.fillStyle = "#070707";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = `800 ${fontSize}px Pretendard, "Noto Sans KR", system-ui, sans-serif`;
+    applyCanvasFont(ctx, fontSize, 800, 'Pretendard, "Noto Sans KR", system-ui, sans-serif');
     while (fontSize > 14 * sy && ctx.measureText(text).width > maxWidth) {
       fontSize -= 1 * sy;
-      ctx.font = `800 ${fontSize}px Pretendard, "Noto Sans KR", system-ui, sans-serif`;
+      applyCanvasFont(ctx, fontSize, 800, 'Pretendard, "Noto Sans KR", system-ui, sans-serif');
     }
     ctx.fillText(text, x, y, maxWidth);
     ctx.restore();
@@ -235,7 +274,7 @@
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = `900 ${Math.max(14, 22 * sy)}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    applyCanvasFont(ctx, Math.max(14, 22 * sy), 900, "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace");
     ctx.fillText(String(number), x, y + 0.5 * sy);
     ctx.restore();
   }
@@ -245,7 +284,7 @@
     ctx.fillStyle = "#080808";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = `900 ${Math.max(16, 27 * sy)}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    applyCanvasFont(ctx, Math.max(16, 27 * sy), 900, "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace");
     numbers.forEach((number, index) => {
       const center = template.selected[index];
       if (!center) return;
@@ -309,6 +348,7 @@
 
     const nickname = job.nickname || "익명";
     try {
+      await ensureTicketFont();
       const { template, image } = await pickRandomAvailableTemplate();
       const canvas = renderTicket(image, template, record, nickname);
       const blob = await canvasToBlob(canvas);

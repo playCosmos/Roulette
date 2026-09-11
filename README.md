@@ -38,6 +38,44 @@
 - `전체 복사`는 한 줄에 한 조합 형식
 - 날짜와 시간은 저장·표시·복사하지 않음
 
+## 자동 티켓 PNG 출력
+
+자동 번호 발급 탭에는 닉네임 입력칸과 랜덤 티켓 PNG 자동 저장 기능이 있습니다.
+
+티켓 이미지는 제공된 4색 시트의 배치가 서로 조금씩 다른 점을 고려해 **색상별 좌표를 독립적으로 보정**해 사용합니다. 발급 1회가 끝날 때마다 사용 가능한 4색 중 하나를 무작위로 고르고, 해당 이미지 위에 닉네임과 발급 번호를 합성한 뒤 PNG로 자동 다운로드합니다.
+
+필요한 파일명은 다음과 같습니다.
+
+```text
+assets/lotto-gold.png
+assets/lotto-pink.png
+assets/lotto-green.png
+assets/lotto-blue.png
+```
+
+각 색상은 짧은 이름도 대체 경로로 지원합니다.
+
+```text
+assets/gold.png
+assets/pink.png
+assets/green.png
+assets/blue.png
+```
+
+동작 방식:
+
+- 닉네임은 우측 `닉네임` 칸에 검은 글자로 합성
+- 1~28 번호판에서 발급된 7개 번호 위치를 검은 원으로 채우고 흰 숫자로 다시 표시
+- 하단 `선택 번호` 7칸에도 같은 발급 번호를 검은 글자로 표시
+- gold / pink / green / blue 중 한 시트를 매 발급마다 독립적으로 랜덤 선택
+- 기본 발급뿐 아니라 `연속 자동`의 각 회차도 각각 PNG 생성 및 다운로드
+- 닉네임은 `localStorage`에 보관
+- 파일명에는 닉네임, 시트 색상, 번호만 포함하고 날짜/시간은 넣지 않음
+
+제공된 시트 자체가 `1~28 중 7개 선택` 형식이므로 **티켓 PNG 자동 저장은 번호 범위가 정확히 28이고 발급 개수가 7개인 경우에만 동작**합니다. 다른 범위나 개수에서는 일반 자동 번호 발급은 그대로 동작하지만 이미지 파일은 만들지 않습니다.
+
+브라우저에 따라 연속 자동 발급으로 여러 PNG를 저장할 때 최초 한 번 `여러 파일 다운로드 허용` 확인이 나타날 수 있습니다.
+
 ## 추첨기
 
 추첨기 탭은 미리 정해 둔 번호를 순서대로 보여주는 방식이 아니라 **실시간 무작위 추첨 방식**입니다.
@@ -107,14 +145,21 @@ assets/Frame2.png
 ├─ index.html
 ├─ styles.css
 ├─ draw-modes.css
+├─ ticket-renderer.css
 ├─ live-draw.css
 ├─ roulette-core.js
 ├─ roulette-draw.js
+├─ ticket-renderer.js
+├─ ticket-hook.js
 ├─ live-draw.js
 ├─ roulette-ui.js
 ├─ .nojekyll
 └─ assets/
-   └─ Frame2.png
+   ├─ Frame2.png
+   ├─ lotto-gold.png
+   ├─ lotto-pink.png
+   ├─ lotto-green.png
+   └─ lotto-blue.png
 ```
 
 ## 실행

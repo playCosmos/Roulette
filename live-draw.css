@@ -18,6 +18,71 @@
   font-weight: 850;
 }
 
+.participant-ranking-section {
+  flex: 0 0 auto;
+  margin-top: 8px;
+  padding: 11px;
+  border: 1px solid rgba(255, 199, 117, .20);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(111, 42, 17, .22), rgba(0, 0, 0, .16));
+}
+
+.participant-ranking-section[hidden] {
+  display: none !important;
+}
+
+.ranking-badge {
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 199, 117, .18);
+  border-radius: 999px;
+  color: #d7ba8d;
+  font-size: 9px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.participant-ranking-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.participant-ranking-row {
+  display: grid;
+  grid-template-columns: minmax(42px, auto) 1fr;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, .20);
+  border: 1px solid rgba(255, 255, 255, .035);
+}
+
+.participant-ranking-row:first-child {
+  border-color: rgba(255, 207, 99, .30);
+  background: linear-gradient(145deg, rgba(136, 65, 17, .24), rgba(0, 0, 0, .18));
+}
+
+.participant-ranking-row strong {
+  color: #ffd47a;
+  font-size: 11px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.participant-ranking-row span {
+  min-width: 0;
+  color: #ead0a8;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.participant-ranking-empty {
+  margin: 10px 0 2px;
+}
+
 .participant-section {
   margin-top: 8px;
   min-height: 0;
@@ -30,11 +95,27 @@
   background: rgba(255, 255, 255, .025);
 }
 
-.participant-heading > div {
+.participant-section.collapsed {
+  min-height: auto;
+  flex: 0 0 auto;
+}
+
+.participant-section.collapsed .participant-list,
+.participant-section.collapsed .participant-empty {
+  display: none !important;
+}
+
+.participant-heading > div:first-child {
   min-width: 0;
   display: flex;
   align-items: baseline;
   gap: 7px;
+}
+
+.participant-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .participant-count {
@@ -43,9 +124,10 @@
   font-weight: 900;
 }
 
-.participant-add-button {
+.participant-add-button,
+.participant-toggle-button {
   min-height: 31px;
-  padding: 5px 11px;
+  padding: 5px 10px;
 }
 
 .participant-help {
@@ -227,7 +309,8 @@
 }
 
 @media (max-width: 920px) {
-  .participant-section {
+  .participant-section,
+  .participant-ranking-section {
     padding: 9px;
   }
 
@@ -249,5 +332,13 @@
 
   .participant-heading {
     align-items: center;
+  }
+
+  .participant-heading-actions {
+    gap: 4px;
+  }
+
+  .participant-ranking-row {
+    grid-template-columns: 42px 1fr;
   }
 }

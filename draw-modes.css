@@ -1,0 +1,138 @@
+.draw-mode-settings {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .025);
+}
+
+.draw-mode-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.draw-mode-selector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.draw-mode-selector label {
+  min-width: 0;
+  cursor: pointer;
+}
+
+.draw-mode-selector input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.draw-mode-selector span {
+  min-height: 31px;
+  display: grid;
+  place-items: center;
+  padding: 5px 7px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 199, 117, .16);
+  background: rgba(0, 0, 0, .22);
+  color: #a9947f;
+  font-size: 11px;
+  font-weight: 850;
+  text-align: center;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.draw-mode-selector label:hover span {
+  border-color: rgba(255, 199, 117, .36);
+  color: #ead3af;
+}
+
+.draw-mode-selector input:checked + span {
+  border-color: rgba(255, 189, 73, .72);
+  background: linear-gradient(180deg, rgba(255, 181, 57, .20), rgba(121, 48, 18, .30));
+  color: #ffe8b7;
+  box-shadow: inset 0 0 0 1px rgba(255, 214, 131, .08);
+}
+
+.draw-mode-selector input:focus-visible + span {
+  outline: 2px solid rgba(255, 207, 106, .70);
+  outline-offset: 2px;
+}
+
+.draw-mode-selector input:disabled + span {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.auto-repeat-setting {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.auto-repeat-setting[hidden] {
+  display: none;
+}
+
+.auto-repeat-setting input {
+  width: 54px;
+  border: 1px solid rgba(255, 199, 117, .24);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, .28);
+  color: var(--cream);
+  padding: 4px 6px;
+  text-align: center;
+  outline: none;
+}
+
+.auto-repeat-setting input:focus {
+  border-color: var(--gold-strong);
+}
+
+.mode-description {
+  margin: 7px 1px 0;
+  color: #796858;
+  font-size: 10px;
+  line-height: 1.42;
+}
+
+@media (max-width: 920px) {
+  .draw-mode-settings {
+    margin-top: 6px;
+    padding: 8px 9px;
+  }
+
+  .draw-mode-selector {
+    margin-top: 5px;
+  }
+
+  .draw-mode-selector span {
+    min-height: 28px;
+    font-size: 10px;
+  }
+
+  .mode-description {
+    margin-top: 5px;
+    font-size: 9px;
+  }
+}
+
+@media (max-width: 420px) {
+  .draw-mode-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .auto-repeat-setting {
+    width: 100%;
+  }
+}

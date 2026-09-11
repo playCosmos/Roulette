@@ -1,0 +1,334 @@
+(() => {
+  "use strict";
+
+  const A = window.MyaLotto;
+  const STORAGE_KEY = "mya-lotto.ticket-output.v1";
+  const REFERENCE_WIDTH = 1536;
+  const REFERENCE_HEIGHT = 1024;
+  const REQUIRED_MAX = 28;
+  const REQUIRED_COUNT = 7;
+
+  const nicknameInput = document.getElementById("ticketNickname");
+  const outputHint = document.getElementById("ticketOutputHint");
+  const maxInput = document.getElementById("maxNumber");
+  const countInput = document.getElementById("drawCount");
+
+  const TEMPLATES = [
+    {
+      id: "gold",
+      label: "gold",
+      paths: ["./assets/lotto-gold.png", "./assets/gold.png"],
+      nickname: { x: 1418, y: 342, maxWidth: 126, maxHeight: 52 },
+      markRadius: 25,
+      grid: [
+        [747,531],[829,539],[909,539],[992,532],[1069,535],[1150,532],[1227,543],
+        [747,601],[831,599],[909,597],[991,601],[1067,601],[1150,599],[1231,599],
+        [747,665],[829,673],[907,667],[991,667],[1070,665],[1150,667],[1229,667],
+        [752,733],[831,733],[907,731],[991,733],[1069,734],[1145,733],[1227,731]
+      ],
+      selected: [[752,869],[832,871],[922,871],[1010,871],[1088,865],[1178,871],[1258,869]]
+    },
+    {
+      id: "pink",
+      label: "pink",
+      paths: ["./assets/lotto-pink.png", "./assets/pink.png"],
+      nickname: { x: 1414, y: 340, maxWidth: 126, maxHeight: 52 },
+      markRadius: 25,
+      grid: [
+        [753,531],[831,535],[908,532],[987,530],[1066,530],[1148,535],[1227,538],
+        [753,597],[829,595],[908,597],[989,604],[1071,598],[1148,599],[1227,601],
+        [753,661],[829,664],[908,664],[987,663],[1066,663],[1148,668],[1227,665],
+        [752,727],[831,733],[909,735],[987,731],[1066,730],[1150,729],[1226,731]
+      ],
+      selected: [[754,860],[836,860],[919,863],[1005,865],[1085,860],[1173,860],[1252,866]]
+    },
+    {
+      id: "green",
+      label: "green",
+      paths: ["./assets/lotto-green.png", "./assets/green.png"],
+      nickname: { x: 1406, y: 341, maxWidth: 126, maxHeight: 52 },
+      markRadius: 25,
+      grid: [
+        [748,523],[823,521],[904,527],[980,523],[1064,521],[1141,527],[1220,529],
+        [746,595],[825,595],[907,591],[982,589],[1059,591],[1141,596],[1217,591],
+        [748,661],[825,658],[905,661],[982,659],[1061,659],[1141,657],[1220,664],
+        [746,731],[823,728],[907,730],[982,731],[1061,725],[1141,724],[1220,723]
+      ],
+      selected: [[754,853],[837,854],[920,853],[999,858],[1076,849],[1156,852],[1235,855]]
+    },
+    {
+      id: "blue",
+      label: "blue",
+      paths: ["./assets/lotto-blue.png", "./assets/blue.png"],
+      nickname: { x: 1406, y: 337, maxWidth: 126, maxHeight: 52 },
+      markRadius: 25,
+      grid: [
+        [753,530],[830,530],[907,525],[982,523],[1063,529],[1139,529],[1214,530],
+        [753,591],[830,589],[907,591],[983,591],[1058,592],[1136,589],[1213,590],
+        [753,661],[830,658],[907,659],[981,662],[1060,657],[1137,662],[1213,658],
+        [753,724],[830,723],[904,729],[986,730],[1059,723],[1137,728],[1214,727]
+      ],
+      selected: [[753,857],[833,857],[915,859],[991,853],[1070,857],[1148,860],[1225,860]]
+    }
+  ];
+
+  const imageCache = new Map();
+  let downloadQueue = Promise.resolve();
+  let compatibilityWarningKey = "";
+  let missingAssetNotified = false;
+
+  function loadSavedState() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+      if (parsed && typeof parsed.nickname === "string") nicknameInput.value = parsed.nickname;
+    } catch {
+      // 기본값 유지
+    }
+  }
+
+  function saveState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ nickname: nicknameInput.value }));
+    } catch {
+      // 닉네임 저장 실패가 발급 자체를 막지는 않는다.
+    }
+  }
+
+  function sanitizeFilePart(value) {
+    const normalized = String(value || "익명")
+      .trim()
+      .replace(/[\\/:*?"<>|]/g, "_")
+      .replace(/\s+/g, "_")
+      .slice(0, 40);
+    return normalized || "익명";
+  }
+
+  function currentNickname() {
+    return nicknameInput.value.trim() || "익명";
+  }
+
+  function isRecordCompatible(record) {
+    return Boolean(
+      record &&
+      Number(record.max) === REQUIRED_MAX &&
+      Array.isArray(record.numbers) &&
+      record.numbers.length === REQUIRED_COUNT &&
+      record.numbers.every((number) => Number.isInteger(number) && number >= 1 && number <= REQUIRED_MAX) &&
+      new Set(record.numbers).size === REQUIRED_COUNT
+    );
+  }
+
+  function refreshHint() {
+    const max = Number.parseInt(maxInput.value, 10);
+    const count = Number.parseInt(countInput.value, 10);
+    const ready = max === REQUIRED_MAX && count === REQUIRED_COUNT;
+    outputHint.textContent = ready
+      ? "4색 시트 중 1장을 랜덤 선택해 발급 완료 시 PNG 자동 저장"
+      : "티켓 이미지는 번호 범위 1~28 / 발급 7개일 때 자동 저장";
+    outputHint.classList.toggle("ready", ready);
+  }
+
+  function setDisabled(disabled) {
+    nicknameInput.disabled = Boolean(disabled);
+  }
+
+  function shuffledTemplateIndexes() {
+    const indexes = TEMPLATES.map((_, index) => index);
+    for (let i = indexes.length - 1; i > 0; i--) {
+      const j = A.secureRandomInt(0, i);
+      [indexes[i], indexes[j]] = [indexes[j], indexes[i]];
+    }
+    return indexes;
+  }
+
+  function loadImagePath(path) {
+    if (imageCache.has(path)) return imageCache.get(path);
+
+    const promise = new Promise((resolve, reject) => {
+      const image = new Image();
+      image.decoding = "async";
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error(`티켓 이미지 로드 실패: ${path}`));
+      image.src = path;
+    });
+    imageCache.set(path, promise);
+    return promise;
+  }
+
+  async function loadTemplate(template) {
+    let lastError = null;
+    for (const path of template.paths) {
+      try {
+        const image = await loadImagePath(path);
+        return { image, path };
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError || new Error(`티켓 이미지가 없습니다: ${template.id}`);
+  }
+
+  async function pickRandomAvailableTemplate() {
+    const indexes = shuffledTemplateIndexes();
+    let lastError = null;
+    for (const index of indexes) {
+      const template = TEMPLATES[index];
+      try {
+        const loaded = await loadTemplate(template);
+        return { template, ...loaded };
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError || new Error("사용 가능한 티켓 이미지가 없습니다.");
+  }
+
+  function drawFittedText(ctx, text, box, sx, sy) {
+    const x = box.x * sx;
+    const y = box.y * sy;
+    const maxWidth = box.maxWidth * sx;
+    const maxHeight = box.maxHeight * sy;
+    let fontSize = Math.min(31 * sy, maxHeight * 0.68);
+
+    ctx.save();
+    ctx.fillStyle = "#070707";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `800 ${fontSize}px Pretendard, "Noto Sans KR", system-ui, sans-serif`;
+    while (fontSize > 14 * sy && ctx.measureText(text).width > maxWidth) {
+      fontSize -= 1 * sy;
+      ctx.font = `800 ${fontSize}px Pretendard, "Noto Sans KR", system-ui, sans-serif`;
+    }
+    ctx.fillText(text, x, y, maxWidth);
+    ctx.restore();
+  }
+
+  function drawSelectedGridMark(ctx, center, number, template, sx, sy) {
+    const x = center[0] * sx;
+    const y = center[1] * sy;
+    const radius = template.markRadius * Math.min(sx, sy);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0, 0, 0, .94)";
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `900 ${Math.max(14, 22 * sy)}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    ctx.fillText(String(number), x, y + 0.5 * sy);
+    ctx.restore();
+  }
+
+  function drawSelectedRow(ctx, numbers, template, sx, sy) {
+    ctx.save();
+    ctx.fillStyle = "#080808";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `900 ${Math.max(16, 27 * sy)}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    numbers.forEach((number, index) => {
+      const center = template.selected[index];
+      if (!center) return;
+      ctx.fillText(String(number), center[0] * sx, center[1] * sy + 1 * sy);
+    });
+    ctx.restore();
+  }
+
+  function renderTicket(image, template, record, nickname) {
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    const sx = canvas.width / REFERENCE_WIDTH;
+    const sy = canvas.height / REFERENCE_HEIGHT;
+    drawFittedText(ctx, nickname, template.nickname, sx, sy);
+
+    record.numbers.forEach((number) => {
+      const center = template.grid[number - 1];
+      if (center) drawSelectedGridMark(ctx, center, number, template, sx, sy);
+    });
+    drawSelectedRow(ctx, record.numbers, template, sx, sy);
+    return canvas;
+  }
+
+  function canvasToBlob(canvas) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("PNG 생성에 실패했습니다."));
+      }, "image/png");
+    });
+  }
+
+  async function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  async function issueTicket(record) {
+    if (!isRecordCompatible(record)) {
+      const key = `${record?.max}:${record?.numbers?.length}`;
+      if (compatibilityWarningKey !== key) {
+        compatibilityWarningKey = key;
+        A.showToast("티켓 PNG는 번호 범위 1~28, 발급 7개 설정에서 자동 저장됩니다.");
+      }
+      return null;
+    }
+
+    const nickname = currentNickname();
+    try {
+      const { template, image } = await pickRandomAvailableTemplate();
+      const canvas = renderTicket(image, template, record, nickname);
+      const blob = await canvasToBlob(canvas);
+      const numbers = record.numbers.map((number) => String(number).padStart(2, "0")).join("-");
+      const filename = `MYA_LOTTO_${sanitizeFilePart(nickname)}_${template.label}_${numbers}.png`;
+      await downloadBlob(blob, filename);
+      missingAssetNotified = false;
+      return template.id;
+    } catch (error) {
+      console.error(error);
+      if (!missingAssetNotified) {
+        missingAssetNotified = true;
+        A.showToast("티켓 이미지를 찾지 못했습니다. assets의 lotto-gold/pink/green/blue.png 파일을 확인하세요.");
+      }
+      return null;
+    }
+  }
+
+  function enqueue(record) {
+    const snapshot = {
+      max: Number(record?.max),
+      numbers: Array.isArray(record?.numbers) ? record.numbers.slice() : []
+    };
+    downloadQueue = downloadQueue
+      .then(() => issueTicket(snapshot))
+      .catch((error) => {
+        console.error(error);
+        return null;
+      });
+    return downloadQueue;
+  }
+
+  nicknameInput.addEventListener("input", saveState);
+  maxInput.addEventListener("change", refreshHint);
+  countInput.addEventListener("change", refreshHint);
+  loadSavedState();
+  refreshHint();
+
+  A.ticket = {
+    enqueue,
+    setDisabled,
+    refreshHint,
+    templates: TEMPLATES.map(({ id, label, paths }) => ({ id, label, paths: paths.slice() }))
+  };
+})();

@@ -4,20 +4,26 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#170a06" />
+  <meta name="color-scheme" content="dark" />
   <title>Lucky Teeth Roulette</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <main class="app-shell">
-    <section class="stage-card" aria-label="룰렛 화면">
+    <section class="stage-card" aria-label="이빨 룰렛 화면">
       <div class="character-stage" id="characterStage">
-        <img class="character-image" id="characterImage" alt="카지노 배경의 럭키 캐릭터" draggable="false" />
+        <img
+          class="character-image"
+          id="characterImage"
+          src="./assets/lucky.webp"
+          alt="카지노 배경의 럭키 캐릭터"
+          draggable="false"
+        />
 
         <div class="teeth-roulette" id="teethRoulette" aria-label="회전하는 7개의 이빨">
           <canvas id="teethCanvas" aria-hidden="true"></canvas>
         </div>
 
-        <div class="image-loading" id="imageLoading">이미지 불러오는 중…</div>
         <div class="stage-status" id="stageStatus" aria-live="polite">SPIN을 눌러 시작</div>
       </div>
     </section>
@@ -89,7 +95,6 @@
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="./image-loader.js" defer></script>
   <script src="./app.js" defer></script>
 </body>
 </html>

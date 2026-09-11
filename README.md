@@ -6,6 +6,7 @@
 
 - 7개 릴 동시 회전
 - `STOP` 클릭 시 1번 릴부터 7번 릴까지 순차 감속/정지
+- 마지막 7번 릴은 추가 지연을 줘서 단독으로 조금 더 회전
 - 기본 번호 범위 `1~45`, 최대 번호 변경 가능
 - 중복 허용/비허용 선택
 - Web Crypto API 기반 번호 추첨
@@ -36,9 +37,15 @@ Repository Settings → Pages에서 `Deploy from a branch`를 선택하고 `main
 .
 ├─ index.html
 ├─ styles.css
+├─ image-loader.js
 ├─ app.js
 └─ assets/
-   └─ lucky.webp
+   ├─ lucky.part0.txt
+   ├─ lucky.part1.txt
+   ├─ lucky.part2.txt
+   └─ lucky.part3.txt
 ```
 
 추첨 결과는 애니메이션과 분리되어 있습니다. `STOP`을 누르는 순간 목표 번호 7개를 먼저 확정하고, 각 릴이 해당 번호에 순차적으로 도착하도록 애니메이션합니다.
+
+캐릭터 이미지는 별도 빌드 단계 없이 GitHub Pages에서 동작하도록 WebP 데이터를 4개의 Base64 텍스트 조각으로 저장하고, 실행 시 브라우저에서 합쳐 로드합니다.

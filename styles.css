@@ -92,10 +92,10 @@ button { color: inherit; }
 
 .teeth-roulette {
   position: absolute;
-  left: 41.35%;
+  left: 35%;
   top: 50.95%;
-  width: 17.35%;
-  height: 3.85%;
+  width: 31.05%;
+  height: 6.35%;
   z-index: 1;
   pointer-events: none;
   transform: rotate(-1.5deg);

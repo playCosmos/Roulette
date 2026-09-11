@@ -140,13 +140,25 @@
             <div class="result-numbers" id="liveResultNumbers" aria-live="polite"></div>
           </section>
 
-          <section class="participant-section" aria-labelledby="participantTitle">
+          <section class="participant-ranking-section" id="participantRankingSection" aria-labelledby="participantRankingTitle" hidden>
+            <div class="section-heading">
+              <h2 id="participantRankingTitle">참가자 추첨 결과</h2>
+              <span class="ranking-badge">최고 일치순</span>
+            </div>
+            <div class="participant-ranking-list" id="participantRankingList" aria-live="polite"></div>
+            <p class="empty-history participant-ranking-empty" id="emptyParticipantRanking" hidden>판정할 참가자 번호가 없습니다.</p>
+          </section>
+
+          <section class="participant-section" id="participantSection" aria-labelledby="participantTitle">
             <div class="section-heading participant-heading">
               <div>
                 <h2 id="participantTitle">참가자 번호</h2>
                 <span class="participant-count" id="participantCount">0명</span>
               </div>
-              <button class="check-action participant-add-button" id="addParticipantButton" type="button">사람 추가</button>
+              <div class="participant-heading-actions">
+                <button class="ghost-button participant-toggle-button" id="participantToggleButton" type="button" aria-expanded="true">접기</button>
+                <button class="check-action participant-add-button" id="addParticipantButton" type="button">사람 추가</button>
+              </div>
             </div>
             <div class="participant-list" id="participantList"></div>
             <p class="empty-history participant-empty" id="emptyParticipants">사람 추가 버튼으로 참가자를 등록하세요.</p>

@@ -8,6 +8,7 @@
   <title>먀로또 추첨기</title>
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./draw-modes.css" />
+  <link rel="stylesheet" href="./ticket-renderer.css" />
   <link rel="stylesheet" href="./live-draw.css" />
 </head>
 <body>
@@ -64,6 +65,17 @@
                 <span>개</span>
               </div>
             </label>
+          </section>
+
+          <section class="ticket-output-settings" aria-label="자동 티켓 이미지 설정">
+            <label class="ticket-nickname-field">
+              <span>닉네임</span>
+              <input id="ticketNickname" type="text" maxlength="24" autocomplete="off" placeholder="미입력 시 익명" />
+            </label>
+            <div class="ticket-output-state">
+              <strong>랜덤 시트 PNG 자동 저장</strong>
+              <span id="ticketOutputHint">1~28에서 7개 발급 시 사용</span>
+            </div>
           </section>
 
           <section class="draw-mode-settings" aria-labelledby="drawModeTitle">
@@ -172,6 +184,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="./roulette-core.js" defer></script>
+  <script src="./ticket-renderer.js" defer></script>
   <script src="./roulette-draw.js" defer></script>
   <script src="./live-draw.js" defer></script>
   <script src="./roulette-ui.js" defer></script>

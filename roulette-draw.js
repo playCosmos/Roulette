@@ -11,6 +11,9 @@
   const AUTO_SPIN_MS = 900;
   const AUTO_NEXT_MS = 650;
 
+  const manualNumberSetting = document.getElementById("manualNumberSetting");
+  const manualNumbersInput = document.getElementById("manualNumbers");
+
   if (!Array.isArray(S.lastAutoResult)) S.lastAutoResult = [];
 
   function getMaxNumber() {
@@ -32,35 +35,71 @@
 
   function getDrawMode() {
     const selected = E.drawModeInputs.find((input) => input.checked)?.value;
-    return ["normal", "continuous"].includes(selected) ? selected : DEFAULT_MODE;
+    return ["normal", "continuous", "manual"].includes(selected) ? selected : DEFAULT_MODE;
   }
 
   function setDrawModeInput(mode) {
-    const normalized = ["normal", "continuous"].includes(mode) ? mode : DEFAULT_MODE;
+    const normalized = ["normal", "continuous", "manual"].includes(mode) ? mode : DEFAULT_MODE;
     E.drawModeInputs.forEach((input) => {
       input.checked = input.value === normalized;
     });
+  }
+
+  function parseManualNumbers(max, count, showError = true) {
+    const raw = String(manualNumbersInput?.value || "").trim();
+    const tokens = raw.split(/[\s,;\/]+/).filter(Boolean);
+
+    if (tokens.length !== count) {
+      if (showError) A.showToast(`수동 번호는 정확히 ${count}개 입력하세요.`);
+      return null;
+    }
+
+    const numbers = tokens.map((token) => Number.parseInt(token, 10));
+    if (numbers.some((number) => !Number.isInteger(number) || number < 1 || number > max)) {
+      if (showError) A.showToast(`수동 번호는 1~${max} 범위의 숫자만 사용할 수 있습니다.`);
+      return null;
+    }
+
+    if (new Set(numbers).size !== numbers.length) {
+      if (showError) A.showToast("수동 번호에는 중복 숫자를 사용할 수 없습니다.");
+      return null;
+    }
+
+    return numbers;
   }
 
   function loadSettings() {
     try {
       const parsed = JSON.parse(localStorage.getItem(A.SETTINGS_STORAGE_KEY) || "null");
       if (!parsed || typeof parsed !== "object") {
-        return { max: A.DEFAULT_MAX, count: A.DEFAULT_COUNT, mode: DEFAULT_MODE, autoRuns: DEFAULT_AUTO_RUNS };
+        return {
+          max: A.DEFAULT_MAX,
+          count: A.DEFAULT_COUNT,
+          mode: DEFAULT_MODE,
+          autoRuns: DEFAULT_AUTO_RUNS,
+          manualNumbersText: ""
+        };
       }
 
       let max = Number.parseInt(parsed.max, 10);
       let count = Number.parseInt(parsed.count, 10);
       let autoRuns = Number.parseInt(parsed.autoRuns, 10);
-      const mode = ["normal", "continuous"].includes(parsed.mode) ? parsed.mode : DEFAULT_MODE;
+      const mode = ["normal", "continuous", "manual"].includes(parsed.mode) ? parsed.mode : DEFAULT_MODE;
+      const manualNumbersText = typeof parsed.manualNumbersText === "string" ? parsed.manualNumbersText : "";
 
       max = Number.isFinite(max) ? Math.min(999, Math.max(1, max)) : A.DEFAULT_MAX;
       count = Number.isFinite(count) ? Math.min(A.MAX_REELS, Math.max(1, count)) : A.DEFAULT_COUNT;
       autoRuns = Number.isFinite(autoRuns) ? Math.min(MAX_AUTO_RUNS, Math.max(1, autoRuns)) : DEFAULT_AUTO_RUNS;
       if (max < count) max = count;
-      return { max, count, mode, autoRuns };
+      return { max, count, mode, autoRuns, manualNumbersText };
     } catch {
-      return { max: A.DEFAULT_MAX, count: A.DEFAULT_COUNT, mode: DEFAULT_MODE, autoRuns: DEFAULT_AUTO_RUNS };
+      return {
+        max: A.DEFAULT_MAX,
+        count: A.DEFAULT_COUNT,
+        mode: DEFAULT_MODE,
+        autoRuns: DEFAULT_AUTO_RUNS,
+        manualNumbersText: ""
+      };
     }
   }
 
@@ -70,7 +109,8 @@
         max: settings.max,
         count: settings.count,
         mode: settings.mode || getDrawMode(),
-        autoRuns: settings.autoRuns || getAutoDrawCount()
+        autoRuns: settings.autoRuns || getAutoDrawCount(),
+        manualNumbersText: manualNumbersInput?.value || settings.manualNumbersText || ""
       }));
     } catch {
       A.showToast("설정값을 브라우저에 저장하지 못했습니다.");
@@ -177,7 +217,10 @@
       return null;
     }
 
-    return { max, count, mode, autoRuns };
+    const manualNumbers = mode === "manual" ? parseManualNumbers(max, count, showError) : null;
+    if (mode === "manual" && !manualNumbers) return null;
+
+    return { max, count, mode, autoRuns, manualNumbers };
   }
 
   function setSettingsDisabled(disabled) {
@@ -185,20 +228,25 @@
     E.drawCountInput.disabled = disabled;
     E.autoDrawCountInput.disabled = disabled;
     E.drawModeInputs.forEach((input) => { input.disabled = disabled; });
+    if (manualNumbersInput) manualNumbersInput.disabled = disabled;
+    A.ticket?.setDisabled?.(disabled);
   }
 
   function updateModeUi(mode = getDrawMode()) {
     const descriptions = {
       normal: "1회 시작 후 다시 눌러 자동 발급 번호를 왼쪽부터 순차 확정합니다.",
-      continuous: "한 번 시작하면 지정한 횟수만큼 자동 번호 발급을 반복합니다. 실행 중 다시 누르면 현재 회차 후 중지합니다."
+      continuous: "한 번 시작하면 지정한 횟수만큼 자동 번호 발급을 반복합니다. 실행 중 다시 누르면 현재 회차 후 중지합니다.",
+      manual: "입력한 사용자 지정 번호로 릴을 멈춥니다. 이미지 출력을 체크하면 같은 번호로 티켓 PNG를 생성합니다."
     };
 
     E.autoRepeatSetting.hidden = mode !== "continuous";
+    if (manualNumberSetting) manualNumberSetting.hidden = mode !== "manual";
     E.modeDescription.textContent = descriptions[mode] || descriptions.normal;
   }
 
   function getIdleStatus(mode, count, autoRuns) {
     if (mode === "continuous") return `자동 번호 ${count}개 × ${autoRuns}회 · 이미지 클릭 또는 Space로 시작`;
+    if (mode === "manual") return `사용자 지정 번호 ${count}개 · 이미지 클릭 또는 Space로 시작`;
     return `자동 번호 ${count}개 발급 · 이미지 클릭 또는 Space로 시작`;
   }
 
@@ -223,6 +271,7 @@
     S.currentDrawSettings = { max, count, mode, autoRuns };
     saveSettings(S.currentDrawSettings);
     updateModeUi(mode);
+    A.ticket?.refreshHint?.();
 
     S.appState = "idle";
     S.currentResult = [];
@@ -256,9 +305,13 @@
     setSettingsDisabled(true);
     E.copyCurrentButton.disabled = true;
 
-    E.stageStatus.textContent = mode === "continuous"
-      ? `연속 자동 ${S.autoDrawCompleted + 1}/${S.autoDrawTarget}회차 · 회전 중`
-      : `${settings.count}개 자동 번호 발급 중 · 다시 눌러 확정`;
+    if (mode === "continuous") {
+      E.stageStatus.textContent = `연속 자동 ${S.autoDrawCompleted + 1}/${S.autoDrawTarget}회차 · 회전 중`;
+    } else if (mode === "manual") {
+      E.stageStatus.textContent = `${settings.count}개 사용자 지정 번호 발급 중 · 다시 눌러 확정`;
+    } else {
+      E.stageStatus.textContent = `${settings.count}개 자동 번호 발급 중 · 다시 눌러 확정`;
+    }
     return true;
   }
 
@@ -281,9 +334,21 @@
 
   function stopAllSequential() {
     if (S.appState !== "spinning") return;
-    S.currentResult = drawUniqueNumbers(S.currentDrawSettings.count, S.currentDrawSettings.max);
+
+    if (S.currentDrawSettings?.mode === "manual") {
+      const manualNumbers = Array.isArray(S.currentDrawSettings.manualNumbers)
+        ? S.currentDrawSettings.manualNumbers.slice()
+        : parseManualNumbers(S.currentDrawSettings.count, S.currentDrawSettings.max, true);
+
+      if (!manualNumbers) return;
+      S.currentResult = manualNumbers;
+      E.stageStatus.textContent = "사용자 지정 번호를 왼쪽부터 확정 중…";
+    } else {
+      S.currentResult = drawUniqueNumbers(S.currentDrawSettings.count, S.currentDrawSettings.max);
+      E.stageStatus.textContent = "자동 발급 번호를 왼쪽부터 확정 중…";
+    }
+
     S.appState = "stopping";
-    E.stageStatus.textContent = "자동 발급 번호를 왼쪽부터 확정 중…";
     scheduleSequentialStops(false);
   }
 
@@ -341,11 +406,13 @@
     }
 
     if (["idle", "result"].includes(S.appState)) {
-      startSpin("normal");
+      startSpin(mode);
       return;
     }
 
-    if (S.appState === "spinning" && S.currentDrawSettings?.mode === "normal") stopAllSequential();
+    if (S.appState === "spinning" && ["normal", "manual"].includes(S.currentDrawSettings?.mode)) {
+      stopAllSequential();
+    }
   }
 
   A.handleReelStopped = (reelIndex) => {
@@ -424,7 +491,9 @@
 
     setSettingsDisabled(false);
     E.copyCurrentButton.disabled = false;
-    E.stageStatus.textContent = `발급 완료 · ${A.formatRecordNumbers(record)}`;
+    E.stageStatus.textContent = mode === "manual"
+      ? `수동 발급 완료 · ${A.formatRecordNumbers(record)}`
+      : `발급 완료 · ${A.formatRecordNumbers(record)}`;
   };
 
   A.initDraw = () => {
@@ -432,6 +501,7 @@
     E.maxNumberInput.value = String(saved.max);
     E.drawCountInput.value = String(saved.count);
     E.autoDrawCountInput.value = String(saved.autoRuns);
+    if (manualNumbersInput) manualNumbersInput.value = saved.manualNumbersText || "";
     setDrawModeInput(saved.mode);
     S.currentDrawSettings = { ...saved };
     S.visibleReelCount = saved.count;
@@ -442,6 +512,8 @@
     buildResultCells(saved.count);
     renderHistory();
     E.stageStatus.textContent = getIdleStatus(saved.mode, saved.count, saved.autoRuns);
+
+    manualNumbersInput?.addEventListener("change", normalizeAndSaveSettings);
   };
 
   A.draw = {

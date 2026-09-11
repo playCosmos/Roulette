@@ -25,4 +25,6 @@
 
     if (record) A.ticket.enqueue(record);
   };
+
+  requestAnimationFrame(() => A.ticket.refreshHint?.());
 })();

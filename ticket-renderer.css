@@ -2,12 +2,37 @@
   margin-top: 8px;
   padding: 10px 11px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.05fr);
   gap: 10px;
   align-items: end;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: rgba(255, 255, 255, .025);
+}
+
+.ticket-output-toggle {
+  min-height: 33px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 199, 117, .18);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, .20);
+  color: #d9bd91;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ticket-output-toggle input {
+  accent-color: #d97927;
+}
+
+.ticket-output-toggle:has(input:disabled) {
+  opacity: .52;
+  cursor: not-allowed;
 }
 
 .ticket-nickname-field {
@@ -78,9 +103,11 @@
     margin-top: 6px;
     padding: 8px 9px;
     gap: 7px;
+    grid-template-columns: auto minmax(0, 1fr);
   }
 
   .ticket-output-state {
+    grid-column: 1 / -1;
     padding: 6px 7px;
   }
 }
@@ -88,5 +115,9 @@
 @media (max-width: 420px) {
   .ticket-output-settings {
     grid-template-columns: 1fr;
+  }
+
+  .ticket-output-state {
+    grid-column: auto;
   }
 }

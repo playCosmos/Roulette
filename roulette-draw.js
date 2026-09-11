@@ -8,6 +8,7 @@
   const DEFAULT_MODE = "normal";
   const DEFAULT_AUTO_RUNS = 5;
   const MAX_AUTO_RUNS = 100;
+  const MAX_MANUAL_SETS = 100;
   const AUTO_SPIN_MS = 900;
   const AUTO_NEXT_MS = 650;
 
@@ -45,27 +46,45 @@
     });
   }
 
-  function parseManualNumbers(max, count, showError = true) {
-    const raw = String(manualNumbersInput?.value || "").trim();
-    const tokens = raw.split(/[\s,;\/]+/).filter(Boolean);
+  function parseManualNumberSets(max, count, showError = true) {
+    const lines = String(manualNumbersInput?.value || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
 
-    if (tokens.length !== count) {
-      if (showError) A.showToast(`수동 번호는 정확히 ${count}개 입력하세요.`);
+    if (!lines.length) {
+      if (showError) A.showToast("사용자 지정 번호를 한 줄 이상 입력하세요.");
       return null;
     }
 
-    const numbers = tokens.map((token) => Number.parseInt(token, 10));
-    if (numbers.some((number) => !Number.isInteger(number) || number < 1 || number > max)) {
-      if (showError) A.showToast(`수동 번호는 1~${max} 범위의 숫자만 사용할 수 있습니다.`);
+    if (lines.length > MAX_MANUAL_SETS) {
+      if (showError) A.showToast(`수동 번호는 한 번에 최대 ${MAX_MANUAL_SETS}조합까지 출력할 수 있습니다.`);
       return null;
     }
 
-    if (new Set(numbers).size !== numbers.length) {
-      if (showError) A.showToast("수동 번호에는 중복 숫자를 사용할 수 없습니다.");
-      return null;
+    const sets = [];
+    for (let index = 0; index < lines.length; index++) {
+      const tokens = lines[index].split(/[\s,;\/]+/).filter(Boolean);
+      if (tokens.length !== count) {
+        if (showError) A.showToast(`${index + 1}번째 줄은 번호를 정확히 ${count}개 입력하세요.`);
+        return null;
+      }
+
+      const numbers = tokens.map((token) => Number.parseInt(token, 10));
+      if (numbers.some((number) => !Number.isInteger(number) || number < 1 || number > max)) {
+        if (showError) A.showToast(`${index + 1}번째 줄에는 1~${max} 범위의 숫자만 사용할 수 있습니다.`);
+        return null;
+      }
+
+      if (new Set(numbers).size !== numbers.length) {
+        if (showError) A.showToast(`${index + 1}번째 줄에 중복 번호가 있습니다.`);
+        return null;
+      }
+
+      sets.push(numbers);
     }
 
-    return numbers;
+    return sets;
   }
 
   function loadSettings() {
@@ -217,10 +236,10 @@
       return null;
     }
 
-    const manualNumbers = mode === "manual" ? parseManualNumbers(max, count, showError) : null;
-    if (mode === "manual" && !manualNumbers) return null;
+    const manualSets = mode === "manual" ? parseManualNumberSets(max, count, showError) : null;
+    if (mode === "manual" && !manualSets) return null;
 
-    return { max, count, mode, autoRuns, manualNumbers };
+    return { max, count, mode, autoRuns, manualSets };
   }
 
   function setSettingsDisabled(disabled) {
@@ -236,7 +255,7 @@
     const descriptions = {
       normal: "1회 시작 후 다시 눌러 자동 발급 번호를 왼쪽부터 순차 확정합니다.",
       continuous: "한 번 시작하면 지정한 횟수만큼 자동 번호 발급을 반복합니다. 실행 중 다시 누르면 현재 회차 후 중지합니다.",
-      manual: "입력한 사용자 지정 번호로 릴을 멈춥니다. 이미지 출력을 체크하면 같은 번호로 티켓 PNG를 생성합니다."
+      manual: "한 줄에 한 조합씩 입력합니다. 릴은 돌리지 않고 입력한 모든 조합의 티켓 이미지만 바로 출력합니다."
     };
 
     E.autoRepeatSetting.hidden = mode !== "continuous";
@@ -246,7 +265,7 @@
 
   function getIdleStatus(mode, count, autoRuns) {
     if (mode === "continuous") return `자동 번호 ${count}개 × ${autoRuns}회 · 이미지 클릭 또는 Space로 시작`;
-    if (mode === "manual") return `사용자 지정 번호 ${count}개 · 이미지 클릭 또는 Space로 시작`;
+    if (mode === "manual") return "사용자 지정 티켓 이미지 출력 · 이미지 클릭 또는 Space로 실행";
     return `자동 번호 ${count}개 발급 · 이미지 클릭 또는 Space로 시작`;
   }
 
@@ -278,9 +297,11 @@
     S.manualNextIndex = 0;
     S.manualStopPending = false;
     A.reels.forEach((reel) => reel.reset());
-    buildResultCells(count);
-    setResultPlaceholders();
-    E.copyCurrentButton.disabled = true;
+    if (mode !== "manual") {
+      buildResultCells(count);
+      setResultPlaceholders();
+      E.copyCurrentButton.disabled = true;
+    }
     E.stageStatus.textContent = getIdleStatus(mode, count, autoRuns);
   }
 
@@ -305,13 +326,9 @@
     setSettingsDisabled(true);
     E.copyCurrentButton.disabled = true;
 
-    if (mode === "continuous") {
-      E.stageStatus.textContent = `연속 자동 ${S.autoDrawCompleted + 1}/${S.autoDrawTarget}회차 · 회전 중`;
-    } else if (mode === "manual") {
-      E.stageStatus.textContent = `${settings.count}개 사용자 지정 번호 발급 중 · 다시 눌러 확정`;
-    } else {
-      E.stageStatus.textContent = `${settings.count}개 자동 번호 발급 중 · 다시 눌러 확정`;
-    }
+    E.stageStatus.textContent = mode === "continuous"
+      ? `연속 자동 ${S.autoDrawCompleted + 1}/${S.autoDrawTarget}회차 · 회전 중`
+      : `${settings.count}개 자동 번호 발급 중 · 다시 눌러 확정`;
     return true;
   }
 
@@ -334,21 +351,9 @@
 
   function stopAllSequential() {
     if (S.appState !== "spinning") return;
-
-    if (S.currentDrawSettings?.mode === "manual") {
-      const manualNumbers = Array.isArray(S.currentDrawSettings.manualNumbers)
-        ? S.currentDrawSettings.manualNumbers.slice()
-        : parseManualNumbers(S.currentDrawSettings.count, S.currentDrawSettings.max, true);
-
-      if (!manualNumbers) return;
-      S.currentResult = manualNumbers;
-      E.stageStatus.textContent = "사용자 지정 번호를 왼쪽부터 확정 중…";
-    } else {
-      S.currentResult = drawUniqueNumbers(S.currentDrawSettings.count, S.currentDrawSettings.max);
-      E.stageStatus.textContent = "자동 발급 번호를 왼쪽부터 확정 중…";
-    }
-
+    S.currentResult = drawUniqueNumbers(S.currentDrawSettings.count, S.currentDrawSettings.max);
     S.appState = "stopping";
+    E.stageStatus.textContent = "자동 발급 번호를 왼쪽부터 확정 중…";
     scheduleSequentialStops(false);
   }
 
@@ -381,9 +386,59 @@
     startAutoRound();
   }
 
+  async function issueManualBatch() {
+    if (!["idle", "result"].includes(S.appState) || S.autoDrawRunning) return;
+
+    const settings = getValidatedSettings(true);
+    if (!settings || settings.mode !== "manual") return;
+
+    if (!A.ticket?.isEnabled?.()) {
+      A.showToast("수동 모드는 '이미지 출력'을 체크해야 실행됩니다.");
+      return;
+    }
+
+    if (settings.max !== 28 || settings.count !== 7) {
+      A.showToast("현재 티켓 이미지는 번호 범위 1~28 / 7개 조합만 출력할 수 있습니다.");
+      return;
+    }
+
+    if (typeof A.ticket.enqueueMany !== "function") {
+      A.showToast("티켓 이미지 출력 기능을 불러오지 못했습니다.");
+      return;
+    }
+
+    const records = settings.manualSets.map((numbers) => ({ max: settings.max, numbers: numbers.slice() }));
+    saveSettings(settings);
+
+    S.appState = "manual";
+    S.currentResult = [];
+    A.reels.forEach((reel) => reel.reset());
+    setSettingsDisabled(true);
+    E.stageStatus.textContent = `사용자 지정 티켓 ${records.length}장 생성 중…`;
+
+    try {
+      const results = await A.ticket.enqueueMany(records);
+      const successCount = results.filter(Boolean).length;
+      E.stageStatus.textContent = `수동 티켓 출력 완료 · ${successCount}/${records.length}장`;
+      A.showToast(`사용자 지정 티켓 ${successCount}장을 출력했습니다.`);
+    } catch (error) {
+      console.error(error);
+      E.stageStatus.textContent = "수동 티켓 출력 중 오류가 발생했습니다.";
+      A.showToast("수동 티켓 출력 중 오류가 발생했습니다.");
+    } finally {
+      S.appState = "result";
+      setSettingsDisabled(false);
+    }
+  }
+
   function toggleDraw() {
     if (S.activeTab !== "draw") return;
     const mode = getDrawMode();
+
+    if (mode === "manual") {
+      if (["idle", "result"].includes(S.appState)) void issueManualBatch();
+      return;
+    }
 
     if (mode === "continuous") {
       if (S.autoDrawRunning) {
@@ -406,13 +461,11 @@
     }
 
     if (["idle", "result"].includes(S.appState)) {
-      startSpin(mode);
+      startSpin("normal");
       return;
     }
 
-    if (S.appState === "spinning" && ["normal", "manual"].includes(S.currentDrawSettings?.mode)) {
-      stopAllSequential();
-    }
+    if (S.appState === "spinning" && S.currentDrawSettings?.mode === "normal") stopAllSequential();
   }
 
   A.handleReelStopped = (reelIndex) => {
@@ -491,9 +544,7 @@
 
     setSettingsDisabled(false);
     E.copyCurrentButton.disabled = false;
-    E.stageStatus.textContent = mode === "manual"
-      ? `수동 발급 완료 · ${A.formatRecordNumbers(record)}`
-      : `발급 완료 · ${A.formatRecordNumbers(record)}`;
+    E.stageStatus.textContent = `발급 완료 · ${A.formatRecordNumbers(record)}`;
   };
 
   A.initDraw = () => {

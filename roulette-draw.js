@@ -9,6 +9,8 @@
   const DEFAULT_AUTO_RUNS = 5;
   const MAX_AUTO_RUNS = 100;
   const MAX_MANUAL_SETS = 100;
+  const MANUAL_TICKET_MAX = 28;
+  const MANUAL_TICKET_COUNT = 7;
   const AUTO_SPIN_MS = 900;
   const AUTO_NEXT_MS = 650;
 
@@ -46,7 +48,7 @@
     });
   }
 
-  function parseManualNumberSets(max, count, showError = true) {
+  function parseManualNumberSets(showError = true) {
     const lines = String(manualNumbersInput?.value || "")
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -65,14 +67,14 @@
     const sets = [];
     for (let index = 0; index < lines.length; index++) {
       const tokens = lines[index].split(/[\s,;\/]+/).filter(Boolean);
-      if (tokens.length !== count) {
-        if (showError) A.showToast(`${index + 1}번째 줄은 번호를 정확히 ${count}개 입력하세요.`);
+      if (tokens.length !== MANUAL_TICKET_COUNT) {
+        if (showError) A.showToast(`${index + 1}번째 줄은 번호를 정확히 ${MANUAL_TICKET_COUNT}개 입력하세요.`);
         return null;
       }
 
       const numbers = tokens.map((token) => Number.parseInt(token, 10));
-      if (numbers.some((number) => !Number.isInteger(number) || number < 1 || number > max)) {
-        if (showError) A.showToast(`${index + 1}번째 줄에는 1~${max} 범위의 숫자만 사용할 수 있습니다.`);
+      if (numbers.some((number) => !Number.isInteger(number) || number < 1 || number > MANUAL_TICKET_MAX)) {
+        if (showError) A.showToast(`${index + 1}번째 줄에는 1~${MANUAL_TICKET_MAX} 범위의 숫자만 사용할 수 있습니다.`);
         return null;
       }
 
@@ -236,15 +238,13 @@
       return null;
     }
 
-    const manualSets = mode === "manual" ? parseManualNumberSets(max, count, showError) : null;
-    if (mode === "manual" && !manualSets) return null;
-
-    return { max, count, mode, autoRuns, manualSets };
+    return { max, count, mode, autoRuns };
   }
 
   function setSettingsDisabled(disabled) {
-    E.maxNumberInput.disabled = disabled;
-    E.drawCountInput.disabled = disabled;
+    const manualMode = getDrawMode() === "manual";
+    E.maxNumberInput.disabled = disabled || manualMode;
+    E.drawCountInput.disabled = disabled || manualMode;
     E.autoDrawCountInput.disabled = disabled;
     E.drawModeInputs.forEach((input) => { input.disabled = disabled; });
     if (manualNumbersInput) manualNumbersInput.disabled = disabled;
@@ -255,12 +255,13 @@
     const descriptions = {
       normal: "1회 시작 후 다시 눌러 자동 발급 번호를 왼쪽부터 순차 확정합니다.",
       continuous: "한 번 시작하면 지정한 횟수만큼 자동 번호 발급을 반복합니다. 실행 중 다시 누르면 현재 회차 후 중지합니다.",
-      manual: "한 줄에 한 조합씩 입력합니다. 릴은 돌리지 않고 입력한 모든 조합의 티켓 이미지만 바로 출력합니다."
+      manual: "1~28 번호 7개를 한 줄에 한 조합씩 입력합니다. 릴은 돌리지 않고 입력한 모든 조합의 티켓 이미지만 바로 출력합니다."
     };
 
     E.autoRepeatSetting.hidden = mode !== "continuous";
     if (manualNumberSetting) manualNumberSetting.hidden = mode !== "manual";
     E.modeDescription.textContent = descriptions[mode] || descriptions.normal;
+    setSettingsDisabled(false);
   }
 
   function getIdleStatus(mode, count, autoRuns) {
@@ -389,16 +390,8 @@
   async function issueManualBatch() {
     if (!["idle", "result"].includes(S.appState) || S.autoDrawRunning) return;
 
-    const settings = getValidatedSettings(true);
-    if (!settings || settings.mode !== "manual") return;
-
     if (!A.ticket?.isEnabled?.()) {
       A.showToast("수동 모드는 '이미지 출력'을 체크해야 실행됩니다.");
-      return;
-    }
-
-    if (settings.max !== 28 || settings.count !== 7) {
-      A.showToast("현재 티켓 이미지는 번호 범위 1~28 / 7개 조합만 출력할 수 있습니다.");
       return;
     }
 
@@ -407,9 +400,23 @@
       return;
     }
 
-    const records = settings.manualSets.map((numbers) => ({ max: settings.max, numbers: numbers.slice() }));
+    const manualSets = parseManualNumberSets(true);
+    if (!manualSets) return;
+
+    const settings = {
+      max: getMaxNumber(),
+      count: getDrawCount(),
+      mode: "manual",
+      autoRuns: getAutoDrawCount()
+    };
     saveSettings(settings);
 
+    const records = manualSets.map((numbers) => ({
+      max: MANUAL_TICKET_MAX,
+      numbers: numbers.slice()
+    }));
+
+    S.currentDrawSettings = { ...settings };
     S.appState = "manual";
     S.currentResult = [];
     A.reels.forEach((reel) => reel.reset());

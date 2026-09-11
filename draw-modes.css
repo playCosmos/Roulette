@@ -100,32 +100,42 @@
   margin-top: 7px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
+  gap: 6px 8px;
+  align-items: start;
 }
 
 .manual-number-setting > span {
+  padding-top: 7px;
   color: var(--muted);
   font-size: 10px;
   font-weight: 850;
   white-space: nowrap;
 }
 
-.manual-number-setting input {
+.manual-number-setting textarea {
   width: 100%;
   min-width: 0;
-  min-height: 31px;
+  min-height: 66px;
+  max-height: 150px;
+  resize: vertical;
   border: 1px solid rgba(255, 199, 117, .24);
   border-radius: 8px;
   background: rgba(0, 0, 0, .28);
   color: var(--cream);
-  padding: 6px 8px;
+  padding: 7px 8px;
   outline: none;
-  font: 750 10px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 750 10px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-.manual-number-setting input:focus { border-color: var(--gold-strong); }
-.manual-number-setting input:disabled { opacity: .5; cursor: not-allowed; }
+.manual-number-setting textarea:focus { border-color: var(--gold-strong); }
+.manual-number-setting textarea:disabled { opacity: .5; cursor: not-allowed; }
+
+.manual-number-setting small {
+  grid-column: 2;
+  color: #756454;
+  font-size: 9px;
+  line-height: 1.35;
+}
 
 .mode-description {
   margin: 7px 1px 0;
@@ -139,6 +149,7 @@
   .draw-mode-selector { margin-top: 5px; }
   .draw-mode-selector span { min-height: 28px; font-size: 10px; }
   .manual-number-setting { margin-top: 5px; }
+  .manual-number-setting textarea { min-height: 58px; max-height: 110px; }
   .mode-description { margin-top: 5px; font-size: 9px; }
 }
 
@@ -153,4 +164,6 @@
     grid-template-columns: 1fr;
     gap: 5px;
   }
+  .manual-number-setting > span { padding-top: 0; }
+  .manual-number-setting small { grid-column: 1; }
 }

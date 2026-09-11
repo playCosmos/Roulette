@@ -4,6 +4,7 @@
   const MAX_REELS = 7;
   const HISTORY_STORAGE_KEY = "lucky-mouth-roulette.history.v1";
   const SETTINGS_STORAGE_KEY = "mya-lotto.settings.v1";
+  const CHECKER_STORAGE_KEY = "mya-lotto.checker.v1";
   const DEFAULT_MAX = 45;
   const DEFAULT_COUNT = 7;
 
@@ -21,10 +22,27 @@
   const emptyHistory = document.getElementById("emptyHistory");
   const toast = document.getElementById("toast");
 
+  const tabButtons = [...document.querySelectorAll(".tab-button")];
+  const drawPanel = document.getElementById("drawPanel");
+  const checkPanel = document.getElementById("checkPanel");
+  const winningNumbersInput = document.getElementById("winningNumbers");
+  const bonusNumberInput = document.getElementById("bonusNumber");
+  const checkNumbersButton = document.getElementById("checkNumbersButton");
+  const checkerSummary = document.getElementById("checkerSummary");
+  const checkedCount = document.getElementById("checkedCount");
+  const bestResult = document.getElementById("bestResult");
+  const prizeCount = document.getElementById("prizeCount");
+  const checkerResults = document.getElementById("checkerResults");
+  const emptyChecker = document.getElementById("emptyChecker");
+
   const savedSettings = loadSettings();
+  const savedChecker = loadCheckerState();
   maxNumberInput.value = String(savedSettings.max);
   drawCountInput.value = String(savedSettings.count);
+  winningNumbersInput.value = savedChecker.winningNumbers || "";
+  bonusNumberInput.value = savedChecker.bonusNumber || "";
 
+  let activeTab = "draw";
   let appState = "idle";
   let currentResult = [];
   let history = loadHistory();
@@ -36,8 +54,8 @@
   class ToothReel {
     constructor(index) {
       this.index = index;
-      this.position = index * 1.73;
-      this.speed = 25 + index * 0.85;
+      this.position = index * 2.31;
+      this.speed = 26 + index * 0.9;
       this.mode = "idle";
       this.max = DEFAULT_MAX;
       this.target = null;
@@ -50,8 +68,8 @@
     }
 
     reset() {
-      this.position = this.index * 1.73;
-      this.speed = 25 + this.index * 0.85;
+      this.position = this.index * 2.31;
+      this.speed = 26 + this.index * 0.9;
       this.mode = "idle";
       this.target = null;
       this.stopStart = 0;
@@ -64,8 +82,8 @@
 
     start(max) {
       this.max = max;
-      this.position = randomFloat(0, 80) + this.index * 0.31;
-      this.speed = randomFloat(26, 35) + this.index * 0.72;
+      this.position = randomFloat(0, 80) + this.index * 0.37;
+      this.speed = randomFloat(27, 36) + this.index * 0.75;
       this.mode = "spinning";
       this.target = null;
       this.flash = 0;
@@ -79,7 +97,7 @@
       this.mode = "stopping";
       this.stopStart = now;
       this.stopFrom = this.position;
-      this.stopTo = Math.ceil(this.position) + 16 + this.index * 2 + secureRandomInt(0, 5);
+      this.stopTo = Math.ceil(this.position) + 15 + this.index * 2 + secureRandomInt(0, 5);
       this.stopDuration = duration;
       this.stopNotified = false;
     }
@@ -197,9 +215,6 @@
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
-
-    // Frame.png의 입 구멍은 거의 사각형이다. 릴 자체도 사각형 영역 전체를 사용하고,
-    // 최종 외곽은 위에 놓인 PNG 프레임의 투명 입 구멍이 마스크한다.
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, w, h);
@@ -223,12 +238,7 @@
 
       ctx.save();
       ctx.beginPath();
-      ctx.rect(
-        x - normalSlotW * 0.49,
-        0,
-        normalSlotW * 0.98,
-        h
-      );
+      ctx.rect(x - normalSlotW * 0.49, 0, normalSlotW * 0.98, h);
       ctx.clip();
 
       if (reel.mode === "idle") {
@@ -243,34 +253,23 @@
         for (let offset = -2; offset <= 2; offset++) {
           const step = base + offset;
           const y = centerY + (offset - frac) * rowStep;
-          const distance = Math.abs((y - centerY) / rowStep);
-          const alpha = Math.max(0.28, 1 - distance * 0.22);
+          const distance = Math.abs(y - centerY) / rowStep;
+          const alpha = Math.max(0.3, 1 - distance * 0.2);
+          const value = reel.visualValue(step);
 
           ctx.save();
           ctx.translate(x, y);
-          drawReelFace(faceW, faceH, reel.visualValue(step), reel.max, alpha);
+          drawReelFace(faceW, faceH, value, reel.max, alpha);
           ctx.restore();
         }
       }
-
-      const topShade = ctx.createLinearGradient(0, 0, 0, h * 0.42);
-      topShade.addColorStop(0, "rgba(28, 2, 4, .78)");
-      topShade.addColorStop(1, "rgba(28, 2, 4, 0)");
-      ctx.fillStyle = topShade;
-      ctx.fillRect(x - normalSlotW / 2, 0, normalSlotW, h * 0.42);
-
-      const bottomShade = ctx.createLinearGradient(0, h * 0.58, 0, h);
-      bottomShade.addColorStop(0, "rgba(28, 2, 4, 0)");
-      bottomShade.addColorStop(1, "rgba(28, 2, 4, .72)");
-      ctx.fillStyle = bottomShade;
-      ctx.fillRect(x - normalSlotW / 2, h * 0.58, normalSlotW, h * 0.42);
 
       ctx.restore();
 
       if (reel.flash > 0) {
         const glow = ctx.createRadialGradient(x, centerY, 0, x, centerY, normalSlotW);
-        glow.addColorStop(0, `rgba(255, 242, 174, ${0.68 * reel.flash})`);
-        glow.addColorStop(1, "rgba(255, 169, 40, 0)");
+        glow.addColorStop(0, `rgba(255, 243, 179, ${0.72 * reel.flash})`);
+        glow.addColorStop(1, "rgba(255, 173, 44, 0)");
         ctx.fillStyle = glow;
         ctx.fillRect(x - normalSlotW, 0, normalSlotW * 2, h);
       }
@@ -303,6 +302,8 @@
   }
 
   function toggleDraw() {
+    if (activeTab !== "draw") return;
+
     if (appState === "idle" || appState === "result") {
       startSpin();
     } else if (appState === "spinning") {
@@ -461,7 +462,7 @@
 
     if (max < count) {
       max = count;
-      showToast(`번호 범위를 ${count}까지로 함께 조정했습니다.`);
+      showToast(`번호 범위를 ${count}까지로 함께 늘렸습니다.`);
     }
 
     maxNumberInput.value = String(max);
@@ -524,7 +525,8 @@
       copy.type = "button";
       copy.className = "ghost-button history-copy";
       copy.textContent = "복사";
-      copy.addEventListener("click", () => {
+      copy.addEventListener("click", (event) => {
+        event.stopPropagation();
         copyText(formatRecordNumbers(record), "해당 번호를 복사했습니다.");
       });
 
@@ -584,8 +586,9 @@
         ))
         .map((record) => ({
           max: Number.isFinite(record.max) ? record.max : DEFAULT_MAX,
-          numbers: record.numbers.map(Number)
+          numbers: record.numbers.map(Number).filter(Number.isFinite)
         }))
+        .filter((record) => record.numbers.length >= 1)
         .slice(0, 200);
     } catch {
       return [];
@@ -597,6 +600,221 @@
       localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
     } catch {
       showToast("브라우저 저장소에 기록을 저장하지 못했습니다.");
+    }
+  }
+
+  function parseWinningNumbers(raw) {
+    const tokens = String(raw || "")
+      .trim()
+      .split(/[\s,;]+/)
+      .filter(Boolean);
+
+    if (tokens.length < 1 || tokens.length > MAX_REELS) {
+      return { error: `당첨 번호는 1~${MAX_REELS}개를 입력하세요.` };
+    }
+
+    const numbers = tokens.map((token) => Number.parseInt(token, 10));
+    if (numbers.some((n) => !Number.isFinite(n) || n < 1 || n > 999)) {
+      return { error: "당첨 번호는 1~999 사이의 숫자만 사용할 수 있습니다." };
+    }
+
+    if (new Set(numbers).size !== numbers.length) {
+      return { error: "당첨 번호에는 중복 숫자를 사용할 수 없습니다." };
+    }
+
+    return { numbers };
+  }
+
+  function getBonusNumber(mainNumbers) {
+    const raw = bonusNumberInput.value.trim();
+    if (!raw) return { bonus: null };
+
+    const bonus = Number.parseInt(raw, 10);
+    if (!Number.isFinite(bonus) || bonus < 1 || bonus > 999) {
+      return { error: "보너스 번호는 1~999 사이의 숫자여야 합니다." };
+    }
+
+    if (mainNumbers.includes(bonus)) {
+      return { error: "보너스 번호는 당첨 번호와 중복될 수 없습니다." };
+    }
+
+    return { bonus };
+  }
+
+  function evaluateRecord(record, winningNumbers, bonus) {
+    const mainSet = new Set(winningNumbers);
+    const matched = record.numbers.filter((n) => mainSet.has(n));
+    const bonusHit = bonus != null && record.numbers.includes(bonus);
+    const standardLotto = winningNumbers.length === 6 && record.numbers.length === 6;
+
+    let rank = null;
+    let isPrize = false;
+
+    if (standardLotto) {
+      if (matched.length === 6) rank = "1등";
+      else if (matched.length === 5 && bonusHit) rank = "2등";
+      else if (matched.length === 5) rank = "3등";
+      else if (matched.length === 4) rank = "4등";
+      else if (matched.length === 3) rank = "5등";
+      else rank = "낙첨";
+      isPrize = rank !== "낙첨";
+    } else {
+      rank = `${matched.length}개 일치`;
+      isPrize = matched.length > 0;
+    }
+
+    return {
+      matched,
+      matchCount: matched.length,
+      bonusHit,
+      standardLotto,
+      rank,
+      isPrize
+    };
+  }
+
+  function rankScore(result) {
+    if (result.standardLotto) {
+      const scores = { "1등": 100, "2등": 90, "3등": 80, "4등": 70, "5등": 60, "낙첨": 0 };
+      return scores[result.rank] || 0;
+    }
+    return result.matchCount * 10 + (result.bonusHit ? 1 : 0);
+  }
+
+  function runChecker() {
+    const parsed = parseWinningNumbers(winningNumbersInput.value);
+    if (parsed.error) {
+      showToast(parsed.error);
+      return;
+    }
+
+    const bonusResult = getBonusNumber(parsed.numbers);
+    if (bonusResult.error) {
+      showToast(bonusResult.error);
+      return;
+    }
+
+    const winningNumbers = parsed.numbers;
+    const bonus = bonusResult.bonus;
+
+    saveCheckerState({
+      winningNumbers: winningNumbers.join(" "),
+      bonusNumber: bonus == null ? "" : String(bonus)
+    });
+
+    checkerResults.textContent = "";
+
+    if (!history.length) {
+      checkerSummary.hidden = true;
+      emptyChecker.hidden = false;
+      emptyChecker.textContent = "비교할 추첨 기록이 없습니다.";
+      return;
+    }
+
+    const evaluations = history.map((record) => evaluateRecord(record, winningNumbers, bonus));
+    let bestIndex = 0;
+
+    for (let i = 1; i < evaluations.length; i++) {
+      if (rankScore(evaluations[i]) > rankScore(evaluations[bestIndex])) bestIndex = i;
+    }
+
+    const best = evaluations[bestIndex];
+    const standardMode = winningNumbers.length === 6 && history.some((record) => record.numbers.length === 6);
+    const prizes = evaluations.filter((result) => result.isPrize).length;
+
+    checkedCount.textContent = String(history.length);
+    bestResult.textContent = best.rank;
+    prizeCount.textContent = standardMode ? String(prizes) : `${prizes}개`;
+    checkerSummary.hidden = false;
+    emptyChecker.hidden = true;
+
+    history.forEach((record, index) => {
+      const result = evaluations[index];
+      const li = document.createElement("li");
+      li.className = "checker-result-item";
+
+      const head = document.createElement("div");
+      head.className = "checker-result-head";
+
+      const rank = document.createElement("span");
+      rank.className = `checker-rank${result.rank === "낙첨" || result.matchCount === 0 ? " miss" : ""}`;
+      rank.textContent = `#${history.length - index} · ${result.rank}`;
+
+      const count = document.createElement("span");
+      count.className = "match-count";
+      count.textContent = result.bonusHit
+        ? `당첨 ${result.matchCount}개 + 보너스`
+        : `당첨 ${result.matchCount}개`;
+
+      head.append(rank, count);
+
+      const numberRow = document.createElement("div");
+      numberRow.className = "checker-number-row";
+
+      record.numbers.forEach((number) => {
+        const pill = document.createElement("span");
+        pill.className = "checker-number";
+        pill.textContent = formatDisplayNumber(number, record.max);
+
+        if (winningNumbers.includes(number)) pill.classList.add("match");
+        if (bonus != null && number === bonus) pill.classList.add("bonus-match");
+
+        numberRow.appendChild(pill);
+      });
+
+      li.append(head, numberRow);
+      checkerResults.appendChild(li);
+    });
+  }
+
+  function loadCheckerState() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(CHECKER_STORAGE_KEY) || "null");
+      if (!parsed || typeof parsed !== "object") return { winningNumbers: "", bonusNumber: "" };
+      return {
+        winningNumbers: typeof parsed.winningNumbers === "string" ? parsed.winningNumbers : "",
+        bonusNumber: typeof parsed.bonusNumber === "string" ? parsed.bonusNumber : ""
+      };
+    } catch {
+      return { winningNumbers: "", bonusNumber: "" };
+    }
+  }
+
+  function saveCheckerState(state) {
+    try {
+      localStorage.setItem(CHECKER_STORAGE_KEY, JSON.stringify(state));
+    } catch {
+      showToast("당첨 번호를 브라우저에 저장하지 못했습니다.");
+    }
+  }
+
+  function switchTab(tabName) {
+    activeTab = tabName === "check" ? "check" : "draw";
+
+    tabButtons.forEach((button) => {
+      const active = button.dataset.tab === activeTab;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+
+    const drawActive = activeTab === "draw";
+    drawPanel.hidden = !drawActive;
+    drawPanel.classList.toggle("active", drawActive);
+    checkPanel.hidden = drawActive;
+    checkPanel.classList.toggle("active", !drawActive);
+
+    if (drawActive) {
+      stage.setAttribute("aria-label", "회전 시작 또는 정지");
+      stageStatus.textContent = appState === "spinning"
+        ? `${activeReels.length}개의 이빨 릴 회전 중 · 다시 클릭하거나 Space로 정지`
+        : appState === "stopping"
+          ? "왼쪽 릴부터 하나씩 정지 중…"
+          : currentResult.length
+            ? `완료 · ${formatRecordNumbers({ max: getMaxNumber(), numbers: currentResult })}`
+            : "이미지 클릭 또는 Space 키로 시작";
+    } else {
+      stage.setAttribute("aria-label", "번호 확인 탭");
+      stageStatus.textContent = "추첨 기록과 실제 당첨 번호를 비교하는 중";
     }
   }
 
@@ -641,13 +859,13 @@
   stage.addEventListener("click", toggleDraw);
 
   stage.addEventListener("keydown", (event) => {
-    if (event.code !== "Enter" || event.repeat) return;
+    if (event.code !== "Enter" || event.repeat || activeTab !== "draw") return;
     event.preventDefault();
     toggleDraw();
   });
 
   window.addEventListener("keydown", (event) => {
-    if (event.code !== "Space" || event.repeat) return;
+    if (event.code !== "Space" || event.repeat || activeTab !== "draw") return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.target instanceof HTMLElement && event.target.isContentEditable) return;
 
@@ -657,17 +875,15 @@
   }, true);
 
   window.addEventListener("keyup", (event) => {
-    if (event.code !== "Space") return;
+    if (event.code !== "Space" || activeTab !== "draw") return;
     event.preventDefault();
     event.stopPropagation();
   }, true);
 
   copyCurrentButton.addEventListener("click", () => {
     if (!currentResult.length) return;
-    copyText(
-      formatRecordNumbers({ max: getMaxNumber(), numbers: currentResult }),
-      "이번 추첨 번호를 복사했습니다."
-    );
+    const record = { max: getMaxNumber(), numbers: currentResult };
+    copyText(formatRecordNumbers(record), "이번 추첨 번호를 복사했습니다.");
   });
 
   copyAllButton.addEventListener("click", () => {
@@ -682,14 +898,37 @@
     history = [];
     saveHistory();
     renderHistory();
+    checkerResults.textContent = "";
+    checkerSummary.hidden = true;
+    emptyChecker.hidden = false;
+    emptyChecker.textContent = "비교할 추첨 기록이 없습니다.";
     showToast("추첨 기록을 초기화했습니다.");
   });
 
   maxNumberInput.addEventListener("change", normalizeAndSaveSettings);
   drawCountInput.addEventListener("change", normalizeAndSaveSettings);
 
+  tabButtons.forEach((button) => {
+    button.addEventListener("click", () => switchTab(button.dataset.tab));
+  });
+
+  checkNumbersButton.addEventListener("click", runChecker);
+
+  winningNumbersInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    runChecker();
+  });
+
+  bonusNumberInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    runChecker();
+  });
+
   saveSettings(savedSettings);
   buildResultCells(savedSettings.count);
   renderHistory();
+  switchTab("draw");
   requestAnimationFrame(animate);
 })();

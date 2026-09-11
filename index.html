@@ -140,45 +140,19 @@
             <div class="result-numbers" id="liveResultNumbers" aria-live="polite"></div>
           </section>
 
-          <section class="checker-summary" id="checkerSummary" hidden aria-live="polite">
-            <div class="summary-card">
-              <span>확인 기록</span>
-              <strong id="checkedCount">0</strong>
-            </div>
-            <div class="summary-card">
-              <span>최고 결과</span>
-              <strong id="bestResult">—</strong>
-            </div>
-            <div class="summary-card">
-              <span id="prizeCountLabel">일치 기록</span>
-              <strong id="prizeCount">0</strong>
-            </div>
-          </section>
-
-          <section class="checker-results-panel live-history-results" aria-labelledby="checkerResultsTitle">
-            <div class="section-heading">
-              <h2 id="checkerResultsTitle">자동 발급 번호 확인</h2>
-              <button class="ghost-button" id="recheckStoredButton" type="button" disabled>다시 확인</button>
-            </div>
-            <ol class="checker-results" id="checkerResults"></ol>
-            <p class="empty-history" id="emptyChecker">실시간 추첨을 완료하면 자동 발급 기록과 비교합니다.</p>
-          </section>
-
-          <section class="live-batch-entry" aria-labelledby="batchCheckerTitle">
-            <div class="section-heading">
-              <h2 id="batchCheckerTitle">외부 번호 일괄 확인</h2>
-              <button class="ghost-button" id="loadSavedHistoryButton" type="button">발급 기록 넣기</button>
+          <section class="participant-section" aria-labelledby="participantTitle">
+            <div class="section-heading participant-heading">
+              <div>
+                <h2 id="participantTitle">참가자 번호</h2>
+                <span class="participant-count" id="participantCount">0명</span>
+              </div>
+              <button class="check-action participant-add-button" id="addParticipantButton" type="button">사람 추가</button>
             </div>
 
-            <label class="checker-field live-records-field">
-              <span>번호 붙여넣기</span>
-              <textarea id="batchRecords" rows="4" spellcheck="false" placeholder="한 줄에 한 조합씩 붙여넣으세요.&#10;03 08 12 21 34 42&#10;01 05 11 19 27 44"></textarea>
-            </label>
+            <p class="participant-help">사람마다 이름과 번호를 등록하세요. 여러 조합은 한 줄에 하나씩 입력할 수 있고, 추첨이 끝나면 각 사람별 일치 결과를 바로 표시합니다.</p>
 
-            <div class="live-batch-actions">
-              <button class="check-action" id="checkPastedRecordsButton" type="button">붙여넣은 번호 확인</button>
-              <button class="ghost-button" id="clearBatchRecordsButton" type="button">입력 지우기</button>
-            </div>
+            <div class="participant-list" id="participantList"></div>
+            <p class="empty-history participant-empty" id="emptyParticipants">사람 추가 버튼으로 참가자를 등록하세요.</p>
           </section>
 
           <p class="keyboard-hint">이미지 클릭 또는 <kbd>Space</kbd> : 전체 회전 시작 / 다음 번호 실시간 추첨</p>

@@ -1,1 +1,0 @@
-The production frame is stored as assets/frame.png. It is referenced directly by index.html; no Base64 image loader is used.

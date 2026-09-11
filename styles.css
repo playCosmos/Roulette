@@ -39,7 +39,7 @@ button { color: inherit; }
   height: 100dvh;
   padding: 12px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(320px, 28vw, 410px);
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 28vw, 420px);
   gap: 12px;
   overflow: hidden;
 }

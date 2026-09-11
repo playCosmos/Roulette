@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#170a06" />
+  <title>Lucky Mouth Roulette</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;600;700;800&family=Roboto+Mono:wght@700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <section class="stage-card" aria-label="룰렛 화면">
+      <div class="character-stage" id="characterStage">
+        <img class="character-image" src="./assets/lucky.webp" alt="카지노 배경의 럭키 캐릭터" draggable="false" />
+
+        <div class="mouth-machine" aria-label="7개의 번호 릴">
+          <canvas id="reelCanvas" aria-hidden="true"></canvas>
+          <div class="mouth-highlight" aria-hidden="true"></div>
+        </div>
+
+        <div class="stage-status" id="stageStatus" aria-live="polite">SPIN을 눌러 시작</div>
+      </div>
+    </section>
+
+    <aside class="control-card">
+      <header class="control-header">
+        <div>
+          <p class="eyebrow">LUCKY DRAW</p>
+          <h1>입 룰렛</h1>
+        </div>
+        <button class="icon-button" id="soundToggle" type="button" aria-pressed="true" title="효과음 켜기/끄기">🔊</button>
+      </header>
+
+      <section class="settings-row" aria-label="추첨 설정">
+        <label>
+          <span>번호 범위</span>
+          <div class="range-input">
+            <strong>1</strong><span>~</span>
+            <input id="maxNumber" type="number" min="7" max="999" value="45" inputmode="numeric" />
+          </div>
+        </label>
+        <label class="check-setting">
+          <input id="allowDuplicates" type="checkbox" />
+          <span>중복 허용</span>
+        </label>
+      </section>
+
+      <div class="action-grid">
+        <button class="primary-action spin" id="spinButton" type="button">
+          <span class="button-label">SPIN</span>
+          <span class="button-sub">7개 동시 회전</span>
+        </button>
+        <button class="primary-action stop" id="stopButton" type="button" disabled>
+          <span class="button-label">STOP</span>
+          <span class="button-sub">왼쪽부터 순차 정지</span>
+        </button>
+      </div>
+
+      <section class="result-panel" aria-labelledby="resultTitle">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">CURRENT</p>
+            <h2 id="resultTitle">이번 추첨</h2>
+          </div>
+          <button class="ghost-button" id="copyCurrentButton" type="button" disabled>복사</button>
+        </div>
+        <div class="result-numbers" id="resultNumbers" aria-live="polite">
+          <span>—</span><span>—</span><span>—</span><span>—</span><span>—</span><span>—</span><span>—</span>
+        </div>
+      </section>
+
+      <section class="history-panel" aria-labelledby="historyTitle">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">HISTORY</p>
+            <h2 id="historyTitle">추첨 기록</h2>
+          </div>
+          <div class="history-actions">
+            <button class="ghost-button" id="copyAllButton" type="button">전체 복사</button>
+            <button class="ghost-button danger" id="clearHistoryButton" type="button">초기화</button>
+          </div>
+        </div>
+        <ol class="history-list" id="historyList"></ol>
+        <p class="empty-history" id="emptyHistory">아직 기록이 없습니다.</p>
+      </section>
+
+      <p class="keyboard-hint"><kbd>Space</kbd> SPIN / STOP</p>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="./app.js" defer></script>
+</body>
+</html>

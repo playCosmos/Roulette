@@ -18,6 +18,10 @@
         tabindex="0"
         aria-label="회전 시작 또는 정지"
       >
+        <div class="teeth-roulette" id="teethRoulette" aria-label="회전하는 이빨 릴">
+          <canvas id="teethCanvas" aria-hidden="true"></canvas>
+        </div>
+
         <img
           class="character-image"
           id="characterImage"
@@ -26,58 +30,109 @@
           draggable="false"
         />
 
-        <div class="teeth-roulette" id="teethRoulette" aria-label="회전하는 이빨 릴">
-          <canvas id="teethCanvas" aria-hidden="true"></canvas>
-        </div>
-
         <div class="stage-status" id="stageStatus" aria-live="polite">이미지 클릭 또는 Space 키로 시작</div>
       </div>
     </section>
 
     <aside class="control-card">
       <header class="control-header">
-        <h1>먀로또 추첨기</h1>
+        <h1>먀로또</h1>
       </header>
 
-      <section class="settings-row" aria-label="추첨 설정">
-        <label>
-          <span>번호 범위</span>
-          <div class="range-input">
-            <strong>1</strong><span>~</span>
-            <input id="maxNumber" type="number" min="1" max="999" value="45" inputmode="numeric" />
-          </div>
-        </label>
+      <div class="tab-control" role="tablist" aria-label="기능 선택">
+        <button class="tab-button active" id="drawTab" type="button" role="tab" aria-selected="true" aria-controls="drawPanel" data-tab="draw">추첨기</button>
+        <button class="tab-button" id="checkTab" type="button" role="tab" aria-selected="false" aria-controls="checkPanel" data-tab="check">번호 확인</button>
+      </div>
 
-        <label>
-          <span>뽑는 개수</span>
-          <div class="range-input count-input">
-            <input id="drawCount" type="number" min="1" max="7" value="7" inputmode="numeric" />
-            <span>개</span>
-          </div>
-        </label>
-      </section>
+      <div class="tab-content">
+        <section class="tab-panel active" id="drawPanel" role="tabpanel" aria-labelledby="drawTab">
+          <section class="settings-row" aria-label="추첨 설정">
+            <label>
+              <span>번호 범위</span>
+              <div class="range-input">
+                <strong>1</strong><span>~</span>
+                <input id="maxNumber" type="number" min="1" max="999" value="45" inputmode="numeric" />
+              </div>
+            </label>
 
-      <section class="result-panel" aria-labelledby="resultTitle">
-        <div class="section-heading">
-          <h2 id="resultTitle">이번 추첨</h2>
-          <button class="ghost-button" id="copyCurrentButton" type="button" disabled>복사</button>
-        </div>
-        <div class="result-numbers" id="resultNumbers" aria-live="polite"></div>
-      </section>
+            <label>
+              <span>뽑는 개수</span>
+              <div class="range-input count-input">
+                <input id="drawCount" type="number" min="1" max="7" value="7" inputmode="numeric" />
+                <span>개</span>
+              </div>
+            </label>
+          </section>
 
-      <section class="history-panel" aria-labelledby="historyTitle">
-        <div class="section-heading">
-          <h2 id="historyTitle">추첨 기록</h2>
-          <div class="history-actions">
-            <button class="ghost-button" id="copyAllButton" type="button">전체 복사</button>
-            <button class="ghost-button danger" id="clearHistoryButton" type="button">초기화</button>
-          </div>
-        </div>
-        <ol class="history-list" id="historyList"></ol>
-        <p class="empty-history" id="emptyHistory">아직 기록이 없습니다.</p>
-      </section>
+          <section class="result-panel" aria-labelledby="resultTitle">
+            <div class="section-heading">
+              <h2 id="resultTitle">이번 추첨</h2>
+              <button class="ghost-button" id="copyCurrentButton" type="button" disabled>복사</button>
+            </div>
+            <div class="result-numbers" id="resultNumbers" aria-live="polite"></div>
+          </section>
 
-      <p class="keyboard-hint">이미지 클릭 또는 <kbd>Space</kbd> : 회전 / 정지</p>
+          <section class="history-panel" aria-labelledby="historyTitle">
+            <div class="section-heading">
+              <h2 id="historyTitle">추첨 기록</h2>
+              <div class="history-actions">
+                <button class="ghost-button" id="copyAllButton" type="button">전체 복사</button>
+                <button class="ghost-button danger" id="clearHistoryButton" type="button">초기화</button>
+              </div>
+            </div>
+            <ol class="history-list" id="historyList"></ol>
+            <p class="empty-history" id="emptyHistory">아직 기록이 없습니다.</p>
+          </section>
+
+          <p class="keyboard-hint">이미지 클릭 또는 <kbd>Space</kbd> : 회전 / 정지</p>
+        </section>
+
+        <section class="tab-panel checker-panel" id="checkPanel" role="tabpanel" aria-labelledby="checkTab" hidden>
+          <section class="checker-entry" aria-labelledby="checkerTitle">
+            <div class="section-heading">
+              <h2 id="checkerTitle">당첨 번호 입력</h2>
+            </div>
+
+            <label class="checker-field">
+              <span>당첨 번호</span>
+              <input id="winningNumbers" type="text" inputmode="numeric" autocomplete="off" placeholder="예: 3 8 12 21 34 42" />
+            </label>
+
+            <div class="checker-row">
+              <label class="checker-field bonus-field">
+                <span>보너스 번호</span>
+                <input id="bonusNumber" type="number" min="1" max="999" inputmode="numeric" placeholder="선택" />
+              </label>
+              <button class="check-action" id="checkNumbersButton" type="button">기록 확인</button>
+            </div>
+
+            <p class="checker-help">공백이나 쉼표로 번호를 구분하세요. 당첨 번호 6개와 보너스 번호를 입력하면 로또 순위를 표시합니다.</p>
+          </section>
+
+          <section class="checker-summary" id="checkerSummary" hidden aria-live="polite">
+            <div class="summary-card">
+              <span>확인 기록</span>
+              <strong id="checkedCount">0</strong>
+            </div>
+            <div class="summary-card">
+              <span>최고 결과</span>
+              <strong id="bestResult">—</strong>
+            </div>
+            <div class="summary-card">
+              <span>당첨 기록</span>
+              <strong id="prizeCount">0</strong>
+            </div>
+          </section>
+
+          <section class="checker-results-panel" aria-labelledby="checkerResultsTitle">
+            <div class="section-heading">
+              <h2 id="checkerResultsTitle">확인 결과</h2>
+            </div>
+            <ol class="checker-results" id="checkerResults"></ol>
+            <p class="empty-history" id="emptyChecker">당첨 번호를 입력하고 기록 확인을 눌러주세요.</p>
+          </section>
+        </section>
+      </div>
     </aside>
   </main>
 

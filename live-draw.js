@@ -12,10 +12,15 @@
     count: document.getElementById("liveDrawCount"),
     resultNumbers: document.getElementById("liveResultNumbers"),
     progress: document.getElementById("liveProgress"),
+    participantSection: document.getElementById("participantSection"),
+    participantToggle: document.getElementById("participantToggleButton"),
     addParticipant: document.getElementById("addParticipantButton"),
     participantList: document.getElementById("participantList"),
     participantCount: document.getElementById("participantCount"),
-    emptyParticipants: document.getElementById("emptyParticipants")
+    emptyParticipants: document.getElementById("emptyParticipants"),
+    rankingSection: document.getElementById("participantRankingSection"),
+    rankingList: document.getElementById("participantRankingList"),
+    emptyRanking: document.getElementById("emptyParticipantRanking")
   };
 
   const L = {
@@ -23,7 +28,8 @@
     count: A.DEFAULT_COUNT,
     completed: false,
     numbers: [],
-    participants: []
+    participants: [],
+    participantCollapsed: false
   };
 
   function getMax() {
@@ -92,6 +98,15 @@
     }
   }
 
+  function setParticipantCollapsed(collapsed) {
+    L.participantCollapsed = Boolean(collapsed);
+    el.participantSection?.classList.toggle("collapsed", L.participantCollapsed);
+    if (el.participantToggle) {
+      el.participantToggle.textContent = L.participantCollapsed ? "펼치기" : "접기";
+      el.participantToggle.setAttribute("aria-expanded", String(!L.participantCollapsed));
+    }
+  }
+
   function normalizeSettings() {
     if (["spinning", "stopping", "manual"].includes(S.appState)) return;
 
@@ -111,6 +126,7 @@
     saveSettings();
     buildResultCells();
     renderAllParticipantResults();
+    renderParticipantRanking();
 
     if (S.activeTab === "check") restoreIdleStage();
   }
@@ -195,6 +211,8 @@
     S.activeReels.forEach((index) => A.reels[index].start(L.max));
     buildResultCells();
     renderAllParticipantResults();
+    renderParticipantRanking();
+    setParticipantCollapsed(true);
     setInputsDisabled(true);
     el.progress.textContent = `0/${L.count} 추첨`;
     A.el.stageStatus.textContent = `${L.count}개 릴 회전 중 · 다시 눌러 1번째 번호 실시간 추첨`;
@@ -365,6 +383,66 @@
     });
   }
 
+  function renderParticipantRanking() {
+    if (!el.rankingSection || !el.rankingList || !el.emptyRanking) return;
+
+    el.rankingList.textContent = "";
+    if (!L.completed) {
+      el.rankingSection.hidden = true;
+      el.emptyRanking.hidden = true;
+      return;
+    }
+
+    const groups = new Map();
+    let validTicketCount = 0;
+
+    L.participants.forEach((participant, participantIndex) => {
+      const parsed = parseParticipantTickets(participant);
+      if (!parsed.tickets.length) return;
+
+      const countsForParticipant = new Map();
+      parsed.tickets.forEach((ticket) => {
+        const matchCount = evaluateTicket(ticket).matchCount;
+        countsForParticipant.set(matchCount, (countsForParticipant.get(matchCount) || 0) + 1);
+        validTicketCount += 1;
+      });
+
+      countsForParticipant.forEach((combinationCount, matchCount) => {
+        if (!groups.has(matchCount)) groups.set(matchCount, []);
+        groups.get(matchCount).push({
+          id: participant.id,
+          name: participant.name || `참가자 ${participantIndex + 1}`,
+          combinationCount,
+          participantIndex
+        });
+      });
+    });
+
+    el.rankingSection.hidden = false;
+    el.emptyRanking.hidden = validTicketCount > 0;
+
+    if (!validTicketCount) return;
+
+    [...groups.keys()]
+      .sort((a, b) => b - a)
+      .forEach((matchCount) => {
+        const row = document.createElement("div");
+        row.className = "participant-ranking-row";
+
+        const label = document.createElement("strong");
+        label.textContent = `${matchCount}개`;
+
+        const names = document.createElement("span");
+        names.textContent = groups.get(matchCount)
+          .sort((a, b) => a.participantIndex - b.participantIndex)
+          .map((entry) => `${entry.name}(${entry.combinationCount})`)
+          .join(", ");
+
+        row.append(label, names);
+        el.rankingList.appendChild(row);
+      });
+  }
+
   function renderParticipantCard(participant, index) {
     const card = document.createElement("article");
     card.className = "participant-card";
@@ -416,6 +494,7 @@
       participant.numbersText = textarea.value;
       saveParticipants();
       renderParticipantResult(participant, resultRoot, resultSummary);
+      renderParticipantRanking();
     };
 
     nameInput.addEventListener("input", sync);
@@ -463,6 +542,8 @@
     L.participants.push(participant);
     saveParticipants();
     renderParticipants();
+    renderParticipantRanking();
+    setParticipantCollapsed(false);
 
     const card = el.participantList.lastElementChild;
     card?.querySelector(".participant-name-field input")?.focus();
@@ -472,6 +553,7 @@
     L.participants = L.participants.filter((participant) => participant.id !== id);
     saveParticipants();
     renderParticipants();
+    renderParticipantRanking();
   }
 
   function onComplete(numbers, max) {
@@ -482,16 +564,19 @@
     el.progress.textContent = "추첨 완료";
     A.el.stageStatus.textContent = `실시간 추첨 완료 · ${A.formatRecordNumbers({ max: L.max, numbers: L.numbers })}`;
     renderAllParticipantResults();
+    renderParticipantRanking();
   }
 
   function onTabActivated() {
     if (L.completed && L.numbers.length === L.count) restoreCompletedStage();
     else restoreIdleStage();
     renderAllParticipantResults();
+    renderParticipantRanking();
   }
 
   function refreshComparison() {
     renderAllParticipantResults();
+    renderParticipantRanking();
   }
 
   function init() {
@@ -501,10 +586,15 @@
     el.count.value = String(L.count);
     buildResultCells();
     renderParticipants();
+    renderParticipantRanking();
+    setParticipantCollapsed(false);
 
     el.max.addEventListener("change", normalizeSettings);
     el.count.addEventListener("change", normalizeSettings);
     el.addParticipant.addEventListener("click", addParticipant);
+    el.participantToggle?.addEventListener("click", () => {
+      setParticipantCollapsed(!L.participantCollapsed);
+    });
   }
 
   A.live = {

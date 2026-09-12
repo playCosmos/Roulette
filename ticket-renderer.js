@@ -10,6 +10,7 @@
   const TICKET_FONT_FAMILY = "MyaTicketFont";
   const TICKET_FONT_PATH = "./assets/font.ttf";
   const TICKET_MASK_PATH = "./assets/mask.png";
+  const NUMBER_TEXT_BASE_DY = 5;
 
   const outputEnabledInput = document.getElementById("ticketOutputEnabled");
   const nicknameInput = document.getElementById("ticketNickname");
@@ -17,13 +18,14 @@
   const maxInput = document.getElementById("maxNumber");
   const countInput = document.getElementById("drawCount");
 
-  // Yellow3 / Red3 / Green3 / Blue3는 1~28 번호와 하단 선택 번호 위치를
-  // 동일하게 맞춘 시트다. 한 좌표 테이블만 사용해 모든 색상에 똑같이 적용한다.
+  // 실제 출력 결과의 토끼 번호 테두리를 기준으로 다시 측정한 공통 마스크 중심이다.
+  // 가로 77px, 세로 67px 간격의 정규 그리드이며 mask.png의 검은 실루엣이
+  // 기존 번호 테두리 안쪽에 맞도록 원본 이미지 중심보다 X를 1px 보정한다.
   const SHARED_GRID = [
-    [747,531],[829,539],[909,539],[992,532],[1069,535],[1150,532],[1227,543],
-    [747,601],[831,599],[909,597],[991,601],[1067,601],[1150,599],[1231,599],
-    [747,665],[829,673],[907,667],[991,667],[1070,665],[1150,667],[1229,667],
-    [752,733],[831,733],[907,731],[991,733],[1069,734],[1145,733],[1227,731]
+    [754,527],[831,527],[908,527],[985,527],[1062,527],[1139,527],[1216,527],
+    [754,594],[831,594],[908,594],[985,594],[1062,594],[1139,594],[1216,594],
+    [754,661],[831,661],[908,661],[985,661],[1062,661],[1139,661],[1216,661],
+    [754,728],[831,728],[908,728],[985,728],[1062,728],[1139,728],[1216,728]
   ];
 
   const SHARED_SELECTED = [
@@ -132,7 +134,7 @@
     }
 
     outputHint.textContent = ready
-      ? "이미지 출력 ON · 선택 번호에 mask.png 적용 후 흰색 숫자 출력"
+      ? "이미지 출력 ON · 번호 테두리에 맞춘 mask.png 적용 후 흰색 숫자 출력"
       : "이미지 출력은 번호 범위 1~28 / 발급 7개 설정에서 사용";
     outputHint.classList.toggle("ready", ready);
   }
@@ -276,7 +278,7 @@
     ctx.fillText(
       String(number),
       x + (profile.textDx || 0) * sx,
-      y + (profile.textDy || 0) * sy
+      y + (NUMBER_TEXT_BASE_DY + (profile.textDy || 0)) * sy
     );
     ctx.restore();
   }

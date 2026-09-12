@@ -2,7 +2,7 @@
   margin-top: 8px;
   padding: 10px 11px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.05fr);
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 10px;
   align-items: end;
   border: 1px solid var(--line);
@@ -68,47 +68,12 @@
   cursor: not-allowed;
 }
 
-.ticket-output-state {
-  min-width: 0;
-  padding: 7px 9px;
-  border: 1px solid rgba(255, 199, 117, .13);
-  border-radius: 10px;
-  background: rgba(0, 0, 0, .18);
-}
-
-.ticket-output-state strong,
-.ticket-output-state span {
-  display: block;
-}
-
-.ticket-output-state strong {
-  color: #e4c89c;
-  font-size: 10px;
-  font-weight: 900;
-}
-
-.ticket-output-state span {
-  margin-top: 3px;
-  color: #796858;
-  font-size: 9px;
-  line-height: 1.35;
-}
-
-.ticket-output-state span.ready {
-  color: #f2c568;
-}
-
 @media (max-width: 920px) {
   .ticket-output-settings {
     margin-top: 6px;
     padding: 8px 9px;
     gap: 7px;
     grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .ticket-output-state {
-    grid-column: 1 / -1;
-    padding: 6px 7px;
   }
 
   /* 모바일은 화면 전체를 하나의 자연스러운 세로 스크롤 영역으로 사용한다. */
@@ -201,9 +166,5 @@
 @media (max-width: 420px) {
   .ticket-output-settings {
     grid-template-columns: 1fr;
-  }
-
-  .ticket-output-state {
-    grid-column: auto;
   }
 }

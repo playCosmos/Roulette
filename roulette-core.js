@@ -8,7 +8,6 @@
   A.DEFAULT_COUNT = 7;
   A.HISTORY_STORAGE_KEY = "lucky-mouth-roulette.history.v1";
   A.SETTINGS_STORAGE_KEY = "mya-lotto.settings.v1";
-  A.CHECKER_STORAGE_KEY = "mya-lotto.checker.v1";
 
   A.el = {
     canvas: document.getElementById("teethCanvas"),
@@ -29,16 +28,7 @@
     toast: document.getElementById("toast"),
     tabButtons: [...document.querySelectorAll(".tab-button")],
     drawPanel: document.getElementById("drawPanel"),
-    checkPanel: document.getElementById("checkPanel"),
-    winningNumbersInput: document.getElementById("winningNumbers"),
-    bonusNumberInput: document.getElementById("bonusNumber"),
-    checkNumbersButton: document.getElementById("checkNumbersButton"),
-    checkerSummary: document.getElementById("checkerSummary"),
-    checkedCount: document.getElementById("checkedCount"),
-    bestResult: document.getElementById("bestResult"),
-    prizeCount: document.getElementById("prizeCount"),
-    checkerResults: document.getElementById("checkerResults"),
-    emptyChecker: document.getElementById("emptyChecker")
+    checkPanel: document.getElementById("checkPanel")
   };
 
   A.ctx = A.el.canvas.getContext("2d");

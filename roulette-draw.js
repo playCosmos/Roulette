@@ -147,7 +147,7 @@
         .filter((record) => record && Array.isArray(record.numbers) && record.numbers.length >= 1 && record.numbers.length <= A.MAX_REELS)
         .map((record) => ({
           max: Number.isFinite(record.max) ? record.max : A.DEFAULT_MAX,
-          numbers: record.numbers.map(Number).filter(Number.isFinite)
+          numbers: record.numbers.map(Number).filter(Number.isFinite).sort((a, b) => a - b)
         }))
         .filter((record) => record.numbers.length >= 1)
         .slice(0, 200);
@@ -196,9 +196,14 @@
       order.className = "history-index";
       order.textContent = `#${S.history.length - index}`;
 
+      const sortedRecord = {
+        ...record,
+        numbers: record.numbers.slice().sort((a, b) => a - b)
+      };
+
       const values = document.createElement("span");
       values.className = "history-values";
-      values.textContent = A.formatRecordNumbers(record);
+      values.textContent = A.formatRecordNumbers(sortedRecord);
 
       const copy = document.createElement("button");
       copy.type = "button";
@@ -206,10 +211,24 @@
       copy.textContent = "복사";
       copy.addEventListener("click", (event) => {
         event.stopPropagation();
-        A.copyText(A.formatRecordNumbers(record), "해당 번호를 복사했습니다.");
+        A.copyText(A.formatRecordNumbers(sortedRecord), "해당 번호를 복사했습니다.");
       });
 
-      li.append(order, values, copy);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "ghost-button danger history-delete";
+      remove.textContent = "삭제";
+      remove.setAttribute("aria-label", `${S.history.length - index}번 발급 기록 삭제`);
+      remove.addEventListener("click", (event) => {
+        event.stopPropagation();
+        S.history.splice(index, 1);
+        saveHistory();
+        renderHistory();
+        A.live?.refreshComparison?.();
+        A.showToast("발급 기록 1건을 삭제했습니다.");
+      });
+
+      li.append(order, values, copy, remove);
       E.historyList.append(li);
     });
   }
@@ -522,7 +541,10 @@
       return;
     }
 
-    const record = { max: S.currentDrawSettings.max, numbers: S.currentResult.slice() };
+    const record = {
+      max: S.currentDrawSettings.max,
+      numbers: S.currentResult.slice().sort((a, b) => a - b)
+    };
     S.lastAutoResult = record.numbers.slice();
     S.history.unshift(record);
     S.history = S.history.slice(0, 200);

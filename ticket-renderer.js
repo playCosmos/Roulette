@@ -12,6 +12,7 @@
   const TICKET_MASK_PATH = "./assets/mask.png";
   const NUMBER_TEXT_BASE_DY = 5;
   const GRID_NUMBER_STYLE = { fontSize: 21.5, textDx: 0, textDy: 0.5 };
+  const PURCHASE_QUANTITY = { x: 1392, y: 460, fontSize: 27 };
 
   const outputEnabledInput = document.getElementById("ticketOutputEnabled");
   const nicknameInput = document.getElementById("ticketNickname");
@@ -309,11 +310,26 @@
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     applyCanvasFont(ctx, Math.max(16, 27 * sy), 900, "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace");
-    numbers.forEach((number, index) => {
+    [...numbers].sort((a, b) => a - b).forEach((number, index) => {
       const center = SHARED_SELECTED[index];
       if (!center) return;
       ctx.fillText(String(number), center[0] * sx, center[1] * sy);
     });
+    ctx.restore();
+  }
+
+  function drawPurchaseQuantity(ctx, sx, sy) {
+    ctx.save();
+    ctx.fillStyle = "#080808";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    applyCanvasFont(
+      ctx,
+      Math.max(16, PURCHASE_QUANTITY.fontSize * sy),
+      900,
+      "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+    );
+    ctx.fillText("1", PURCHASE_QUANTITY.x * sx, PURCHASE_QUANTITY.y * sy);
     ctx.restore();
   }
 
@@ -328,6 +344,7 @@
     const sy = canvas.height / REFERENCE_HEIGHT;
 
     drawFittedText(ctx, nickname, template.nickname, sx, sy);
+    drawPurchaseQuantity(ctx, sx, sy);
     drawGridNumbers(ctx, sx, sy);
 
     record.numbers.forEach((number) => {

@@ -6,10 +6,12 @@
   <meta name="theme-color" content="#170a06" />
   <meta name="color-scheme" content="dark" />
   <title>먀로또 추첨기</title>
+  <link rel="preload" as="image" href="./assets/image.png" />
   <link rel="stylesheet" href="./styles.css?v=20260912-2" />
   <link rel="stylesheet" href="./draw-modes.css?v=20260912-2" />
   <link rel="stylesheet" href="./ticket-renderer.css?v=20260912-2" />
   <link rel="stylesheet" href="./live-draw.css?v=20260912-2" />
+  <link rel="stylesheet" href="./stage-transition.css?v=20260912-1" />
 </head>
 <body>
   <main class="app-shell">
@@ -26,10 +28,19 @@
         </div>
 
         <img
-          class="character-image"
+          class="character-image character-image-open"
           id="characterImage"
           src="./assets/Frame3.png"
           alt="먀로또 룰렛 프레임"
+          draggable="false"
+        />
+
+        <img
+          class="character-image character-image-closed"
+          id="closedCharacterImage"
+          src="./assets/image.png"
+          alt=""
+          aria-hidden="true"
           draggable="false"
         />
 
@@ -204,6 +215,7 @@
   <script src="./ticket-renderer.js?v=20260912-5" defer></script>
   <script src="./ticket-hook.js?v=20260912-5" defer></script>
   <script src="./live-draw.js?v=20260912-5" defer></script>
+  <script src="./stage-transition.js?v=20260912-1" defer></script>
   <script src="./roulette-ui.js?v=20260912-5" defer></script>
 </body>
 </html>

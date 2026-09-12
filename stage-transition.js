@@ -11,23 +11,15 @@
 
   // 모든 프레임을 먼저 로드/디코드한 뒤
   // image0 → image1 → image2 → image3 → Frame3 순서로 위 레이어를 벗긴다.
-  // 첫 페이드가 끝나기 전에 다음 페이드를 시작하고,
-  // 페이드 시간 감소폭은 15ms → 30ms → 60ms로 점점 커진다.
-  const FADE_STARTS = reducedMotion
-    ? [0, 35, 65, 90]
-    : [0, 175, 325, 450];
+  // 페이드 시간은 250ms에서 시작하고 감소폭은 15ms → 30ms → 60ms.
+  // 다음 프레임 페이드는 이전 프레임의 실제 opacity가 약 0.2가 되는 순간 시작한다.
   const FADE_DURATIONS = reducedMotion
     ? [45, 45, 45, 45]
     : [250, 235, 205, 145];
+  const NEXT_FADE_OPACITY = 0.2;
 
   let opened = stage.classList.contains("mouth-open");
   let playing = false;
-  let timers = [];
-
-  function clearTimers() {
-    timers.forEach((timer) => window.clearTimeout(timer));
-    timers = [];
-  }
 
   function markFailed(frame) {
     frame.dataset.loadFailed = "true";
@@ -82,6 +74,52 @@
     return results;
   });
 
+  function waitForOpacity(frame, targetOpacity, fallbackMs) {
+    return new Promise((resolve) => {
+      const startedAt = performance.now();
+
+      const check = () => {
+        if (!playing || frame.dataset.loadFailed === "true") {
+          resolve();
+          return;
+        }
+
+        const opacity = Number.parseFloat(getComputedStyle(frame).opacity);
+        if (Number.isFinite(opacity) && opacity <= targetOpacity + 0.015) {
+          resolve();
+          return;
+        }
+
+        if (performance.now() - startedAt >= fallbackMs) {
+          resolve();
+          return;
+        }
+
+        window.requestAnimationFrame(check);
+      };
+
+      window.requestAnimationFrame(check);
+    });
+  }
+
+  function waitForFadeEnd(frame, fallbackMs) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        frame.removeEventListener("transitionend", onEnd);
+        resolve();
+      };
+      const onEnd = (event) => {
+        if (event.propertyName === "opacity") finish();
+      };
+
+      frame.addEventListener("transitionend", onEnd);
+      window.setTimeout(finish, fallbackMs + 80);
+    });
+  }
+
   async function playOpeningSequence() {
     if (opened || playing || S.appState !== "spinning") return;
 
@@ -97,21 +135,26 @@
 
     stage.classList.add("mouth-transitioning");
 
-    frames.forEach((frame, index) => {
-      if (frame.dataset.loadFailed === "true") return;
-      timers.push(window.setTimeout(() => {
-        frame.classList.add("peeled");
-      }, FADE_STARTS[index]));
-    });
+    const usableFrames = frames.filter((frame) => frame.dataset.loadFailed !== "true");
+    for (let index = 0; index < usableFrames.length; index++) {
+      const frame = usableFrames[index];
+      const sourceIndex = frames.indexOf(frame);
+      const fadeMs = FADE_DURATIONS[sourceIndex] || FADE_DURATIONS[0];
 
-    const endAt = Math.max(...FADE_STARTS.map((start, index) => start + FADE_DURATIONS[index]));
-    timers.push(window.setTimeout(() => {
-      opened = true;
-      playing = false;
-      stage.classList.remove("mouth-transitioning");
-      stage.classList.add("mouth-open");
-      clearTimers();
-    }, endAt));
+      frame.classList.add("peeled");
+
+      if (index < usableFrames.length - 1) {
+        // 실제 렌더링된 opacity가 약 0.2까지 내려온 순간 다음 레이어 페이드를 시작한다.
+        await waitForOpacity(frame, NEXT_FADE_OPACITY, fadeMs);
+      } else {
+        await waitForFadeEnd(frame, fadeMs);
+      }
+    }
+
+    opened = true;
+    playing = false;
+    stage.classList.remove("mouth-transitioning");
+    stage.classList.add("mouth-open");
   }
 
   function wrapAction(owner, key) {

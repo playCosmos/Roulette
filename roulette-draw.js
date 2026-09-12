@@ -66,7 +66,7 @@
 
     const sets = [];
     for (let index = 0; index < lines.length; index++) {
-      const tokens = lines[index].split(/[\s,;\/]+/).filter(Boolean);
+      const tokens = lines[index].match(/\d+/g) || [];
       if (tokens.length !== MANUAL_TICKET_COUNT) {
         if (showError) A.showToast(`${index + 1}번째 줄은 번호를 정확히 ${MANUAL_TICKET_COUNT}개 입력하세요.`);
         return null;

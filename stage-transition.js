@@ -11,11 +11,11 @@
 
   // 모든 프레임을 먼저 로드/디코드한 뒤
   // image0 → image1 → image2 → image3 → Frame3 순서로 위 레이어를 벗긴다.
-  // 페이드 시간은 250ms에서 시작하고 감소폭은 15ms → 30ms → 60ms.
+  // 페이드 시간은 400ms에서 시작하고 감소폭은 20ms → 40ms → 80ms.
   // 다음 프레임 페이드는 이전 프레임의 실제 opacity가 약 0.2가 되는 순간 시작한다.
   const FADE_DURATIONS = reducedMotion
     ? [45, 45, 45, 45]
-    : [250, 235, 205, 145];
+    : [400, 380, 340, 260];
   const NEXT_FADE_OPACITY = 0.2;
 
   let opened = stage.classList.contains("mouth-open");

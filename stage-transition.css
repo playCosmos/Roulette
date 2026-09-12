@@ -17,15 +17,15 @@
   pointer-events: none;
   will-change: opacity;
   transition:
-    opacity 115ms cubic-bezier(.22, .61, .36, 1),
-    visibility 0s linear 115ms;
+    opacity 260ms cubic-bezier(.22, .61, .36, 1),
+    visibility 0s linear 260ms;
 }
 
 .stage-transition-frame.active {
   opacity: 1;
   visibility: visible;
   transition:
-    opacity 115ms cubic-bezier(.22, .61, .36, 1),
+    opacity 260ms cubic-bezier(.22, .61, .36, 1),
     visibility 0s linear 0s;
 }
 

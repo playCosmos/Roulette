@@ -11,6 +11,7 @@
   const TICKET_FONT_PATH = "./assets/font.ttf";
   const TICKET_MASK_PATH = "./assets/mask.png";
   const NUMBER_TEXT_BASE_DY = 5;
+  const GRID_NUMBER_STYLE = { fontSize: 21.5, textDx: 0, textDy: 0.5 };
 
   const outputEnabledInput = document.getElementById("ticketOutputEnabled");
   const nicknameInput = document.getElementById("ticketNickname");
@@ -33,35 +34,32 @@
     [760,860],[848,860],[936,860],[1024,860],[1112,858],[1200,860],[1288,859]
   ];
 
-  // 선택 표시는 공통 mask.png를 사용한다. 색상별 프로파일은 숫자 크기와 미세 위치 보정만 유지한다.
+  // *2 이미지는 1~28 숫자가 인쇄되지 않은 빈 시트다.
+  // 모든 색상에서 1~28, 선택 마스크의 흰 숫자, 하단 선택 번호를 같은 font.ttf로 직접 출력한다.
   const TEMPLATES = [
     {
       id: "yellow",
       label: "yellow",
-      paths: ["./assets/Yellow3.png"],
-      nickname: { x: 1418, y: 342, maxWidth: 126, maxHeight: 52 },
-      mark: { fontSize: 21.5, textDx: 0, textDy: 0.5 }
+      paths: ["./assets/Yellow2.png"],
+      nickname: { x: 1418, y: 342, maxWidth: 126, maxHeight: 52 }
     },
     {
       id: "red",
       label: "red",
-      paths: ["./assets/Red3.png"],
-      nickname: { x: 1414, y: 340, maxWidth: 126, maxHeight: 52 },
-      mark: { fontSize: 21.5, textDx: 0, textDy: 0.5 }
+      paths: ["./assets/Red2.png"],
+      nickname: { x: 1414, y: 340, maxWidth: 126, maxHeight: 52 }
     },
     {
       id: "green",
       label: "green",
-      paths: ["./assets/Green3.png"],
-      nickname: { x: 1406, y: 341, maxWidth: 126, maxHeight: 52 },
-      mark: { fontSize: 21.0, textDx: 0, textDy: 0.3 }
+      paths: ["./assets/Green2.png"],
+      nickname: { x: 1406, y: 341, maxWidth: 126, maxHeight: 52 }
     },
     {
       id: "blue",
       label: "blue",
-      paths: ["./assets/Blue3.png"],
-      nickname: { x: 1406, y: 337, maxWidth: 126, maxHeight: 52 },
-      mark: { fontSize: 21.0, textDx: 0, textDy: 0.4 }
+      paths: ["./assets/Blue2.png"],
+      nickname: { x: 1406, y: 337, maxWidth: 126, maxHeight: 52 }
     }
   ];
 
@@ -129,13 +127,13 @@
     const enabled = isEnabled();
 
     if (!enabled) {
-      outputHint.textContent = "체크하면 발급 완료 시 Yellow3 / Red3 / Green3 / Blue3 중 랜덤 1장 PNG 저장";
+      outputHint.textContent = "체크하면 발급 완료 시 Yellow2 / Red2 / Green2 / Blue2 빈 시트 중 랜덤 1장 PNG 저장";
       outputHint.classList.remove("ready");
       return;
     }
 
     outputHint.textContent = ready
-      ? "이미지 출력 ON · 번호 테두리에 맞춘 mask.png 적용 후 흰색 숫자 출력"
+      ? "이미지 출력 ON · 빈 시트에 1~28과 선택 번호를 동일 폰트로 직접 출력"
       : "이미지 출력은 번호 범위 1~28 / 발급 7개 설정에서 사용";
     outputHint.classList.toggle("ready", ready);
   }
@@ -251,8 +249,33 @@
     ctx.restore();
   }
 
-  function drawSelectedGridMark(ctx, center, number, template, maskImage, sx, sy) {
-    const profile = template.mark;
+  function applyGridNumberFont(ctx, sy) {
+    applyCanvasFont(
+      ctx,
+      Math.max(14, GRID_NUMBER_STYLE.fontSize * sy),
+      900,
+      "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+    );
+  }
+
+  function drawGridNumbers(ctx, sx, sy) {
+    ctx.save();
+    ctx.fillStyle = "#080808";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    applyGridNumberFont(ctx, sy);
+
+    SHARED_GRID.forEach((center, index) => {
+      ctx.fillText(
+        String(index + 1),
+        center[0] * sx + GRID_NUMBER_STYLE.textDx * sx,
+        center[1] * sy + (NUMBER_TEXT_BASE_DY + GRID_NUMBER_STYLE.textDy) * sy
+      );
+    });
+    ctx.restore();
+  }
+
+  function drawSelectedGridMark(ctx, center, number, maskImage, sx, sy) {
     const x = center[0] * sx;
     const y = center[1] * sy;
     const maskWidth = (maskImage.naturalWidth || maskImage.width) * sx;
@@ -270,16 +293,11 @@
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    applyCanvasFont(
-      ctx,
-      Math.max(14, profile.fontSize * sy),
-      900,
-      "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
-    );
+    applyGridNumberFont(ctx, sy);
     ctx.fillText(
       String(number),
-      x + (profile.textDx || 0) * sx,
-      y + (NUMBER_TEXT_BASE_DY + (profile.textDy || 0)) * sy
+      x + GRID_NUMBER_STYLE.textDx * sx,
+      y + (NUMBER_TEXT_BASE_DY + GRID_NUMBER_STYLE.textDy) * sy
     );
     ctx.restore();
   }
@@ -309,10 +327,11 @@
     const sy = canvas.height / REFERENCE_HEIGHT;
 
     drawFittedText(ctx, nickname, template.nickname, sx, sy);
+    drawGridNumbers(ctx, sx, sy);
 
     record.numbers.forEach((number) => {
       const center = SHARED_GRID[number - 1];
-      if (center) drawSelectedGridMark(ctx, center, number, template, maskImage, sx, sy);
+      if (center) drawSelectedGridMark(ctx, center, number, maskImage, sx, sy);
     });
     drawSelectedRow(ctx, record.numbers, sx, sy);
     return canvas;
@@ -370,7 +389,7 @@
       console.error(error);
       if (!missingAssetNotified) {
         missingAssetNotified = true;
-        A.showToast("티켓 이미지 또는 assets/mask.png를 찾지 못했습니다. 관련 asset 파일을 확인하세요.");
+        A.showToast("티켓 이미지 또는 assets/mask.png를 찾지 못했습니다. assets/Yellow2.png, Red2.png, Green2.png, Blue2.png 파일을 확인하세요.");
       }
       return null;
     }

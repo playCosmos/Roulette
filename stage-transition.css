@@ -13,8 +13,9 @@
 /*
  * 모든 중간 프레임을 처음부터 완전 불투명 상태로 겹쳐 둔다.
  * image0가 가장 위, image3가 Frame3 바로 위에 위치한다.
- * 전환할 때 위 레이어부터 하나씩 opacity만 0으로 만들어
+ * 전환할 때 위 레이어부터 opacity만 0으로 만들어
  * 다음 이미지가 이미 완전히 로드된 상태에서 드러나게 한다.
+ * 각 프레임의 실제 페이드 시간은 JS가 --mouth-fade-ms로 지정한다.
  */
 .stage-transition-frame {
   opacity: 1;
@@ -22,8 +23,8 @@
   pointer-events: none;
   will-change: opacity;
   transition:
-    opacity 250ms cubic-bezier(.22, .61, .36, 1),
-    visibility 0s linear 250ms;
+    opacity var(--mouth-fade-ms, 250ms) cubic-bezier(.22, .61, .36, 1),
+    visibility 0s linear var(--mouth-fade-ms, 250ms);
 }
 
 .stage-transition-frame[data-mouth-frame="0"] { z-index: 6; }

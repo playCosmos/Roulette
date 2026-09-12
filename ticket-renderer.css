@@ -110,6 +110,94 @@
     grid-column: 1 / -1;
     padding: 6px 7px;
   }
+
+  /* 모바일은 화면 전체를 하나의 자연스러운 세로 스크롤 영역으로 사용한다. */
+  html,
+  body {
+    height: auto;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  body {
+    min-height: 100dvh;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: auto;
+  }
+
+  .app-shell {
+    width: 100%;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+    grid-template-rows: auto auto;
+    align-content: start;
+  }
+
+  .stage-card {
+    height: min(52dvh, 100vw);
+    min-height: 0;
+  }
+
+  .control-card {
+    height: auto;
+    min-height: 48dvh;
+    overflow: visible;
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+
+  .tab-content {
+    min-height: auto;
+    flex: 0 0 auto;
+    display: block;
+    overflow: visible;
+  }
+
+  .tab-panel,
+  .tab-panel.active {
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .history-panel,
+  .checker-results-panel {
+    min-height: auto;
+    flex: 0 0 auto;
+  }
+
+  .history-list,
+  .checker-results {
+    min-height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  #checkPanel {
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  #checkPanel .participant-section {
+    min-height: auto;
+    flex: 0 0 auto;
+  }
+
+  #checkPanel .participant-list {
+    min-height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .keyboard-hint {
+    padding-bottom: 4px;
+  }
+}
+
+@media (max-width: 520px) {
+  .stage-card {
+    height: min(49dvh, 100vw);
+  }
 }
 
 @media (max-width: 420px) {

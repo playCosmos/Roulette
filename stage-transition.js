@@ -70,7 +70,6 @@
     results.forEach((ok, index) => {
       if (!ok) markFailed(frames[index]);
     });
-    stage.classList.add("mouth-assets-ready");
     return results;
   });
 

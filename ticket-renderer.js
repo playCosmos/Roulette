@@ -16,64 +16,48 @@
   const maxInput = document.getElementById("maxNumber");
   const countInput = document.getElementById("drawCount");
 
-  // *3 시트는 번호 위치를 보정한 이미지다.
-  // 명암/경계 추적을 하지 않고 1~28 각각의 고정 좌표를 직접 칠한다.
+  // Yellow3 / Red3 / Green3 / Blue3는 1~28 번호와 하단 선택 번호 위치를
+  // 동일하게 맞춘 시트다. 한 좌표 테이블만 사용해 모든 색상에 똑같이 적용한다.
+  const SHARED_GRID = [
+    [747,531],[829,539],[909,539],[992,532],[1069,535],[1150,532],[1227,543],
+    [747,601],[831,599],[909,597],[991,601],[1067,601],[1150,599],[1231,599],
+    [747,665],[829,673],[907,667],[991,667],[1070,665],[1150,667],[1229,667],
+    [752,733],[831,733],[907,731],[991,733],[1069,734],[1145,733],[1227,731]
+  ];
+
+  const SHARED_SELECTED = [
+    [752,869],[832,871],[922,871],[1010,871],[1088,865],[1178,871],[1258,869]
+  ];
+
+  // 위치는 공통으로 사용하되 색상별 인쇄 틀의 미세한 모양 차이는 mark 프로파일로 유지한다.
   const TEMPLATES = [
     {
       id: "yellow",
       label: "yellow",
       paths: ["./assets/Yellow3.png"],
       nickname: { x: 1418, y: 342, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 25.5, ry: 22.8, exponent: 2.55, samples: 72, fontSize: 21.5, textDx: 0, textDy: 0.5 },
-      grid: [
-        [747,531],[829,539],[909,539],[992,532],[1069,535],[1150,532],[1227,543],
-        [747,601],[831,599],[909,597],[991,601],[1067,601],[1150,599],[1231,599],
-        [747,665],[829,673],[907,667],[991,667],[1070,665],[1150,667],[1229,667],
-        [752,733],[831,733],[907,731],[991,733],[1069,734],[1145,733],[1227,731]
-      ],
-      selected: [[752,869],[832,871],[922,871],[1010,871],[1088,865],[1178,871],[1258,869]]
+      mark: { rx: 25.5, ry: 22.8, exponent: 2.55, samples: 72, fontSize: 21.5, textDx: 0, textDy: 0.5 }
     },
     {
       id: "red",
       label: "red",
       paths: ["./assets/Red3.png"],
       nickname: { x: 1414, y: 340, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 25.3, ry: 22.4, exponent: 2.70, samples: 72, fontSize: 21.5, textDx: 0, textDy: 0.5 },
-      grid: [
-        [753,531],[831,535],[908,532],[987,530],[1066,530],[1148,535],[1227,538],
-        [753,597],[829,595],[908,597],[989,604],[1071,598],[1148,599],[1227,601],
-        [753,661],[829,664],[908,664],[987,663],[1066,663],[1148,668],[1227,665],
-        [752,727],[831,733],[909,735],[987,731],[1066,730],[1150,729],[1226,731]
-      ],
-      selected: [[754,860],[836,860],[919,863],[1005,865],[1085,860],[1173,860],[1252,866]]
+      mark: { rx: 25.3, ry: 22.4, exponent: 2.70, samples: 72, fontSize: 21.5, textDx: 0, textDy: 0.5 }
     },
     {
       id: "green",
       label: "green",
       paths: ["./assets/Green3.png"],
       nickname: { x: 1406, y: 341, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 24.9, ry: 22.6, exponent: 2.40, samples: 72, fontSize: 21.0, textDx: 0, textDy: 0.3 },
-      grid: [
-        [748,523],[823,521],[904,527],[980,523],[1064,521],[1141,527],[1220,529],
-        [746,595],[825,595],[907,591],[982,589],[1059,591],[1141,596],[1217,591],
-        [748,661],[825,658],[905,661],[982,659],[1061,659],[1141,657],[1220,664],
-        [746,731],[823,728],[907,730],[982,731],[1061,725],[1141,724],[1220,723]
-      ],
-      selected: [[754,853],[837,854],[920,853],[999,858],[1076,849],[1156,852],[1235,855]]
+      mark: { rx: 24.9, ry: 22.6, exponent: 2.40, samples: 72, fontSize: 21.0, textDx: 0, textDy: 0.3 }
     },
     {
       id: "blue",
       label: "blue",
       paths: ["./assets/Blue3.png"],
       nickname: { x: 1406, y: 337, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 25.0, ry: 22.3, exponent: 2.65, samples: 72, fontSize: 21.0, textDx: 0, textDy: 0.4 },
-      grid: [
-        [753,530],[830,530],[907,525],[982,523],[1063,529],[1139,529],[1214,530],
-        [753,591],[830,589],[907,591],[983,591],[1058,592],[1136,589],[1213,590],
-        [753,661],[830,658],[907,659],[981,662],[1060,657],[1137,662],[1213,658],
-        [753,724],[830,723],[904,729],[986,730],[1059,723],[1137,728],[1214,727]
-      ],
-      selected: [[753,857],[833,857],[915,859],[991,853],[1070,857],[1148,860],[1225,860]]
+      mark: { rx: 25.0, ry: 22.3, exponent: 2.65, samples: 72, fontSize: 21.0, textDx: 0, textDy: 0.4 }
     }
   ];
 
@@ -147,7 +131,7 @@
     }
 
     outputHint.textContent = ready
-      ? "이미지 출력 ON · 보정된 *3 시트의 번호 좌표를 직접 채움"
+      ? "이미지 출력 ON · 4개 시트 공통 번호 좌표를 직접 채움"
       : "이미지 출력은 번호 범위 1~28 / 발급 7개 설정에서 사용";
     outputHint.classList.toggle("ready", ready);
   }
@@ -320,14 +304,14 @@
     ctx.restore();
   }
 
-  function drawSelectedRow(ctx, numbers, template, sx, sy) {
+  function drawSelectedRow(ctx, numbers, sx, sy) {
     ctx.save();
     ctx.fillStyle = "#080808";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     applyCanvasFont(ctx, Math.max(16, 27 * sy), 900, "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace");
     numbers.forEach((number, index) => {
-      const center = template.selected[index];
+      const center = SHARED_SELECTED[index];
       if (!center) return;
       ctx.fillText(String(number), center[0] * sx, center[1] * sy + 1 * sy);
     });
@@ -347,10 +331,10 @@
     drawFittedText(ctx, nickname, template.nickname, sx, sy);
 
     record.numbers.forEach((number) => {
-      const center = template.grid[number - 1];
+      const center = SHARED_GRID[number - 1];
       if (center) drawSelectedGridMark(ctx, center, number, template, sx, sy);
     });
-    drawSelectedRow(ctx, record.numbers, template, sx, sy);
+    drawSelectedRow(ctx, record.numbers, sx, sy);
     return canvas;
   }
 

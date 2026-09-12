@@ -10,12 +10,15 @@
   const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
 
   // 모든 프레임을 먼저 로드/디코드한 뒤
-  // image0 → image1 → image2 → image3 → Frame3 순서로
-  // 위 레이어를 하나씩 벗겨낸다.
+  // image0 → image1 → image2 → image3 → Frame3 순서로 위 레이어를 벗긴다.
+  // 첫 페이드가 끝나기 전에 다음 페이드를 시작하고,
+  // 뒤 단계로 갈수록 시작 간격과 페이드 시간 모두 조금씩 짧아진다.
   const FADE_STARTS = reducedMotion
-    ? [0, 55, 110, 165]
-    : [0, 420, 860, 1320];
-  const FADE_MS = reducedMotion ? 45 : 320;
+    ? [0, 35, 65, 90]
+    : [0, 175, 325, 450];
+  const FADE_DURATIONS = reducedMotion
+    ? [45, 45, 45, 45]
+    : [250, 235, 220, 205];
 
   let opened = stage.classList.contains("mouth-open");
   let playing = false;
@@ -67,6 +70,10 @@
     return true;
   }
 
+  frames.forEach((frame, index) => {
+    frame.style.setProperty("--mouth-fade-ms", `${FADE_DURATIONS[index] || FADE_DURATIONS[0]}ms`);
+  });
+
   const preloadPromise = Promise.all(frames.map(waitUntilDecoded)).then((results) => {
     results.forEach((ok, index) => {
       if (!ok) markFailed(frames[index]);
@@ -80,7 +87,7 @@
 
     playing = true;
 
-    // 릴은 이미 뒤에서 돌고 있어도, 네 중간 프레임이 모두 준비될 때까지
+    // 릴은 뒤에서 먼저 돌 수 있지만 네 중간 프레임이 모두 준비될 때까지
     // 어떤 레이어도 벗기지 않는다.
     await preloadPromise;
     if (opened || S.appState !== "spinning") {
@@ -97,7 +104,7 @@
       }, FADE_STARTS[index]));
     });
 
-    const endAt = FADE_STARTS[FADE_STARTS.length - 1] + FADE_MS;
+    const endAt = Math.max(...FADE_STARTS.map((start, index) => start + FADE_DURATIONS[index]));
     timers.push(window.setTimeout(() => {
       opened = true;
       playing = false;

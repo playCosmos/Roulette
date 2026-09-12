@@ -72,6 +72,7 @@
   let ticketFontPromise = null;
   let ticketFontReady = false;
   let fontWarningShown = false;
+  const recentTemplateIds = [];
 
   function loadSavedState() {
     try {
@@ -181,12 +182,22 @@
   }
 
   function shuffledTemplateIndexes() {
-    const indexes = TEMPLATES.map((_, index) => index);
+    const excluded = new Set(recentTemplateIds);
+    const indexes = TEMPLATES
+      .map((template, index) => ({ template, index }))
+      .filter(({ template }) => !excluded.has(template.id))
+      .map(({ index }) => index);
+
     for (let i = indexes.length - 1; i > 0; i--) {
       const j = A.secureRandomInt(0, i);
       [indexes[i], indexes[j]] = [indexes[j], indexes[i]];
     }
     return indexes;
+  }
+
+  function rememberTemplate(templateId) {
+    recentTemplateIds.push(templateId);
+    while (recentTemplateIds.length > 2) recentTemplateIds.shift();
   }
 
   function loadImagePath(path) {
@@ -401,6 +412,7 @@
       const numbers = record.numbers.map((number) => String(number).padStart(2, "0")).join("-");
       const filename = `MYA_LOTTO_${sanitizeFilePart(nickname)}_${template.label}_${numbers}.png`;
       await downloadBlob(blob, filename);
+      rememberTemplate(template.id);
       missingAssetNotified = false;
       return template.id;
     } catch (error) {

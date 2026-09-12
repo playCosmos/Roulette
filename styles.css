@@ -93,12 +93,12 @@ button { color: inherit; }
 .teeth-roulette {
     position: absolute;
     left: 32%;
-    top: 50%;
+    top: 49.8%;
     width: 36%;
     height: 8.3%;
     z-index: 1;
     pointer-events: none;
-    transform: rotate(-1.4deg);
+    transform: rotate(-1deg);
 }
 
 #teethCanvas {

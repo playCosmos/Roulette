@@ -1,0 +1,32 @@
+.character-image-open,
+.character-image-closed {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.character-image-open {
+  z-index: 2;
+}
+
+.character-image-closed {
+  z-index: 3;
+  opacity: 1;
+  visibility: visible;
+  will-change: opacity;
+  transition:
+    opacity 520ms cubic-bezier(.22, .61, .36, 1),
+    visibility 0s linear 520ms;
+}
+
+.character-stage.mouth-open .character-image-closed {
+  opacity: 0;
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .character-image-closed {
+    transition-duration: 120ms, 0s;
+  }
+}

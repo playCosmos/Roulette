@@ -10,23 +10,30 @@
   z-index: 2;
 }
 
+/*
+ * 모든 중간 프레임을 처음부터 완전 불투명 상태로 겹쳐 둔다.
+ * image0가 가장 위, image3가 Frame3 바로 위에 위치한다.
+ * 전환할 때 위 레이어부터 하나씩 opacity만 0으로 만들어
+ * 다음 이미지가 이미 완전히 로드된 상태에서 드러나게 한다.
+ */
 .stage-transition-frame {
-  z-index: 3;
-  opacity: 0;
-  visibility: hidden;
+  opacity: 1;
+  visibility: visible;
   pointer-events: none;
   will-change: opacity;
   transition:
-    opacity 260ms cubic-bezier(.22, .61, .36, 1),
-    visibility 0s linear 260ms;
+    opacity 320ms cubic-bezier(.22, .61, .36, 1),
+    visibility 0s linear 320ms;
 }
 
-.stage-transition-frame.active {
-  opacity: 1;
-  visibility: visible;
-  transition:
-    opacity 260ms cubic-bezier(.22, .61, .36, 1),
-    visibility 0s linear 0s;
+.stage-transition-frame[data-mouth-frame="0"] { z-index: 6; }
+.stage-transition-frame[data-mouth-frame="1"] { z-index: 5; }
+.stage-transition-frame[data-mouth-frame="2"] { z-index: 4; }
+.stage-transition-frame[data-mouth-frame="3"] { z-index: 3; }
+
+.stage-transition-frame.peeled {
+  opacity: 0;
+  visibility: hidden;
 }
 
 .character-stage.mouth-transitioning .stage-transition-frame {
@@ -34,8 +41,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .stage-transition-frame,
-  .stage-transition-frame.active {
+  .stage-transition-frame {
     transition-duration: 45ms, 0s;
   }
 }

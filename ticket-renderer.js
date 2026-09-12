@@ -9,6 +9,7 @@
   const REQUIRED_COUNT = 7;
   const TICKET_FONT_FAMILY = "MyaTicketFont";
   const TICKET_FONT_PATH = "./assets/font.ttf";
+  const TICKET_MASK_PATH = "./assets/mask.png";
 
   const outputEnabledInput = document.getElementById("ticketOutputEnabled");
   const nicknameInput = document.getElementById("ticketNickname");
@@ -29,35 +30,35 @@
     [752,869],[832,871],[922,871],[1010,871],[1088,865],[1178,871],[1258,869]
   ];
 
-  // 위치는 공통으로 사용하되 색상별 인쇄 틀의 미세한 모양 차이는 mark 프로파일로 유지한다.
+  // 선택 표시는 공통 mask.png를 사용한다. 색상별 프로파일은 숫자 크기와 미세 위치 보정만 유지한다.
   const TEMPLATES = [
     {
       id: "yellow",
       label: "yellow",
       paths: ["./assets/Yellow3.png"],
       nickname: { x: 1418, y: 342, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 25.5, ry: 22.8, exponent: 2.55, samples: 72, fontSize: 21.5, textDx: 0, textDy: 0.5 }
+      mark: { fontSize: 21.5, textDx: 0, textDy: 0.5 }
     },
     {
       id: "red",
       label: "red",
       paths: ["./assets/Red3.png"],
       nickname: { x: 1414, y: 340, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 25.3, ry: 22.4, exponent: 2.70, samples: 72, fontSize: 21.5, textDx: 0, textDy: 0.5 }
+      mark: { fontSize: 21.5, textDx: 0, textDy: 0.5 }
     },
     {
       id: "green",
       label: "green",
       paths: ["./assets/Green3.png"],
       nickname: { x: 1406, y: 341, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 24.9, ry: 22.6, exponent: 2.40, samples: 72, fontSize: 21.0, textDx: 0, textDy: 0.3 }
+      mark: { fontSize: 21.0, textDx: 0, textDy: 0.3 }
     },
     {
       id: "blue",
       label: "blue",
       paths: ["./assets/Blue3.png"],
       nickname: { x: 1406, y: 337, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 25.0, ry: 22.3, exponent: 2.65, samples: 72, fontSize: 21.0, textDx: 0, textDy: 0.4 }
+      mark: { fontSize: 21.0, textDx: 0, textDy: 0.4 }
     }
   ];
 
@@ -131,7 +132,7 @@
     }
 
     outputHint.textContent = ready
-      ? "이미지 출력 ON · 4개 시트 공통 번호 좌표를 직접 채움"
+      ? "이미지 출력 ON · 선택 번호에 mask.png 적용 후 흰색 숫자 출력"
       : "이미지 출력은 번호 범위 1~28 / 발급 7개 설정에서 사용";
     outputHint.classList.toggle("ready", ready);
   }
@@ -227,36 +228,6 @@
     throw lastError || new Error("사용 가능한 티켓 이미지가 없습니다.");
   }
 
-  function superellipseRadius(rx, ry, exponent, angle) {
-    const cos = Math.abs(Math.cos(angle));
-    const sin = Math.abs(Math.sin(angle));
-    const n = Math.max(1.5, exponent || 2);
-    const denominator = Math.pow(
-      Math.pow(cos / Math.max(1, rx), n) + Math.pow(sin / Math.max(1, ry), n),
-      1 / n
-    );
-    return denominator > 0 ? 1 / denominator : Math.min(rx, ry);
-  }
-
-  function buildFixedMarkPath(ctx, center, profile, sx, sy) {
-    const cx = center[0] * sx;
-    const cy = center[1] * sy;
-    const rx = profile.rx * sx;
-    const ry = profile.ry * sy;
-    const samples = Math.max(40, profile.samples || 64);
-
-    ctx.beginPath();
-    for (let index = 0; index < samples; index++) {
-      const angle = (index / samples) * Math.PI * 2;
-      const radius = superellipseRadius(rx, ry, profile.exponent, angle);
-      const x = cx + Math.cos(angle) * radius;
-      const y = cy + Math.sin(angle) * radius;
-      if (index === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-  }
-
   function drawFittedText(ctx, text, box, sx, sy) {
     const x = box.x * sx;
     const y = box.y * sy;
@@ -277,15 +248,21 @@
     ctx.restore();
   }
 
-  function drawSelectedGridMark(ctx, center, number, template, sx, sy) {
+  function drawSelectedGridMark(ctx, center, number, template, maskImage, sx, sy) {
     const profile = template.mark;
     const x = center[0] * sx;
     const y = center[1] * sy;
+    const maskWidth = (maskImage.naturalWidth || maskImage.width) * sx;
+    const maskHeight = (maskImage.naturalHeight || maskImage.height) * sy;
 
     ctx.save();
-    buildFixedMarkPath(ctx, center, profile, sx, sy);
-    ctx.fillStyle = "rgba(0, 0, 0, .975)";
-    ctx.fill();
+    ctx.drawImage(
+      maskImage,
+      x - maskWidth / 2,
+      y - maskHeight / 2,
+      maskWidth,
+      maskHeight
+    );
 
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";
@@ -318,7 +295,7 @@
     ctx.restore();
   }
 
-  function renderTicket(image, template, record, nickname) {
+  function renderTicket(image, template, maskImage, record, nickname) {
     const canvas = document.createElement("canvas");
     canvas.width = image.naturalWidth || image.width;
     canvas.height = image.naturalHeight || image.height;
@@ -332,7 +309,7 @@
 
     record.numbers.forEach((number) => {
       const center = SHARED_GRID[number - 1];
-      if (center) drawSelectedGridMark(ctx, center, number, template, sx, sy);
+      if (center) drawSelectedGridMark(ctx, center, number, template, maskImage, sx, sy);
     });
     drawSelectedRow(ctx, record.numbers, sx, sy);
     return canvas;
@@ -375,8 +352,11 @@
     const nickname = job.nickname || "익명";
     try {
       await ensureTicketFont();
-      const { template, image } = await pickRandomAvailableTemplate();
-      const canvas = renderTicket(image, template, record, nickname);
+      const [{ template, image }, maskImage] = await Promise.all([
+        pickRandomAvailableTemplate(),
+        loadImagePath(TICKET_MASK_PATH)
+      ]);
+      const canvas = renderTicket(image, template, maskImage, record, nickname);
       const blob = await canvasToBlob(canvas);
       const numbers = record.numbers.map((number) => String(number).padStart(2, "0")).join("-");
       const filename = `MYA_LOTTO_${sanitizeFilePart(nickname)}_${template.label}_${numbers}.png`;
@@ -387,7 +367,7 @@
       console.error(error);
       if (!missingAssetNotified) {
         missingAssetNotified = true;
-        A.showToast("티켓 이미지를 찾지 못했습니다. assets/Yellow3.png, Red3.png, Green3.png, Blue3.png 파일을 확인하세요.");
+        A.showToast("티켓 이미지 또는 assets/mask.png를 찾지 못했습니다. 관련 asset 파일을 확인하세요.");
       }
       return null;
     }

@@ -14,7 +14,7 @@
   <link rel="preload" as="image" href="./assets/mask.png" />
   <link rel="stylesheet" href="./styles.css?v=20260912-3" />
   <link rel="stylesheet" href="./draw-modes.css?v=20260912-2" />
-  <link rel="stylesheet" href="./ticket-renderer.css?v=20260912-3" />
+  <link rel="stylesheet" href="./ticket-renderer.css?v=20260912-4" />
   <link rel="stylesheet" href="./live-draw.css?v=20260912-2" />
   <link rel="stylesheet" href="./stage-transition.css?v=20260912-6" />
 </head>
@@ -129,10 +129,7 @@
               <input id="ticketNickname" type="text" maxlength="24" autocomplete="off" placeholder="미입력 시 익명" />
             </label>
 
-            <div class="ticket-output-state">
-              <strong>랜덤 시트 PNG</strong>
-              <span id="ticketOutputHint">이미지 출력 체크 시 사용</span>
-            </div>
+            <span id="ticketOutputHint" hidden></span>
           </section>
 
           <section class="draw-mode-settings" aria-labelledby="drawModeTitle">

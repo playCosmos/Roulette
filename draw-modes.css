@@ -112,6 +112,14 @@
   white-space: nowrap;
 }
 
+.manual-number-entry {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: stretch;
+}
+
 .manual-number-setting textarea {
   width: 100%;
   min-width: 0;
@@ -129,6 +137,27 @@
 
 .manual-number-setting textarea:focus { border-color: var(--gold-strong); }
 .manual-number-setting textarea:disabled { opacity: .5; cursor: not-allowed; }
+
+.manual-issue-button {
+  min-width: 58px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 189, 73, .56);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(255, 181, 57, .22), rgba(121, 48, 18, .34));
+  color: #ffe8b7;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.manual-issue-button:hover {
+  border-color: rgba(255, 207, 106, .86);
+  background: linear-gradient(180deg, rgba(255, 181, 57, .30), rgba(121, 48, 18, .42));
+}
+
+.manual-issue-button:active { transform: translateY(1px); }
+.manual-issue-button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 
 .manual-number-setting small {
   grid-column: 2;
@@ -150,6 +179,7 @@
   .draw-mode-selector span { min-height: 28px; font-size: 10px; }
   .manual-number-setting { margin-top: 5px; }
   .manual-number-setting textarea { min-height: 58px; max-height: 110px; }
+  .manual-issue-button { min-width: 54px; padding: 0 10px; }
   .mode-description { margin-top: 5px; font-size: 9px; }
 }
 

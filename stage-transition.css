@@ -22,8 +22,8 @@
   pointer-events: none;
   will-change: opacity;
   transition:
-    opacity 320ms cubic-bezier(.22, .61, .36, 1),
-    visibility 0s linear 320ms;
+    opacity 250ms cubic-bezier(.22, .61, .36, 1),
+    visibility 0s linear 250ms;
 }
 
 .stage-transition-frame[data-mouth-frame="0"] { z-index: 6; }

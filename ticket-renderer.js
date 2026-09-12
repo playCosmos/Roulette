@@ -28,8 +28,9 @@
     [754,728],[831,728],[908,728],[985,728],[1062,728],[1139,728],[1216,728]
   ];
 
+  // 실제 출력물의 하단 선택 번호 칸 중심에 맞춰 좌우 간격과 Y 위치를 재보정한다.
   const SHARED_SELECTED = [
-    [752,869],[832,871],[922,871],[1010,871],[1088,865],[1178,871],[1258,869]
+    [760,860],[848,860],[936,860],[1024,860],[1112,858],[1200,860],[1288,859]
   ];
 
   // 선택 표시는 공통 mask.png를 사용한다. 색상별 프로파일은 숫자 크기와 미세 위치 보정만 유지한다.
@@ -292,7 +293,7 @@
     numbers.forEach((number, index) => {
       const center = SHARED_SELECTED[index];
       if (!center) return;
-      ctx.fillText(String(number), center[0] * sx, center[1] * sy + 1 * sy);
+      ctx.fillText(String(number), center[0] * sx, center[1] * sy);
     });
     ctx.restore();
   }

@@ -1,10 +1,10 @@
 .ticket-output-settings {
   margin-top: 8px;
   padding: 10px 11px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 10px;
-  align-items: end;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: rgba(255, 255, 255, .025);
@@ -12,6 +12,7 @@
 
 .ticket-output-toggle {
   min-height: 33px;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -37,18 +38,24 @@
 
 .ticket-nickname-field {
   min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .ticket-nickname-field > span {
-  display: block;
-  margin-bottom: 5px;
+  flex: 0 0 auto;
+  margin: 0;
   color: var(--muted);
   font-size: 11px;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .ticket-nickname-field input {
-  width: 100%;
+  flex: 1 1 auto;
+  width: auto;
   min-width: 0;
   min-height: 33px;
   border: 1px solid rgba(255, 199, 117, .24);
@@ -73,7 +80,6 @@
     margin-top: 6px;
     padding: 8px 9px;
     gap: 7px;
-    grid-template-columns: auto minmax(0, 1fr);
   }
 
   /* 모바일은 화면 전체를 하나의 자연스러운 세로 스크롤 영역으로 사용한다. */
@@ -160,11 +166,5 @@
 @media (max-width: 520px) {
   .stage-card {
     height: min(49dvh, 100vw);
-  }
-}
-
-@media (max-width: 420px) {
-  .ticket-output-settings {
-    grid-template-columns: 1fr;
   }
 }

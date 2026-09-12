@@ -160,14 +160,12 @@
     overflow: visible;
   }
 
-  .history-panel,
-  .checker-results-panel {
+  .history-panel {
     min-height: auto;
     flex: 0 0 auto;
   }
 
-  .history-list,
-  .checker-results {
+  .history-list {
     min-height: auto;
     max-height: none;
     overflow: visible;

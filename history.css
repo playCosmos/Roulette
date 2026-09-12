@@ -1,0 +1,24 @@
+.history-item {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 6px;
+}
+
+.history-copy,
+.history-delete {
+  min-height: 27px;
+  padding: 4px 7px;
+  font-size: 10px;
+}
+
+@media (max-width: 520px) {
+  .history-item {
+    gap: 5px;
+  }
+
+  .history-copy,
+  .history-delete {
+    min-height: 26px;
+    padding: 3px 6px;
+    font-size: 9px;
+  }
+}

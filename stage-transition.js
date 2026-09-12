@@ -8,7 +8,13 @@
   const stage = A.el.stage;
   const frames = [...stage.querySelectorAll(".stage-transition-frame")];
   const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-  const frameInterval = reducedMotion ? 55 : 120;
+
+  // image0 → image1 → image2 → image3 → Frame3
+  // 각 단계가 눈에 충분히 보이도록 이전 120ms 간격보다 크게 늘린다.
+  const FRAME_TIMELINE = reducedMotion
+    ? [55, 110, 165, 230]
+    : [320, 680, 1060, 1480];
+  const FINAL_FADE_MS = reducedMotion ? 45 : 280;
 
   let opened = stage.classList.contains("mouth-open");
   let playing = false;
@@ -61,17 +67,21 @@
     [1, 2, 3].forEach((frameIndex, sequenceIndex) => {
       timers.push(window.setTimeout(() => {
         if (frameAvailable(frameIndex)) showFrame(frameIndex);
-      }, frameInterval * (sequenceIndex + 1)));
+      }, FRAME_TIMELINE[sequenceIndex]));
     });
 
+    // 마지막 image3를 충분히 보여준 뒤 Frame3가 아래에서 드러나게 한다.
     timers.push(window.setTimeout(() => {
       showFrame(-1);
       opened = true;
-      playing = false;
-      stage.classList.remove("mouth-transitioning");
       stage.classList.add("mouth-open");
-      clearTimers();
-    }, frameInterval * 4));
+
+      timers.push(window.setTimeout(() => {
+        playing = false;
+        stage.classList.remove("mouth-transitioning");
+        clearTimers();
+      }, FINAL_FADE_MS));
+    }, FRAME_TIMELINE[3]));
   }
 
   function wrapAction(owner, key) {

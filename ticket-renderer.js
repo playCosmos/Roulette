@@ -16,15 +16,15 @@
   const maxInput = document.getElementById("maxNumber");
   const countInput = document.getElementById("drawCount");
 
-  // AI 생성 시트별 번호 칸 중심과 경계 추적 기준.
-  // acceptScore/minDrop을 높이고 inset/traceClamp를 낮춰 내부 명암을 경계로 오인하는 현상을 줄인다.
+  // *3 시트는 번호 위치를 보정한 이미지다.
+  // 명암/경계 추적을 하지 않고 1~28 각각의 고정 좌표를 직접 칠한다.
   const TEMPLATES = [
     {
       id: "yellow",
       label: "yellow",
-      paths: ["./assets/yellow.png", "./assets/lotto-yellow.png", "./assets/lotto-gold.png"],
+      paths: ["./assets/Yellow3.png"],
       nickname: { x: 1418, y: 342, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 24.5, ry: 21.8, exponent: 2.45, search: 7.0, inset: 1.1, traceClamp: 5.5, acceptScore: 15, minDrop: 9, samples: 72, fontSize: 21.5, textDx: 0, textDy: 0.5 },
+      mark: { rx: 25.5, ry: 22.8, exponent: 2.55, samples: 72, fontSize: 21.5, textDx: 0, textDy: 0.5 },
       grid: [
         [747,531],[829,539],[909,539],[992,532],[1069,535],[1150,532],[1227,543],
         [747,601],[831,599],[909,597],[991,601],[1067,601],[1150,599],[1231,599],
@@ -36,9 +36,9 @@
     {
       id: "red",
       label: "red",
-      paths: ["./assets/red.png", "./assets/lotto-red.png", "./assets/lotto-pink.png"],
+      paths: ["./assets/Red3.png"],
       nickname: { x: 1414, y: 340, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 24.2, ry: 21.0, exponent: 2.7, search: 7.5, inset: 1.2, traceClamp: 5.8, acceptScore: 16, minDrop: 10, samples: 72, fontSize: 21.5, textDx: 0, textDy: 0.5 },
+      mark: { rx: 25.3, ry: 22.4, exponent: 2.70, samples: 72, fontSize: 21.5, textDx: 0, textDy: 0.5 },
       grid: [
         [753,531],[831,535],[908,532],[987,530],[1066,530],[1148,535],[1227,538],
         [753,597],[829,595],[908,597],[989,604],[1071,598],[1148,599],[1227,601],
@@ -50,9 +50,9 @@
     {
       id: "green",
       label: "green",
-      paths: ["./assets/green.png", "./assets/lotto-green.png"],
+      paths: ["./assets/Green3.png"],
       nickname: { x: 1406, y: 341, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 23.6, ry: 21.7, exponent: 2.3, search: 7.0, inset: 1.0, traceClamp: 5.3, acceptScore: 15, minDrop: 9, samples: 72, fontSize: 21.0, textDx: 0, textDy: 0.3 },
+      mark: { rx: 24.9, ry: 22.6, exponent: 2.40, samples: 72, fontSize: 21.0, textDx: 0, textDy: 0.3 },
       grid: [
         [748,523],[823,521],[904,527],[980,523],[1064,521],[1141,527],[1220,529],
         [746,595],[825,595],[907,591],[982,589],[1059,591],[1141,596],[1217,591],
@@ -64,9 +64,9 @@
     {
       id: "blue",
       label: "blue",
-      paths: ["./assets/blue.png", "./assets/lotto-blue.png"],
+      paths: ["./assets/Blue3.png"],
       nickname: { x: 1406, y: 337, maxWidth: 126, maxHeight: 52 },
-      mark: { rx: 23.8, ry: 20.9, exponent: 2.6, search: 7.5, inset: 1.1, traceClamp: 5.5, acceptScore: 16, minDrop: 10, samples: 72, fontSize: 21.0, textDx: 0, textDy: 0.4 },
+      mark: { rx: 25.0, ry: 22.3, exponent: 2.65, samples: 72, fontSize: 21.0, textDx: 0, textDy: 0.4 },
       grid: [
         [753,530],[830,530],[907,525],[982,523],[1063,529],[1139,529],[1214,530],
         [753,591],[830,589],[907,591],[983,591],[1058,592],[1136,589],[1213,590],
@@ -78,7 +78,6 @@
   ];
 
   const imageCache = new Map();
-  const imagePixelCache = new WeakMap();
   let downloadQueue = Promise.resolve();
   let compatibilityWarningKey = "";
   let missingAssetNotified = false;
@@ -142,13 +141,13 @@
     const enabled = isEnabled();
 
     if (!enabled) {
-      outputHint.textContent = "체크하면 발급 완료 시 yellow / red / green / blue 중 랜덤 1장 PNG 저장";
+      outputHint.textContent = "체크하면 발급 완료 시 Yellow3 / Red3 / Green3 / Blue3 중 랜덤 1장 PNG 저장";
       outputHint.classList.remove("ready");
       return;
     }
 
     outputHint.textContent = ready
-      ? "이미지 출력 ON · 강화된 경계 판정으로 번호 칸 안쪽을 채움"
+      ? "이미지 출력 ON · 보정된 *3 시트의 번호 좌표를 직접 채움"
       : "이미지 출력은 번호 범위 1~28 / 발급 7개 설정에서 사용";
     outputHint.classList.toggle("ready", ready);
   }
@@ -244,37 +243,6 @@
     throw lastError || new Error("사용 가능한 티켓 이미지가 없습니다.");
   }
 
-  function getImagePixels(image) {
-    if (imagePixelCache.has(image)) return imagePixelCache.get(image);
-
-    try {
-      const width = image.naturalWidth || image.width;
-      const height = image.naturalHeight || image.height;
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      ctx.drawImage(image, 0, 0, width, height);
-      const imageData = ctx.getImageData(0, 0, width, height);
-      const pixels = { data: imageData.data, width, height };
-      imagePixelCache.set(image, pixels);
-      return pixels;
-    } catch (error) {
-      console.warn("티켓 칸 경계 분석을 사용할 수 없어 기본 마스크를 사용합니다.", error);
-      imagePixelCache.set(image, null);
-      return null;
-    }
-  }
-
-  function sampleLuma(pixels, x, y) {
-    if (!pixels) return 128;
-    const px = Math.max(0, Math.min(pixels.width - 1, Math.round(x)));
-    const py = Math.max(0, Math.min(pixels.height - 1, Math.round(y)));
-    const offset = (py * pixels.width + px) * 4;
-    const data = pixels.data;
-    return data[offset] * 0.2126 + data[offset + 1] * 0.7152 + data[offset + 2] * 0.0722;
-  }
-
   function superellipseRadius(rx, ry, exponent, angle) {
     const cos = Math.abs(Math.cos(angle));
     const sin = Math.abs(Math.sin(angle));
@@ -286,87 +254,22 @@
     return denominator > 0 ? 1 / denominator : Math.min(rx, ry);
   }
 
-  function circularMedian(values, index, radius = 2) {
-    const sample = [];
-    for (let offset = -radius; offset <= radius; offset++) {
-      sample.push(values[(index + offset + values.length) % values.length]);
-    }
-    sample.sort((a, b) => a - b);
-    return sample[Math.floor(sample.length / 2)];
-  }
-
-  function buildFrameMatchedPath(ctx, pixels, center, profile, sx, sy) {
+  function buildFixedMarkPath(ctx, center, profile, sx, sy) {
     const cx = center[0] * sx;
     const cy = center[1] * sy;
-    const scale = Math.min(sx, sy);
     const rx = profile.rx * sx;
     const ry = profile.ry * sy;
-    const search = profile.search * scale;
-    const inset = profile.inset * scale;
-    const clampRange = profile.traceClamp * scale;
-    const acceptScore = profile.acceptScore ?? 15;
-    const minDrop = profile.minDrop ?? 9;
     const samples = Math.max(40, profile.samples || 64);
-    const step = Math.max(0.65, 0.8 * scale);
-    const radii = [];
-    const expectedRadii = [];
-
-    for (let index = 0; index < samples; index++) {
-      const angle = (index / samples) * Math.PI * 2;
-      const cos = Math.cos(angle);
-      const sin = Math.sin(angle);
-      const expected = superellipseRadius(rx, ry, profile.exponent, angle);
-      expectedRadii.push(expected);
-
-      if (!pixels) {
-        radii.push(Math.max(3, expected - inset));
-        continue;
-      }
-
-      const from = Math.max(7 * scale, expected - search);
-      const to = expected + search;
-      let bestRadius = expected;
-      let bestScore = Number.NEGATIVE_INFINITY;
-
-      for (let radius = from; radius <= to; radius += step) {
-        const innerRadius = Math.max(1, radius - 1.8 * scale);
-        const outerRadius = radius + 1.8 * scale;
-        const inner = sampleLuma(pixels, cx + cos * innerRadius, cy + sin * innerRadius);
-        const current = sampleLuma(pixels, cx + cos * radius, cy + sin * radius);
-        const outer = sampleLuma(pixels, cx + cos * outerRadius, cy + sin * outerRadius);
-
-        const inwardDrop = inner - current;
-        const localContrast = Math.abs(inner - current) + Math.abs(current - outer) * 0.35;
-        const distancePenalty = Math.abs(radius - expected) * 0.85;
-        const weakDropPenalty = inwardDrop < minDrop ? (minDrop - inwardDrop) * 1.15 : 0;
-        const score = inwardDrop * 0.95 + localContrast * 0.32 - distancePenalty - weakDropPenalty;
-
-        if (score > bestScore) {
-          bestScore = score;
-          bestRadius = radius;
-        }
-      }
-
-      if (bestScore < acceptScore) bestRadius = expected;
-      const traced = Math.max(expected - clampRange, Math.min(expected + clampRange, bestRadius));
-      radii.push(Math.max(3, traced - inset));
-    }
-
-    // 경계 추적값이 일부 각도에서 안쪽 잡음을 따라가더라도 기본 시트 형상으로 복원한다.
-    const smoothed = radii.map((radius, index) => {
-      const median = circularMedian(radii, index, 2);
-      const expected = expectedRadii[index] - inset;
-      return median * 0.68 + expected * 0.32;
-    });
 
     ctx.beginPath();
-    smoothed.forEach((radius, index) => {
+    for (let index = 0; index < samples; index++) {
       const angle = (index / samples) * Math.PI * 2;
+      const radius = superellipseRadius(rx, ry, profile.exponent, angle);
       const x = cx + Math.cos(angle) * radius;
       const y = cy + Math.sin(angle) * radius;
       if (index === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
-    });
+    }
     ctx.closePath();
   }
 
@@ -390,14 +293,14 @@
     ctx.restore();
   }
 
-  function drawSelectedGridMark(ctx, pixels, center, number, template, sx, sy) {
+  function drawSelectedGridMark(ctx, center, number, template, sx, sy) {
     const profile = template.mark;
     const x = center[0] * sx;
     const y = center[1] * sy;
 
     ctx.save();
-    buildFrameMatchedPath(ctx, pixels, center, profile, sx, sy);
-    ctx.fillStyle = "rgba(0, 0, 0, .965)";
+    buildFixedMarkPath(ctx, center, profile, sx, sy);
+    ctx.fillStyle = "rgba(0, 0, 0, .975)";
     ctx.fill();
 
     ctx.fillStyle = "#ffffff";
@@ -440,13 +343,12 @@
 
     const sx = canvas.width / REFERENCE_WIDTH;
     const sy = canvas.height / REFERENCE_HEIGHT;
-    const sourcePixels = getImagePixels(image);
 
     drawFittedText(ctx, nickname, template.nickname, sx, sy);
 
     record.numbers.forEach((number) => {
       const center = template.grid[number - 1];
-      if (center) drawSelectedGridMark(ctx, sourcePixels, center, number, template, sx, sy);
+      if (center) drawSelectedGridMark(ctx, center, number, template, sx, sy);
     });
     drawSelectedRow(ctx, record.numbers, template, sx, sy);
     return canvas;
@@ -501,7 +403,7 @@
       console.error(error);
       if (!missingAssetNotified) {
         missingAssetNotified = true;
-        A.showToast("티켓 이미지를 찾지 못했습니다. assets/yellow.png, red.png, green.png, blue.png 파일을 확인하세요.");
+        A.showToast("티켓 이미지를 찾지 못했습니다. assets/Yellow3.png, Red3.png, Green3.png, Blue3.png 파일을 확인하세요.");
       }
       return null;
     }

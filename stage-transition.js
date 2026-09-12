@@ -12,13 +12,13 @@
   // 모든 프레임을 먼저 로드/디코드한 뒤
   // image0 → image1 → image2 → image3 → Frame3 순서로 위 레이어를 벗긴다.
   // 첫 페이드가 끝나기 전에 다음 페이드를 시작하고,
-  // 뒤 단계로 갈수록 시작 간격과 페이드 시간 모두 조금씩 짧아진다.
+  // 페이드 시간 감소폭은 15ms → 30ms → 60ms로 점점 커진다.
   const FADE_STARTS = reducedMotion
     ? [0, 35, 65, 90]
     : [0, 175, 325, 450];
   const FADE_DURATIONS = reducedMotion
     ? [45, 45, 45, 45]
-    : [250, 235, 220, 205];
+    : [250, 235, 205, 145];
 
   let opened = stage.classList.contains("mouth-open");
   let playing = false;

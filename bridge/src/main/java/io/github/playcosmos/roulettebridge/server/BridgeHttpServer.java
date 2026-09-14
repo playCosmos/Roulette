@@ -4,23 +4,31 @@ import com.google.gson.Gson;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.github.playcosmos.roulettebridge.config.BridgeConfig;
+import io.github.playcosmos.roulettebridge.storage.TicketArchiveService;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.concurrent.Executors;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 public final class BridgeHttpServer implements AutoCloseable {
     private static final Gson GSON = new Gson();
+    private static final int MAX_TICKET_PNG_BYTES = 20 * 1024 * 1024;
+    private static final String TICKET_API_PREFIX = "/api/tickets/";
+
     private final HttpServer server;
     private final Path webRoot;
+    private final TicketArchiveService ticketArchive;
 
     public BridgeHttpServer(
         BridgeConfig config,
@@ -28,11 +36,13 @@ public final class BridgeHttpServer implements AutoCloseable {
         Path databasePath,
         IntSupplier pendingTicketCount,
         IntSupplier websocketClientCount,
-        Supplier<Map<String, Object>> soopState
+        Supplier<Map<String, Object>> soopState,
+        TicketArchiveService ticketArchive
     ) throws IOException {
         var host = config.server().host();
         var port = config.server().port();
         this.webRoot = resolveWebRoot(workingDirectory, config.storage().webRoot());
+        this.ticketArchive = ticketArchive;
         this.server = HttpServer.create(new InetSocketAddress(host, port), 0);
         this.server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
 
@@ -43,17 +53,19 @@ public final class BridgeHttpServer implements AutoCloseable {
 
         server.createContext("/api/state", exchange -> {
             var payload = new LinkedHashMap<String, Object>();
-            payload.put("version", "0.2.0");
+            payload.put("version", "0.3.0");
             payload.put("streamerId", config.streamerId());
             payload.put("pendingTickets", pendingTicketCount.getAsInt());
             payload.put("websocketClients", websocketClientCount.getAsInt());
             payload.put("database", databasePath.toString());
+            payload.put("ticketRoot", ticketArchive.ticketRoot().toString());
             payload.put("webRoot", webRoot.toString());
             payload.put("websocketUrl", "ws://" + host + ":" + config.server().websocketPort());
             payload.put("soop", soopState.get());
             sendJson(exchange, 200, payload);
         });
 
+        server.createContext(TICKET_API_PREFIX, this::handleTicketApi);
         server.createContext("/", this::serveStatic);
     }
 
@@ -61,6 +73,70 @@ public final class BridgeHttpServer implements AutoCloseable {
         server.start();
         System.out.println("[http] listening on http://" + server.getAddress().getHostString() + ":" + server.getAddress().getPort());
         System.out.println("[http] web root: " + webRoot);
+        System.out.println("[http] ticket root: " + ticketArchive.ticketRoot());
+    }
+
+    private void handleTicketApi(HttpExchange exchange) throws IOException {
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+
+        String path = exchange.getRequestURI().getPath();
+        String suffix = path != null && path.startsWith(TICKET_API_PREFIX)
+            ? path.substring(TICKET_API_PREFIX.length())
+            : "";
+        if (!suffix.endsWith("/image")) {
+            sendText(exchange, 404, "Not Found", "text/plain; charset=utf-8");
+            return;
+        }
+
+        String encodedTicketId = suffix.substring(0, suffix.length() - "/image".length());
+        if (encodedTicketId.isBlank() || encodedTicketId.contains("/")) {
+            sendJson(exchange, 400, Map.of("error", "invalid ticket id"));
+            return;
+        }
+        String ticketId = URLDecoder.decode(encodedTicketId, StandardCharsets.UTF_8);
+
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        if (contentType == null || !contentType.toLowerCase().startsWith("image/png")) {
+            sendJson(exchange, 415, Map.of("error", "Content-Type must be image/png"));
+            return;
+        }
+
+        String contentLength = exchange.getRequestHeaders().getFirst("Content-Length");
+        if (contentLength != null) {
+            try {
+                if (Long.parseLong(contentLength) > MAX_TICKET_PNG_BYTES) {
+                    sendJson(exchange, 413, Map.of("error", "ticket PNG exceeds 20 MiB"));
+                    return;
+                }
+            } catch (NumberFormatException ignored) {
+                // Chunked/invalid Content-Length is handled by the bounded read below.
+            }
+        }
+
+        byte[] body = exchange.getRequestBody().readNBytes(MAX_TICKET_PNG_BYTES + 1);
+        if (body.length > MAX_TICKET_PNG_BYTES) {
+            sendJson(exchange, 413, Map.of("error", "ticket PNG exceeds 20 MiB"));
+            return;
+        }
+
+        try {
+            var result = ticketArchive.savePng(ticketId, body);
+            sendJson(exchange, 200, result);
+        } catch (NoSuchElementException error) {
+            sendJson(exchange, 404, Map.of("error", error.getMessage()));
+        } catch (IllegalArgumentException error) {
+            sendJson(exchange, 400, Map.of("error", error.getMessage()));
+        } catch (SQLException error) {
+            error.printStackTrace(System.err);
+            sendJson(exchange, 500, Map.of("error", "database update failed"));
+        } catch (IOException error) {
+            error.printStackTrace(System.err);
+            sendJson(exchange, 500, Map.of("error", "ticket file save failed"));
+        }
     }
 
     private void serveStatic(HttpExchange exchange) throws IOException {

@@ -10,6 +10,7 @@ import io.github.playcosmos.roulettebridge.server.OverlayWebSocketServer;
 import io.github.playcosmos.roulettebridge.soop.SoopBridgeAdapter;
 import io.github.playcosmos.roulettebridge.soop.SoopProbe;
 import io.github.playcosmos.roulettebridge.soop.SoopRuntimeState;
+import io.github.playcosmos.roulettebridge.storage.PhaseEProbe;
 import io.github.playcosmos.roulettebridge.storage.TicketArchiveService;
 import java.awt.Desktop;
 import java.net.URI;
@@ -31,6 +32,11 @@ public final class Main {
 
         if (args.length > 0 && "--phase-d-probe".equals(args[0])) {
             System.exit(PhaseDProbe.run());
+            return;
+        }
+
+        if (args.length > 0 && "--phase-e-probe".equals(args[0])) {
+            System.exit(PhaseEProbe.run());
             return;
         }
 

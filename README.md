@@ -30,7 +30,7 @@
 
 ## Windows 배포본
 
-Windows에서는 GitHub Releases의 `RouletteBridge-Windows-x64-v0.1.3.zip`을 받아 압축을 푼 뒤 `RouletteBridge.exe`를 실행합니다.
+Windows에서는 GitHub Releases의 `RouletteBridge-Windows-x64-v0.1.4.zip`을 받아 압축을 푼 뒤 `RouletteBridge.exe`를 실행합니다.
 
 별도 Java 설치는 필요하지 않습니다. Java 25 기반 런타임이 배포본에 포함됩니다.
 
@@ -56,7 +56,7 @@ RouletteBridge/
 
 ```json
 {
-  "streamerId": "20221010",
+  "streamerId": "",
   "ticket": {
     "balloonsPerTicket": 50,
     "numberMax": 28,
@@ -82,7 +82,7 @@ RouletteBridge/
 }
 ```
 
-`streamerId`만 실제 방송 대상 ID로 변경하면 됩니다. 현재 기본 예제값 `20221010`은 개발 및 연결 검증에 사용한 테스트 대상입니다.
+`streamerId`에 실제 방송 대상 ID를 입력한 뒤 프로그램을 실행합니다. 값이 비어 있으면 SOOP 연결은 시작하지 않고 설정 대기 상태로 유지됩니다.
 
 ## SOOP 자동발급 흐름
 
@@ -235,7 +235,7 @@ ws://127.0.0.1:17821
 - 패키지된 EXE 자체 self-test
 - Windows/UTF-8 한글 인코딩 probe
 
-SOOP `20221010` 대상에서는 방송 정보 조회, BNO 조회, 채팅 서버 연결 및 `JOIN_CHANNEL`까지 실제 검증했습니다. `SEND_BALLOON` 실이벤트은 실제 후원 발생 시 최종 실데이터 검증이 필요합니다.
+SOOP 연결 probe는 스트리머 ID를 명시적으로 전달하여 방송 정보 조회, BNO 조회, 채팅 서버 연결 및 `JOIN_CHANNEL` 경로를 검증할 수 있습니다. 실제 `SEND_BALLOON` payload의 최종 실방송 검증은 실제 후원 이벤트가 발생해야 완료할 수 있습니다.
 
 ---
 

@@ -12,7 +12,7 @@ public record BridgeConfig(
             "STREAMER_ID",
             new Ticket(50, 28, 7),
             new Server("127.0.0.1", 17820, 17821, false),
-            new Storage("./data/roulette.db", "./tickets", "./web"),
+            new Storage("./data/roulette.db", "./tickets", "./web", "./backups", "./logs"),
             new Soop(true, 30)
         );
     }
@@ -49,12 +49,20 @@ public record BridgeConfig(
         }
     }
 
-    public record Storage(String databasePath, String ticketDirectory, String webRoot) {
+    public record Storage(
+        String databasePath,
+        String ticketDirectory,
+        String webRoot,
+        String backupDirectory,
+        String logDirectory
+    ) {
         Storage normalized() {
             return new Storage(
                 valueOrDefault(databasePath, "./data/roulette.db"),
                 valueOrDefault(ticketDirectory, "./tickets"),
-                valueOrDefault(webRoot, "./web")
+                valueOrDefault(webRoot, "./web"),
+                valueOrDefault(backupDirectory, "./backups"),
+                valueOrDefault(logDirectory, "./logs")
             );
         }
 

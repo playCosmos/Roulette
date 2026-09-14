@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>먀로또 · SOOP 브리지 관리</title>
+  <link rel="stylesheet" href="./soop-admin.css?v=20260915-1" />
+</head>
+<body>
+  <main class="admin-shell">
+    <header class="admin-header">
+      <div>
+        <p class="eyebrow">MYA LOTTO / SOOP BRIDGE</p>
+        <h1>자동 발급 관리</h1>
+      </div>
+      <div class="connection" id="connectionBadge">연결 확인 중</div>
+    </header>
+
+    <section class="status-grid" aria-label="브리지 상태">
+      <article><span>SOOP</span><strong id="soopStatus">-</strong></article>
+      <article><span>Streamer</span><strong id="streamerId">-</strong></article>
+      <article><span>Pending</span><strong id="pendingTickets">-</strong></article>
+      <article><span>Overlay</span><strong id="overlayClients">-</strong></article>
+    </section>
+
+    <section class="panel actions-panel">
+      <div class="panel-heading">
+        <div><h2>운영 도구</h2><p>DB와 발급 기록을 보존하면서 수행합니다.</p></div>
+        <button type="button" id="refreshButton">새로고침</button>
+      </div>
+      <div class="action-row">
+        <button type="button" id="backupButton">DB 백업</button>
+        <button type="button" id="rebuildButton">issued.json 재생성</button>
+        <input id="testNickname" type="text" value="테스트" maxlength="80" aria-label="테스트 티켓 닉네임" />
+        <button type="button" id="testTicketButton">테스트 티켓</button>
+      </div>
+      <p class="operation-result" id="operationResult">대기 중</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div><h2>수동 누적 보정</h2><p>모든 보정은 감사 이력에 남습니다. 이미 할당한 티켓 권리를 취소하는 음수 보정은 거부됩니다.</p></div>
+      </div>
+      <form class="adjust-form" id="adjustForm">
+        <label>SOOP 사용자 ID<input name="donorId" required maxlength="120" /></label>
+        <label>현재 닉네임<input name="nickname" required maxlength="80" /></label>
+        <label>별풍선 증감<input name="balloonDelta" type="number" required step="1" /></label>
+        <label class="reason">사유<input name="reason" required maxlength="500" /></label>
+        <button type="submit">보정 적용</button>
+      </form>
+    </section>
+
+    <section class="panel donor-panel">
+      <div class="panel-heading">
+        <div><h2>후원자 누적</h2><p>최대 500명, 최근 갱신 순입니다.</p></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>닉네임</th><th>SOOP ID</th><th>누적</th><th>할당</th><th>발급완료</th><th>잔여</th></tr></thead>
+          <tbody id="donorRows"><tr><td colspan="6">불러오는 중</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script src="./soop-admin.js?v=20260915-1" defer></script>
+</body>
+</html>

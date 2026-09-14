@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class BridgeDatabase {
-    private static final int CURRENT_SCHEMA_VERSION = 1;
+    private static final int CURRENT_SCHEMA_VERSION = 2;
     private final Path databasePath;
     private final String jdbcUrl;
 
@@ -48,7 +48,8 @@ public final class BridgeDatabase {
     public List<PendingTicket> findRecoverableTickets() throws SQLException {
         var result = new ArrayList<PendingTicket>();
         var sql = """
-            SELECT ticket_id, donor_id, nickname_at_issue, numbers_json, status, image_path, created_at
+            SELECT ticket_id, donor_id, nickname_at_issue, ticket_sequence,
+                   numbers_json, status, image_path, created_at
             FROM ticket
             WHERE status <> 'ISSUED'
             ORDER BY created_at ASC
@@ -62,6 +63,7 @@ public final class BridgeDatabase {
                     rows.getString("ticket_id"),
                     rows.getString("donor_id"),
                     rows.getString("nickname_at_issue"),
+                    rows.getObject("ticket_sequence") == null ? null : rows.getInt("ticket_sequence"),
                     rows.getString("numbers_json"),
                     rows.getString("status"),
                     rows.getString("image_path"),
@@ -70,6 +72,14 @@ public final class BridgeDatabase {
             }
         }
         return result;
+    }
+
+    public int countRecoverableTickets() throws SQLException {
+        try (var connection = open();
+             var statement = connection.prepareStatement("SELECT COUNT(*) FROM ticket WHERE status <> 'ISSUED'");
+             var rows = statement.executeQuery()) {
+            return rows.next() ? rows.getInt(1) : 0;
+        }
     }
 
     private void migrate(Connection connection) throws SQLException, IOException {
@@ -89,6 +99,14 @@ public final class BridgeDatabase {
                 statement.execute("PRAGMA user_version=1");
             }
             version = 1;
+        }
+
+        if (version < 2) {
+            applyMigration(connection, "/db/migration/V2__phase_d_issuance.sql");
+            try (var statement = connection.createStatement()) {
+                statement.execute("PRAGMA user_version=2");
+            }
+            version = 2;
         }
 
         if (version != CURRENT_SCHEMA_VERSION) {
@@ -124,6 +142,7 @@ public final class BridgeDatabase {
         String ticketId,
         String donorId,
         String nickname,
+        Integer ticketSequence,
         String numbersJson,
         String status,
         String imagePath,

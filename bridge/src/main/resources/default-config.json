@@ -14,7 +14,9 @@
   "storage": {
     "databasePath": "./data/roulette.db",
     "ticketDirectory": "./tickets",
-    "webRoot": "./web"
+    "webRoot": "./web",
+    "backupDirectory": "./backups",
+    "logDirectory": "./logs"
   },
   "soop": {
     "enabled": true,

@@ -5,6 +5,7 @@ import io.github.playcosmos.roulettebridge.config.ConfigLoader;
 import io.github.playcosmos.roulettebridge.db.BridgeDatabase;
 import io.github.playcosmos.roulettebridge.issuance.DonationIssuanceEngine;
 import io.github.playcosmos.roulettebridge.issuance.PhaseDProbe;
+import io.github.playcosmos.roulettebridge.recovery.TicketRecoveryService;
 import io.github.playcosmos.roulettebridge.server.BridgeHttpServer;
 import io.github.playcosmos.roulettebridge.server.OverlayWebSocketServer;
 import io.github.playcosmos.roulettebridge.soop.SoopBridgeAdapter;
@@ -60,18 +61,37 @@ public final class Main {
         ));
 
         var websocket = new OverlayWebSocketServer(config.server().host(), config.server().websocketPort());
-        websocket.start();
-
         var archive = new TicketArchiveService(
             database,
             workingDirectory.resolve(config.storage().ticketDirectory()),
             pendingTicketCount::addAndGet
         );
+        var recovery = new TicketRecoveryService(database);
+
+        websocket.configureRecovery(
+            () -> {
+                try {
+                    return recovery.findPendingIssueEvents().stream()
+                        .map(ticket -> new OverlayWebSocketServer.ReplayMessage(ticket.ticketId(), GSON.toJson(ticket)))
+                        .toList();
+                } catch (Exception error) {
+                    throw new IllegalStateException("failed to load pending tickets", error);
+                }
+            },
+            ticketId -> {
+                try {
+                    recovery.markDispatched(ticketId);
+                } catch (Exception error) {
+                    throw new IllegalStateException("failed to mark ticket dispatched: " + ticketId, error);
+                }
+            }
+        );
+        websocket.start();
 
         var issuance = new DonationIssuanceEngine(
             database,
             config.ticket(),
-            ticket -> websocket.broadcastTicketEvent(GSON.toJson(ticket)),
+            ticket -> websocket.dispatchTicketEvent(ticket.ticketId(), GSON.toJson(ticket)),
             pendingTicketCount::addAndGet
         );
 
@@ -103,7 +123,8 @@ public final class Main {
             pendingTicketCount::get,
             websocket::connectedClients,
             soopState::snapshot,
-            archive
+            archive,
+            recovery
         );
         http.start();
         soop.start();

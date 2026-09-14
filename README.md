@@ -1,6 +1,245 @@
 # 먀로또
 
-`assets/Frame3.png`를 메인 프레임으로 사용하는 정적 웹 추첨기입니다. PNG 프레임 뒤쪽의 입 위치에 슬롯머신형 릴을 렌더링하며 GitHub Pages에서 별도 빌드 없이 실행됩니다.
+`assets/Frame3.png`를 메인 프레임으로 사용하는 웹 룰렛/티켓 발급기입니다. 기존 GitHub Pages 수동 추첨 기능과 별도로, Windows용 `RouletteBridge`를 통해 SOOP 별풍선 후원을 감지하고 후원자별 누적에 따라 자동으로 룰렛을 실행한 뒤 티켓을 발급·저장할 수 있습니다.
+
+## 주요 구성
+
+현재 프로젝트는 두 실행 경로를 제공합니다.
+
+### 1. GitHub Pages / 브라우저 룰렛
+
+- 기존 `index.html` 기반 수동·자동 번호 발급
+- 실시간 추첨기
+- 참가자 번호 등록 및 일치 결과 계산
+- 브라우저 Canvas 기반 티켓 PNG 출력
+- 별도 빌드 없이 GitHub Pages에서 실행 가능
+
+### 2. SOOP 자동발급 / Windows Bridge
+
+- SOOP 스트리머 ID 기준 현재 방송 자동 조회
+- 채팅 서버 연결 및 `SEND_BALLOON` 후원 이벤트 수신
+- 후원자별 별풍선 누적
+- 기본값 `50개 = 티켓 1장`
+- 한 번에 여러 장 조건을 충족하면 필요한 수만큼 자동 할당
+- 티켓마다 `1~28` 중 서로 다른 번호 7개를 먼저 확정해 SQLite에 저장
+- 확정된 번호로 방송용 룰렛 연출 실행
+- 룰렛 완료 후 티켓 PNG 생성 및 로컬 폴더 자동 저장
+- 후원자별 발급 번호·이미지 기록 유지
+- 프로그램/OBS 재시작 시 미완료 티켓을 같은 번호로 복구
+- SQLite 백업, 수동 누적 보정, 발급 기록 manifest 재생성 지원
+
+## Windows 배포본
+
+Windows에서는 GitHub Releases의 `RouletteBridge-Windows-x64-v0.1.3.zip`을 받아 압축을 푼 뒤 `RouletteBridge.exe`를 실행합니다.
+
+별도 Java 설치는 필요하지 않습니다. Java 25 기반 런타임이 배포본에 포함됩니다.
+
+배포 구조는 다음과 같습니다.
+
+```text
+RouletteBridge/
+├─ RouletteBridge.exe
+├─ config.json
+├─ README.txt
+├─ app/
+├─ runtime/
+├─ web/
+├─ data/
+├─ tickets/
+├─ backups/
+└─ logs/
+```
+
+`data/`, `tickets/`, `backups/`, `logs/`는 운영 데이터이므로 프로그램을 업데이트할 때 삭제하거나 덮어쓰지 않습니다. 이미 수정해서 사용 중인 `config.json` 역시 새 배포본으로 교체하지 않고 유지하는 것을 권장합니다.
+
+### 기본 config.json
+
+```json
+{
+  "streamerId": "20221010",
+  "ticket": {
+    "balloonsPerTicket": 50,
+    "numberMax": 28,
+    "numberCount": 7
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 17820,
+    "websocketPort": 17821,
+    "openBrowserOnStart": false
+  },
+  "storage": {
+    "databasePath": "./data/roulette.db",
+    "ticketDirectory": "./tickets",
+    "webRoot": "./web",
+    "backupDirectory": "./backups",
+    "logDirectory": "./logs"
+  },
+  "soop": {
+    "enabled": true,
+    "offlinePollSeconds": 30
+  }
+}
+```
+
+`streamerId`만 실제 방송 대상 ID로 변경하면 됩니다. 현재 기본 예제값 `20221010`은 개발 및 연결 검증에 사용한 테스트 대상입니다.
+
+## SOOP 자동발급 흐름
+
+```text
+SOOP 별풍선 이벤트
+        ↓
+후원자별 누적 반영
+        ↓
+50개마다 신규 티켓 할당
+        ↓
+7개 번호 확정 + SQLite 저장
+        ↓
+OBS 오버레이에 ticket.issue 전송
+        ↓
+7개 릴 회전 및 순차 정지
+        ↓
+룰렛 완료
+        ↓
+티켓 PNG 생성
+        ↓
+Java Bridge로 PNG 업로드
+        ↓
+tickets/<닉네임_후원자ID>/ 저장
+        ↓
+DB 상태 ISSUED + issued.json 갱신
+```
+
+번호는 룰렛 표시 전에 서버 측에서 확정·저장합니다. 따라서 OBS 새로고침이나 프로그램 재실행이 발생해도 이미 화면에 표시된 티켓의 번호를 새로 추첨하지 않습니다.
+
+티켓 상태는 다음 순서로 관리됩니다.
+
+```text
+PENDING
+→ NUMBERS_CONFIRMED
+→ ROULETTE_RUNNING
+→ ROULETTE_COMPLETED
+→ IMAGE_SAVED
+→ ISSUED
+```
+
+`FAILED` 상태는 자동 복구 대상에서 제외합니다.
+
+## OBS 방송용 페이지
+
+Windows Bridge 실행 후 OBS Browser Source에는 다음 주소를 사용합니다.
+
+```text
+http://127.0.0.1:17820/soop-overlay.html?ws=ws://127.0.0.1:17821
+```
+
+방송용 페이지는 기존 `index.html`과 독립되어 있습니다.
+
+- 평상시 투명 배경
+- 후원자 닉네임 표시
+- 룰렛 회전
+- 7개 릴 순차 확정
+- 최종 티켓 표시
+- 발급 완료 후 다음 티켓 처리
+- 다수 티켓은 FIFO 큐로 순차 재생
+- 하단 선택번호 구슬, `roulette-progress`, `ticket-id`, 디버그 패널은 최종 오버레이에서 표시하지 않음
+
+GitHub Pages에서 오버레이 외형만 확인할 수도 있지만 실제 자동 PNG 저장과 운영 데이터 처리는 로컬 Windows Bridge를 사용하는 구성을 기준으로 합니다.
+
+## 발급 데이터와 티켓 저장
+
+SQLite `data/roulette.db`가 운영 데이터의 원본입니다.
+
+주요 데이터:
+
+- 후원자 SOOP 사용자 ID
+- 현재 닉네임
+- 누적 별풍선
+- 할당 티켓 수
+- 최종 발급 완료 티켓 수
+- 수신 후원 이벤트 및 중복 방지 키
+- 티켓 ID
+- 후원자별 발급 순번
+- 발급 당시 닉네임
+- 확정 번호 7개
+- 상태
+- 이미지 경로
+- 발급 시각
+
+티켓 이미지는 예를 들어 다음과 같이 저장됩니다.
+
+```text
+tickets/
+└─ 라먀니_abc123_<hash>/
+   ├─ 0001_T..._03-07-11-16-22-25-28.png
+   ├─ 0002_T..._01-04-09-13-18-24-27.png
+   └─ issued.json
+```
+
+닉네임이 변경되더라도 내부 동일성은 안정적인 SOOP 사용자 ID를 기준으로 유지하며 각 티켓에는 발급 당시 닉네임을 별도로 기록합니다.
+
+`issued.json`은 사람이 확인하기 위한 보조 기록이며 SQLite가 최종 원본입니다.
+
+## 복구 및 운영 기능
+
+Windows Bridge는 재시작 시 `ISSUED`가 아닌 미완료 티켓을 검색합니다.
+
+- `NUMBERS_CONFIRMED`
+- `ROULETTE_RUNNING`
+- `ROULETTE_COMPLETED`
+- `IMAGE_SAVED`
+
+위 상태의 티켓은 기존 `ticketId`와 기존 7개 번호를 유지한 채 다시 처리할 수 있습니다.
+
+운영용 로컬 API도 제공합니다.
+
+```text
+GET  /api/admin/donors
+POST /api/admin/backup
+POST /api/admin/manifests/rebuild
+POST /api/admin/adjust
+POST /api/admin/test-ticket
+```
+
+관리 API는 로컬 loopback 접근을 기준으로 하며 OBS 오버레이와 역할을 분리합니다.
+
+주요 로컬 주소:
+
+```text
+http://127.0.0.1:17820/health
+http://127.0.0.1:17820/api/state
+http://127.0.0.1:17820/soop-admin.html
+ws://127.0.0.1:17821
+```
+
+## Windows 한글 로그
+
+배포본은 UTF-8 기반으로 `config.json`, 로그 파일, manifest를 저장합니다. Windows EXE 콘솔 역시 시작 시 UTF-8 코드페이지에 맞춰 출력하도록 구성되어 SOOP/JUL 로그의 `정보`와 한글 방송 제목·닉네임·로그 본문을 정상 표시하도록 처리합니다.
+
+## 검증 상태
+
+현재 Windows CI에서 다음 항목을 검사합니다.
+
+- Java 25 Maven build
+- Phase D 후원 누적 및 자동 티켓 할당
+- 중복 후원 이벤트 차단
+- `1~28 / 7개 / 중복 없음` 번호 검증
+- Phase E PNG 저장
+- SQLite `ISSUED` 상태 전환
+- `issued.json` 생성 및 동일 PNG 재업로드 멱등성
+- Phase F 재시작 복구
+- 기존 번호 유지
+- `FAILED` 자동복구 제외
+- Windows `jpackage` EXE 생성
+- 내장 Java runtime 존재 확인
+- 패키지된 EXE 자체 self-test
+- Windows/UTF-8 한글 인코딩 probe
+
+SOOP `20221010` 대상에서는 방송 정보 조회, BNO 조회, 채팅 서버 연결 및 `JOIN_CHANNEL`까지 실제 검증했습니다. `SEND_BALLOON` 실이벤트은 실제 후원 발생 시 최종 실데이터 검증이 필요합니다.
+
+---
+
+# 기존 GitHub Pages 룰렛
 
 ## 화면 구성
 
@@ -154,26 +393,26 @@ assets/Frame3.png
 
 ```text
 assets/
-├─ Frame.png          # 보존용 프레임
-├─ Frame2.png         # 보존용 프레임
-├─ Frame3.png         # 현재 최종 프레임
-├─ image0.png         # 입 전환 프레임
+├─ Frame.png
+├─ Frame2.png
+├─ Frame3.png
+├─ image0.png
 ├─ image1.png
 ├─ image2.png
 ├─ image3.png
-├─ Yellow2.png        # 빈 티켓 시트
+├─ Yellow2.png
 ├─ Red2.png
 ├─ Green2.png
 ├─ Blue2.png
-├─ mask.png           # 선택 번호 마스크
-└─ font.ttf           # 티켓 합성 폰트
+├─ mask.png
+└─ font.ttf
 ```
 
 ## 코드 구조
 
 ```text
 .
-├─ index.html
+├─ index.html                     # 기존 GitHub Pages 룰렛
 ├─ styles.css
 ├─ draw-modes.css
 ├─ ticket-renderer.css
@@ -186,16 +425,36 @@ assets/
 ├─ live-draw.js
 ├─ stage-transition.js
 ├─ roulette-ui.js
+├─ soop-overlay.html              # 방송용 자동발급 오버레이
+├─ soop-overlay.css
+├─ soop-overlay.js
+├─ soop-overlay-archive.js        # PNG 업로드/상태 ACK
+├─ soop-admin.html                # 로컬 관리 페이지
+├─ bridge/                        # Windows Java Bridge
+│  ├─ pom.xml
+│  ├─ config.example.json
+│  ├─ package-windows.ps1
+│  ├─ README.md
+│  └─ src/
+├─ assets/
 ├─ README.md
 └─ .nojekyll
 ```
 
-## 실행
+## 개발 실행
 
-별도 빌드 과정이 없습니다.
+기존 브라우저 룰렛은 별도 빌드 과정이 없습니다.
 
 ```bash
 python -m http.server 8080
 ```
 
-또는 GitHub Pages에서 `main` / `/ (root)`를 배포 대상으로 지정하면 바로 실행할 수 있습니다.
+Java Bridge 개발 실행은 다음과 같습니다.
+
+```bash
+cd bridge
+mvn clean package
+java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar
+```
+
+또는 배포본에서는 `RouletteBridge.exe`를 직접 실행합니다.

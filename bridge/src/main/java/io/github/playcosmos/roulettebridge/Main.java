@@ -5,6 +5,7 @@ import io.github.playcosmos.roulettebridge.config.ConfigLoader;
 import io.github.playcosmos.roulettebridge.db.BridgeDatabase;
 import io.github.playcosmos.roulettebridge.issuance.DonationIssuanceEngine;
 import io.github.playcosmos.roulettebridge.issuance.PhaseDProbe;
+import io.github.playcosmos.roulettebridge.recovery.PhaseFProbe;
 import io.github.playcosmos.roulettebridge.recovery.TicketRecoveryService;
 import io.github.playcosmos.roulettebridge.server.BridgeHttpServer;
 import io.github.playcosmos.roulettebridge.server.OverlayWebSocketServer;
@@ -38,6 +39,11 @@ public final class Main {
 
         if (args.length > 0 && "--phase-e-probe".equals(args[0])) {
             System.exit(PhaseEProbe.run());
+            return;
+        }
+
+        if (args.length > 0 && "--phase-f-probe".equals(args[0])) {
+            System.exit(PhaseFProbe.run());
             return;
         }
 

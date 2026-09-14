@@ -1,7 +1,10 @@
 package io.github.playcosmos.roulettebridge;
 
+import com.google.gson.Gson;
 import io.github.playcosmos.roulettebridge.config.ConfigLoader;
 import io.github.playcosmos.roulettebridge.db.BridgeDatabase;
+import io.github.playcosmos.roulettebridge.issuance.DonationIssuanceEngine;
+import io.github.playcosmos.roulettebridge.issuance.PhaseDProbe;
 import io.github.playcosmos.roulettebridge.server.BridgeHttpServer;
 import io.github.playcosmos.roulettebridge.server.OverlayWebSocketServer;
 import io.github.playcosmos.roulettebridge.soop.SoopBridgeAdapter;
@@ -14,12 +17,19 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class Main {
+    private static final Gson GSON = new Gson();
+
     private Main() {}
 
     public static void main(String[] args) throws Exception {
         if (args.length > 0 && "--probe".equals(args[0])) {
             String streamerId = args.length > 1 ? args[1] : "20221010";
             System.exit(SoopProbe.run(streamerId));
+            return;
+        }
+
+        if (args.length > 0 && "--phase-d-probe".equals(args[0])) {
+            System.exit(PhaseDProbe.run());
             return;
         }
 
@@ -36,15 +46,41 @@ public final class Main {
         var pendingTicketCount = new AtomicInteger(recoverable.size());
         System.out.println("[recovery] recoverable tickets: " + recoverable.size());
         recoverable.forEach(ticket -> System.out.println(
-            "[recovery] " + ticket.ticketId() + " / " + ticket.nickname() + " / " + ticket.status()
+            "[recovery] " + ticket.ticketId()
+                + " / #" + (ticket.ticketSequence() == null ? "?" : ticket.ticketSequence())
+                + " / " + ticket.nickname()
+                + " / " + ticket.status()
         ));
 
         var websocket = new OverlayWebSocketServer(config.server().host(), config.server().websocketPort());
         websocket.start();
 
+        var issuance = new DonationIssuanceEngine(
+            database,
+            config.ticket(),
+            ticket -> websocket.broadcastTicketEvent(GSON.toJson(ticket)),
+            pendingTicketCount::addAndGet
+        );
+
         var soopState = new SoopRuntimeState(config.streamerId());
         var soop = new SoopBridgeAdapter(config, soopState, donation -> {
-            // Phase D에서 이 지점에 후원 누적/티켓 발급 엔진을 연결한다.
+            try {
+                var result = issuance.process(donation);
+                if (result.duplicate()) {
+                    System.out.println("[issuance] duplicate donation ignored: " + result.eventId());
+                    return;
+                }
+                System.out.println(
+                    "[issuance] " + donation.nickname()
+                        + " total=" + result.totalBalloons()
+                        + " tickets=" + result.allocatedTicketCount()
+                        + " new=" + result.newTicketCount()
+                        + " remainder=" + result.remainderBalloons()
+                );
+            } catch (Exception error) {
+                System.err.println("[issuance] donation processing failed: " + error.getMessage());
+                error.printStackTrace(System.err);
+            }
         });
 
         var http = new BridgeHttpServer(

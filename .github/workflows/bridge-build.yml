@@ -46,6 +46,10 @@ jobs:
         working-directory: bridge
         run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-e-probe
 
+      - name: Verify phase F recovery
+        working-directory: bridge
+        run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-f-probe
+
       - name: Probe SOOP streamer 20221010
         id: soop_probe
         continue-on-error: true

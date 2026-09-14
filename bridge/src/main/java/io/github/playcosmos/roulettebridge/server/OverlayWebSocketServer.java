@@ -84,5 +84,11 @@ public final class OverlayWebSocketServer extends WebSocketServer {
         return true;
     }
 
+    public boolean broadcastTransient(String json) {
+        if (connectedClients.get() <= 0) return false;
+        broadcast(json);
+        return true;
+    }
+
     public record ReplayMessage(String ticketId, String json) {}
 }

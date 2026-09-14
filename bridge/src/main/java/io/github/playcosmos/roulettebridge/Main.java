@@ -5,6 +5,10 @@ import io.github.playcosmos.roulettebridge.config.ConfigLoader;
 import io.github.playcosmos.roulettebridge.db.BridgeDatabase;
 import io.github.playcosmos.roulettebridge.issuance.DonationIssuanceEngine;
 import io.github.playcosmos.roulettebridge.issuance.PhaseDProbe;
+import io.github.playcosmos.roulettebridge.operations.AdminOperationsHandler;
+import io.github.playcosmos.roulettebridge.operations.DatabaseBackupService;
+import io.github.playcosmos.roulettebridge.operations.FileLog;
+import io.github.playcosmos.roulettebridge.operations.ManualAdjustmentService;
 import io.github.playcosmos.roulettebridge.recovery.PhaseFProbe;
 import io.github.playcosmos.roulettebridge.recovery.TicketRecoveryService;
 import io.github.playcosmos.roulettebridge.server.BridgeHttpServer;
@@ -31,17 +35,14 @@ public final class Main {
             System.exit(SoopProbe.run(streamerId));
             return;
         }
-
         if (args.length > 0 && "--phase-d-probe".equals(args[0])) {
             System.exit(PhaseDProbe.run());
             return;
         }
-
         if (args.length > 0 && "--phase-e-probe".equals(args[0])) {
             System.exit(PhaseEProbe.run());
             return;
         }
-
         if (args.length > 0 && "--phase-f-probe".equals(args[0])) {
             System.exit(PhaseFProbe.run());
             return;
@@ -53,6 +54,7 @@ public final class Main {
             : workingDirectory.resolve("config.json");
 
         var config = ConfigLoader.loadOrCreate(configPath);
+        var fileLog = FileLog.install(workingDirectory.resolve(config.storage().logDirectory()));
         var database = new BridgeDatabase(workingDirectory.resolve(config.storage().databasePath()));
         database.initialize();
 
@@ -94,11 +96,36 @@ public final class Main {
         );
         websocket.start();
 
+        var ticketDispatcher = new java.util.function.Consumer<io.github.playcosmos.roulettebridge.issuance.TicketIssueEvent>() {
+            @Override
+            public void accept(io.github.playcosmos.roulettebridge.issuance.TicketIssueEvent ticket) {
+                websocket.dispatchTicketEvent(ticket.ticketId(), GSON.toJson(ticket));
+            }
+        };
+
         var issuance = new DonationIssuanceEngine(
             database,
             config.ticket(),
-            ticket -> websocket.dispatchTicketEvent(ticket.ticketId(), GSON.toJson(ticket)),
+            ticketDispatcher,
             pendingTicketCount::addAndGet
+        );
+        var adjustment = new ManualAdjustmentService(
+            database,
+            config.ticket(),
+            ticketDispatcher,
+            pendingTicketCount::addAndGet
+        );
+        var backup = new DatabaseBackupService(
+            database,
+            workingDirectory.resolve(config.storage().backupDirectory())
+        );
+        var admin = new AdminOperationsHandler(
+            database,
+            config.ticket(),
+            backup,
+            archive,
+            adjustment,
+            websocket
         );
 
         var soopState = new SoopRuntimeState(config.streamerId());
@@ -130,7 +157,8 @@ public final class Main {
             websocket::connectedClients,
             soopState::snapshot,
             archive,
-            recovery
+            recovery,
+            admin
         );
         http.start();
         soop.start();
@@ -138,10 +166,9 @@ public final class Main {
         String overlayUrl = "http://" + config.server().host() + ":" + config.server().port()
             + "/soop-overlay.html?ws=ws://" + config.server().host() + ":" + config.server().websocketPort();
         System.out.println("[overlay] " + overlayUrl);
+        System.out.println("[admin] loopback API: http://127.0.0.1:" + config.server().port() + "/api/admin");
 
-        if (config.server().openBrowserOnStart()) {
-            openBrowser(overlayUrl);
-        }
+        if (config.server().openBrowserOnStart()) openBrowser(overlayUrl);
 
         var shutdown = new CountDownLatch(1);
         Runtime.getRuntime().addShutdownHook(Thread.ofPlatform().name("roulette-bridge-shutdown").unstarted(() -> {
@@ -153,6 +180,8 @@ public final class Main {
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }
+            System.out.println("[shutdown] complete");
+            fileLog.close();
             shutdown.countDown();
         }));
 

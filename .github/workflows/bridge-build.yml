@@ -1,0 +1,32 @@
+name: Bridge Build
+
+on:
+  push:
+    paths:
+      - "bridge/**"
+      - ".github/workflows/bridge-build.yml"
+  pull_request:
+    paths:
+      - "bridge/**"
+      - ".github/workflows/bridge-build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Build bridge
+        working-directory: bridge
+        run: mvn --batch-mode --no-transfer-progress clean package

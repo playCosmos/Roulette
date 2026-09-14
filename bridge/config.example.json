@@ -1,5 +1,5 @@
 {
-  "streamerId": "STREAMER_ID",
+  "streamerId": "20221010",
   "ticket": {
     "balloonsPerTicket": 50,
     "numberMax": 28,
@@ -15,5 +15,9 @@
     "databasePath": "./data/roulette.db",
     "ticketDirectory": "./tickets",
     "webRoot": "./web"
+  },
+  "soop": {
+    "enabled": true,
+    "offlinePollSeconds": 30
   }
 }

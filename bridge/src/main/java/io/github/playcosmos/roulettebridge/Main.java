@@ -35,8 +35,12 @@ public final class Main {
         WindowsConsoleEncoding.configure();
 
         if (args.length > 0 && "--probe".equals(args[0])) {
-            String streamerId = args.length > 1 ? args[1] : "20221010";
-            System.exit(SoopProbe.run(streamerId));
+            if (args.length < 2 || args[1] == null || args[1].isBlank()) {
+                System.err.println("[probe] streamerId argument is required");
+                System.exit(2);
+                return;
+            }
+            System.exit(SoopProbe.run(args[1]));
             return;
         }
         if (args.length > 0 && "--phase-d-probe".equals(args[0])) {

@@ -48,10 +48,13 @@ public final class Main {
             return;
         }
 
-        Path workingDirectory = Path.of("").toAbsolutePath().normalize();
+        Path workingDirectory = AppPaths.applicationRoot();
         Path configPath = args.length > 0
-            ? workingDirectory.resolve(args[0]).normalize()
+            ? AppPaths.resolveConfig(workingDirectory, args[0])
             : workingDirectory.resolve("config.json");
+
+        System.out.println("[app] root: " + workingDirectory);
+        System.out.println("[app] config: " + configPath);
 
         var config = ConfigLoader.loadOrCreate(configPath);
         var fileLog = FileLog.install(workingDirectory.resolve(config.storage().logDirectory()));

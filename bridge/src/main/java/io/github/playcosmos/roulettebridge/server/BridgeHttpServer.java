@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.github.playcosmos.roulettebridge.config.BridgeConfig;
+import io.github.playcosmos.roulettebridge.recovery.TicketRecoveryService;
 import io.github.playcosmos.roulettebridge.storage.TicketArchiveService;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -29,6 +30,7 @@ public final class BridgeHttpServer implements AutoCloseable {
     private final HttpServer server;
     private final Path webRoot;
     private final TicketArchiveService ticketArchive;
+    private final TicketRecoveryService recovery;
 
     public BridgeHttpServer(
         BridgeConfig config,
@@ -37,12 +39,14 @@ public final class BridgeHttpServer implements AutoCloseable {
         IntSupplier pendingTicketCount,
         IntSupplier websocketClientCount,
         Supplier<Map<String, Object>> soopState,
-        TicketArchiveService ticketArchive
+        TicketArchiveService ticketArchive,
+        TicketRecoveryService recovery
     ) throws IOException {
         var host = config.server().host();
         var port = config.server().port();
         this.webRoot = resolveWebRoot(workingDirectory, config.storage().webRoot());
         this.ticketArchive = ticketArchive;
+        this.recovery = recovery;
         this.server = HttpServer.create(new InetSocketAddress(host, port), 0);
         this.server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
 
@@ -53,7 +57,7 @@ public final class BridgeHttpServer implements AutoCloseable {
 
         server.createContext("/api/state", exchange -> {
             var payload = new LinkedHashMap<String, Object>();
-            payload.put("version", "0.3.0");
+            payload.put("version", "0.4.0");
             payload.put("streamerId", config.streamerId());
             payload.put("pendingTickets", pendingTicketCount.getAsInt());
             payload.put("websocketClients", websocketClientCount.getAsInt());
@@ -87,17 +91,35 @@ public final class BridgeHttpServer implements AutoCloseable {
         String suffix = path != null && path.startsWith(TICKET_API_PREFIX)
             ? path.substring(TICKET_API_PREFIX.length())
             : "";
+
+        if (suffix.endsWith("/completed")) {
+            String ticketId = decodeTicketId(suffix, "/completed");
+            if (ticketId == null) {
+                sendJson(exchange, 400, Map.of("error", "invalid ticket id"));
+                return;
+            }
+            try {
+                recovery.markCompleted(ticketId);
+                sendJson(exchange, 200, Map.of("ticketId", ticketId, "status", "ROULETTE_COMPLETED"));
+            } catch (NoSuchElementException error) {
+                sendJson(exchange, 404, Map.of("error", error.getMessage()));
+            } catch (SQLException error) {
+                error.printStackTrace(System.err);
+                sendJson(exchange, 500, Map.of("error", "database update failed"));
+            }
+            return;
+        }
+
         if (!suffix.endsWith("/image")) {
             sendText(exchange, 404, "Not Found", "text/plain; charset=utf-8");
             return;
         }
 
-        String encodedTicketId = suffix.substring(0, suffix.length() - "/image".length());
-        if (encodedTicketId.isBlank() || encodedTicketId.contains("/")) {
+        String ticketId = decodeTicketId(suffix, "/image");
+        if (ticketId == null) {
             sendJson(exchange, 400, Map.of("error", "invalid ticket id"));
             return;
         }
-        String ticketId = URLDecoder.decode(encodedTicketId, StandardCharsets.UTF_8);
 
         String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
         if (contentType == null || !contentType.toLowerCase().startsWith("image/png")) {
@@ -137,6 +159,12 @@ public final class BridgeHttpServer implements AutoCloseable {
             error.printStackTrace(System.err);
             sendJson(exchange, 500, Map.of("error", "ticket file save failed"));
         }
+    }
+
+    private static String decodeTicketId(String suffix, String actionSuffix) {
+        String encodedTicketId = suffix.substring(0, suffix.length() - actionSuffix.length());
+        if (encodedTicketId.isBlank() || encodedTicketId.contains("/")) return null;
+        return URLDecoder.decode(encodedTicketId, StandardCharsets.UTF_8);
     }
 
     private void serveStatic(HttpExchange exchange) throws IOException {

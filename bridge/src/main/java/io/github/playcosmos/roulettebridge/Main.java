@@ -4,6 +4,9 @@ import io.github.playcosmos.roulettebridge.config.ConfigLoader;
 import io.github.playcosmos.roulettebridge.db.BridgeDatabase;
 import io.github.playcosmos.roulettebridge.server.BridgeHttpServer;
 import io.github.playcosmos.roulettebridge.server.OverlayWebSocketServer;
+import io.github.playcosmos.roulettebridge.soop.SoopBridgeAdapter;
+import io.github.playcosmos.roulettebridge.soop.SoopProbe;
+import io.github.playcosmos.roulettebridge.soop.SoopRuntimeState;
 import java.awt.Desktop;
 import java.net.URI;
 import java.nio.file.Path;
@@ -14,6 +17,12 @@ public final class Main {
     private Main() {}
 
     public static void main(String[] args) throws Exception {
+        if (args.length > 0 && "--probe".equals(args[0])) {
+            String streamerId = args.length > 1 ? args[1] : "20221010";
+            System.exit(SoopProbe.run(streamerId));
+            return;
+        }
+
         Path workingDirectory = Path.of("").toAbsolutePath().normalize();
         Path configPath = args.length > 0
             ? workingDirectory.resolve(args[0]).normalize()
@@ -33,14 +42,21 @@ public final class Main {
         var websocket = new OverlayWebSocketServer(config.server().host(), config.server().websocketPort());
         websocket.start();
 
+        var soopState = new SoopRuntimeState(config.streamerId());
+        var soop = new SoopBridgeAdapter(config, soopState, donation -> {
+            // Phase D에서 이 지점에 후원 누적/티켓 발급 엔진을 연결한다.
+        });
+
         var http = new BridgeHttpServer(
             config,
             workingDirectory,
             database.path(),
             pendingTicketCount::get,
-            websocket::connectedClients
+            websocket::connectedClients,
+            soopState::snapshot
         );
         http.start();
+        soop.start();
 
         String overlayUrl = "http://" + config.server().host() + ":" + config.server().port()
             + "/soop-overlay.html?ws=ws://" + config.server().host() + ":" + config.server().websocketPort();
@@ -52,7 +68,8 @@ public final class Main {
 
         var shutdown = new CountDownLatch(1);
         Runtime.getRuntime().addShutdownHook(Thread.ofPlatform().name("roulette-bridge-shutdown").unstarted(() -> {
-            System.out.println("[shutdown] stopping servers");
+            System.out.println("[shutdown] stopping services");
+            soop.close();
             http.close();
             try {
                 websocket.stop(2000);

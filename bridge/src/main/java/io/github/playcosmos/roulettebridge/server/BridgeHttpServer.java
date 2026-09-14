@@ -11,9 +11,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.function.IntSupplier;
+import java.util.function.Supplier;
 
 public final class BridgeHttpServer implements AutoCloseable {
     private static final Gson GSON = new Gson();
@@ -25,7 +27,8 @@ public final class BridgeHttpServer implements AutoCloseable {
         Path workingDirectory,
         Path databasePath,
         IntSupplier pendingTicketCount,
-        IntSupplier websocketClientCount
+        IntSupplier websocketClientCount,
+        Supplier<Map<String, Object>> soopState
     ) throws IOException {
         var host = config.server().host();
         var port = config.server().port();
@@ -38,15 +41,18 @@ public final class BridgeHttpServer implements AutoCloseable {
             "time", OffsetDateTime.now().toString()
         )));
 
-        server.createContext("/api/state", exchange -> sendJson(exchange, 200, Map.of(
-            "version", "0.1.0",
-            "streamerId", config.streamerId(),
-            "pendingTickets", pendingTicketCount.getAsInt(),
-            "websocketClients", websocketClientCount.getAsInt(),
-            "database", databasePath.toString(),
-            "webRoot", webRoot.toString(),
-            "websocketUrl", "ws://" + host + ":" + config.server().websocketPort()
-        )));
+        server.createContext("/api/state", exchange -> {
+            var payload = new LinkedHashMap<String, Object>();
+            payload.put("version", "0.2.0");
+            payload.put("streamerId", config.streamerId());
+            payload.put("pendingTickets", pendingTicketCount.getAsInt());
+            payload.put("websocketClients", websocketClientCount.getAsInt());
+            payload.put("database", databasePath.toString());
+            payload.put("webRoot", webRoot.toString());
+            payload.put("websocketUrl", "ws://" + host + ":" + config.server().websocketPort());
+            payload.put("soop", soopState.get());
+            sendJson(exchange, 200, payload);
+        });
 
         server.createContext("/", this::serveStatic);
     }

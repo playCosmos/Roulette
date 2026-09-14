@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 
 public final class FileLog implements AutoCloseable {
     private static final DateTimeFormatter FILE_TIME = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
@@ -25,8 +26,8 @@ public final class FileLog implements AutoCloseable {
         this.originalErr = originalErr;
         this.file = file;
         this.path = path;
-        this.teeOut = new PrintStream(new TeeOutputStream(originalOut, file), true, StandardCharsets.UTF_8);
-        this.teeErr = new PrintStream(new TeeOutputStream(originalErr, file), true, StandardCharsets.UTF_8);
+        this.teeOut = new TeePrintStream(originalOut, file);
+        this.teeErr = new TeePrintStream(originalErr, file);
     }
 
     public static FileLog install(Path directory) throws IOException {
@@ -43,6 +44,9 @@ public final class FileLog implements AutoCloseable {
         System.setOut(log.teeOut);
         System.setErr(log.teeErr);
         System.out.println("[log] " + path);
+        System.out.println("[encoding] console-out=" + log.originalOut.charset()
+            + " console-err=" + log.originalErr.charset()
+            + " file=UTF-8");
         return log;
     }
 
@@ -60,31 +64,93 @@ public final class FileLog implements AutoCloseable {
         file.close();
     }
 
-    private static final class TeeOutputStream extends OutputStream {
-        private final OutputStream first;
-        private final OutputStream second;
+    /**
+     * PrintStream already knows the correct host console charset. Re-encoding its characters
+     * into UTF-8 bytes before writing to the original console corrupts Korean text on CP949/
+     * MS949 Windows consoles. This stream delegates character operations independently:
+     * the original console keeps its own charset and the file stream remains UTF-8.
+     */
+    private static final class TeePrintStream extends PrintStream {
+        private final PrintStream console;
+        private final PrintStream file;
 
-        private TeeOutputStream(OutputStream first, OutputStream second) {
-            this.first = first;
-            this.second = second;
+        private TeePrintStream(PrintStream console, PrintStream file) {
+            super(OutputStream.nullOutputStream(), true, StandardCharsets.UTF_8);
+            this.console = console;
+            this.file = file;
         }
 
-        @Override
-        public synchronized void write(int value) throws IOException {
-            first.write(value);
-            second.write(value);
+        @Override public void flush() { console.flush(); file.flush(); }
+        @Override public void close() { flush(); }
+        @Override public boolean checkError() { return console.checkError() || file.checkError(); }
+
+        @Override public void write(int value) { console.write(value); file.write(value); }
+        @Override public void write(byte[] bytes, int offset, int length) {
+            console.write(bytes, offset, length);
+            file.write(bytes, offset, length);
         }
 
-        @Override
-        public synchronized void write(byte[] bytes, int offset, int length) throws IOException {
-            first.write(bytes, offset, length);
-            second.write(bytes, offset, length);
+        @Override public void print(boolean value) { console.print(value); file.print(value); }
+        @Override public void print(char value) { console.print(value); file.print(value); }
+        @Override public void print(int value) { console.print(value); file.print(value); }
+        @Override public void print(long value) { console.print(value); file.print(value); }
+        @Override public void print(float value) { console.print(value); file.print(value); }
+        @Override public void print(double value) { console.print(value); file.print(value); }
+        @Override public void print(char[] value) { console.print(value); file.print(value); }
+        @Override public void print(String value) { console.print(value); file.print(value); }
+        @Override public void print(Object value) { console.print(value); file.print(value); }
+
+        @Override public void println() { console.println(); file.println(); }
+        @Override public void println(boolean value) { console.println(value); file.println(value); }
+        @Override public void println(char value) { console.println(value); file.println(value); }
+        @Override public void println(int value) { console.println(value); file.println(value); }
+        @Override public void println(long value) { console.println(value); file.println(value); }
+        @Override public void println(float value) { console.println(value); file.println(value); }
+        @Override public void println(double value) { console.println(value); file.println(value); }
+        @Override public void println(char[] value) { console.println(value); file.println(value); }
+        @Override public void println(String value) { console.println(value); file.println(value); }
+        @Override public void println(Object value) { console.println(value); file.println(value); }
+
+        @Override public PrintStream printf(String format, Object... args) {
+            console.printf(format, args);
+            file.printf(format, args);
+            return this;
         }
 
-        @Override
-        public synchronized void flush() throws IOException {
-            first.flush();
-            second.flush();
+        @Override public PrintStream printf(Locale locale, String format, Object... args) {
+            console.printf(locale, format, args);
+            file.printf(locale, format, args);
+            return this;
+        }
+
+        @Override public PrintStream format(String format, Object... args) {
+            console.format(format, args);
+            file.format(format, args);
+            return this;
+        }
+
+        @Override public PrintStream format(Locale locale, String format, Object... args) {
+            console.format(locale, format, args);
+            file.format(locale, format, args);
+            return this;
+        }
+
+        @Override public PrintStream append(CharSequence sequence) {
+            console.append(sequence);
+            file.append(sequence);
+            return this;
+        }
+
+        @Override public PrintStream append(CharSequence sequence, int start, int end) {
+            console.append(sequence, start, end);
+            file.append(sequence, start, end);
+            return this;
+        }
+
+        @Override public PrintStream append(char value) {
+            console.append(value);
+            file.append(value);
+            return this;
         }
     }
 }

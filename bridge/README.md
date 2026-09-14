@@ -26,8 +26,6 @@ RouletteBridge/
 
 패키지된 실행 파일은 `jpackage.app-path`를 이용해 EXE가 있는 폴더를 application root로 사용한다. 따라서 EXE를 탐색기에서 더블클릭하거나 다른 working directory에서 실행해도 `config.json`과 운영 데이터 위치가 바뀌지 않는다.
 
-현재 CI 배포본의 테스트 `config.json`에는 `streamerId = 20221010`이 들어 있다.
-
 ## 소스 개발 요구 사항
 
 - JDK 25+
@@ -76,7 +74,7 @@ bridge/dist/RouletteBridge/config.json
 
 ```json
 {
-  "streamerId": "20221010",
+  "streamerId": "",
   "ticket": {
     "balloonsPerTicket": 50,
     "numberMax": 28,
@@ -101,6 +99,8 @@ bridge/dist/RouletteBridge/config.json
   }
 }
 ```
+
+`streamerId`에 실제 방송 대상 ID를 입력한 뒤 프로그램을 실행한다. 값이 비어 있으면 SOOP 연결은 시작하지 않고 설정 대기 상태로 유지된다.
 
 ## 로컬 주소
 
@@ -155,7 +155,7 @@ Phase D는 누적/중복 방지/티켓 할당을, Phase E는 PNG 저장 및 `iss
 SOOP 연결 probe:
 
 ```bash
-java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --probe 20221010
+java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --probe <streamerId>
 ```
 
 이 probe는 live detail, chat server 연결, `JOIN_CHANNEL`까지 검증한다. 실제 `SEND_BALLOON` payload의 최종 실방송 검증은 테스트 시간에 실제 별풍선 이벤트가 발생해야 완료할 수 있다.

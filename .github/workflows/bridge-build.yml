@@ -50,13 +50,15 @@ jobs:
         working-directory: bridge
         run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-f-probe
 
-      - name: Probe SOOP streamer 20221010
+      - name: Probe configured SOOP streamer
         id: soop_probe
+        if: ${{ vars.SOOP_PROBE_STREAMER_ID != '' }}
         continue-on-error: true
         timeout-minutes: 2
         working-directory: bridge
-        run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --probe 20221010
+        run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --probe "${{ vars.SOOP_PROBE_STREAMER_ID }}"
 
       - name: Report probe result
+        if: ${{ vars.SOOP_PROBE_STREAMER_ID != '' }}
         shell: pwsh
         run: Write-Host "SOOP live probe outcome = ${{ steps.soop_probe.outcome }}"

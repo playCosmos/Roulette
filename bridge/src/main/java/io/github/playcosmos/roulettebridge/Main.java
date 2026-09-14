@@ -9,8 +9,8 @@ import io.github.playcosmos.roulettebridge.operations.AdminOperationsHandler;
 import io.github.playcosmos.roulettebridge.operations.DatabaseBackupService;
 import io.github.playcosmos.roulettebridge.operations.EncodingProbe;
 import io.github.playcosmos.roulettebridge.operations.FileLog;
-import io.github.playcosmos.roulettebridge.operations.JulLogging;
 import io.github.playcosmos.roulettebridge.operations.ManualAdjustmentService;
+import io.github.playcosmos.roulettebridge.operations.WindowsConsoleEncoding;
 import io.github.playcosmos.roulettebridge.recovery.PhaseFProbe;
 import io.github.playcosmos.roulettebridge.recovery.TicketRecoveryService;
 import io.github.playcosmos.roulettebridge.server.BridgeHttpServer;
@@ -32,7 +32,7 @@ public final class Main {
     private Main() {}
 
     public static void main(String[] args) throws Exception {
-        JulLogging.install();
+        WindowsConsoleEncoding.configure();
 
         if (args.length > 0 && "--probe".equals(args[0])) {
             String streamerId = args.length > 1 ? args[1] : "20221010";

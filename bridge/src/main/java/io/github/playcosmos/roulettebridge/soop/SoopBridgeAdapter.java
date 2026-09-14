@@ -14,6 +14,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 public final class SoopBridgeAdapter implements AutoCloseable {
@@ -25,7 +26,8 @@ public final class SoopBridgeAdapter implements AutoCloseable {
     );
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AtomicBoolean probeScheduled = new AtomicBoolean(false);
-    private SOOPClient client;
+    private final AtomicLong generation = new AtomicLong(0);
+    private volatile SOOPClient client;
 
     public SoopBridgeAdapter(
         BridgeConfig config,
@@ -55,6 +57,14 @@ public final class SoopBridgeAdapter implements AutoCloseable {
         if (closed.get() || !probeScheduled.compareAndSet(false, true)) return;
         scheduler.schedule(() -> {
             probeScheduled.set(false);
+            if (closed.get()) return;
+            String currentStatus = state.status();
+            if ("CONNECTED".equals(currentStatus)
+                || "CONNECTING".equals(currentStatus)
+                || "RECONNECTING".equals(currentStatus)
+                || "PROBING".equals(currentStatus)) {
+                return;
+            }
             probeAndConnect();
         }, Math.max(0, delaySeconds), TimeUnit.SECONDS);
     }
@@ -62,13 +72,16 @@ public final class SoopBridgeAdapter implements AutoCloseable {
     private void probeAndConnect() {
         if (closed.get()) return;
 
+        long currentGeneration = generation.incrementAndGet();
         closeClient();
-        client = new SOOPClient();
-        attachListeners(client);
+
+        var nextClient = new SOOPClient();
+        client = nextClient;
+        attachListeners(nextClient, currentGeneration);
         state.status("PROBING");
 
-        client.live().detail(config.streamerId()).whenComplete((detail, error) -> {
-            if (closed.get()) return;
+        nextClient.live().detail(config.streamerId()).whenComplete((detail, error) -> {
+            if (!isCurrent(currentGeneration)) return;
             if (error != null) {
                 state.status("OFFLINE_OR_UNAVAILABLE");
                 state.error(unwrap(error));
@@ -81,9 +94,9 @@ public final class SoopBridgeAdapter implements AutoCloseable {
             state.status("CONNECTING");
             System.out.println("[soop] live found: bno=" + detail.bno() + " title=" + detail.title());
 
-            var chat = client.add(config.streamerId());
+            var chat = nextClient.add(config.streamerId());
             chat.connectToChat().whenComplete((ignored, connectError) -> {
-                if (closed.get()) return;
+                if (!isCurrent(currentGeneration)) return;
                 if (connectError != null) {
                     state.status("CONNECTION_FAILED");
                     state.error(unwrap(connectError));
@@ -94,13 +107,15 @@ public final class SoopBridgeAdapter implements AutoCloseable {
         });
     }
 
-    private void attachListeners(SOOPClient soop) {
+    private void attachListeners(SOOPClient soop, long listenerGeneration) {
         soop.on(ChatEvent.JOIN_CHANNEL, (String bid, JoinChannelEvent event) -> {
+            if (!isCurrent(listenerGeneration)) return;
             state.status("CONNECTED");
             System.out.println("[soop] joined chat: " + bid);
         });
 
         soop.on(ChatEvent.SEND_BALLOON, (String bid, SendBalloonEvent event) -> {
+            if (!isCurrent(listenerGeneration)) return;
             if (event.count() <= 0 || event.senderId() == null || event.senderId().isBlank()) return;
             state.donationReceived();
             var donation = new SoopDonation(
@@ -117,21 +132,28 @@ public final class SoopBridgeAdapter implements AutoCloseable {
         });
 
         soop.on(ChatEvent.RECONNECTING, (String bid, ReconnectingEvent event) -> {
+            if (!isCurrent(listenerGeneration)) return;
             state.status("RECONNECTING");
             System.out.println("[soop] reconnecting " + event.attemptNumber() + "/" + event.maxAttempts());
         });
 
         soop.on(ChatEvent.RECONNECTED, (String bid, ReconnectedEvent event) -> {
+            if (!isCurrent(listenerGeneration)) return;
             state.status("CONNECTED");
             System.out.println("[soop] reconnected: " + bid);
         });
 
         soop.on(ChatEvent.DISCONNECTED, (String bid, DisconnectedEvent event) -> {
+            if (!isCurrent(listenerGeneration)) return;
             state.status(event.causedByError() ? "DISCONNECTED_ERROR" : "DISCONNECTED");
             if (event.causedByError()) state.error(new IllegalStateException(event.reason()));
             System.out.println("[soop] disconnected: code=" + event.statusCode() + " reason=" + event.reason());
             scheduleProbe(config.soop().offlinePollSeconds());
         });
+    }
+
+    private boolean isCurrent(long expectedGeneration) {
+        return !closed.get() && generation.get() == expectedGeneration;
     }
 
     private void closeClient() {
@@ -164,6 +186,7 @@ public final class SoopBridgeAdapter implements AutoCloseable {
     @Override
     public void close() {
         if (!closed.compareAndSet(false, true)) return;
+        generation.incrementAndGet();
         closeClient();
         scheduler.shutdownNow();
         try {

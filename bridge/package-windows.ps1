@@ -44,6 +44,7 @@ $jpackage = Get-Command jpackage -ErrorAction Stop
     --main-jar $JarName `
     --main-class io.github.playcosmos.roulettebridge.Main `
     --java-options "--enable-native-access=ALL-UNNAMED" `
+    --java-options "-Dfile.encoding=UTF-8" `
     --win-console
 
 if ($LASTEXITCODE -ne 0) {
@@ -64,9 +65,15 @@ New-Item -ItemType Directory -Path $WebRoot | Out-Null
     "soop-overlay.html",
     "soop-overlay.css",
     "soop-overlay.js",
-    "soop-overlay-archive.js"
+    "soop-overlay-archive.js",
+    "soop-admin.html"
 ) | ForEach-Object {
-    Copy-Item (Join-Path $RepoRoot $_) (Join-Path $WebRoot $_) -Force
+    $source = Join-Path $RepoRoot $_
+    if (Test-Path $source) { Copy-Item $source (Join-Path $WebRoot $_) -Force }
+}
+@("soop-admin.css", "soop-admin.js") | ForEach-Object {
+    $source = Join-Path $RepoRoot $_
+    if (Test-Path $source) { Copy-Item $source (Join-Path $WebRoot $_) -Force }
 }
 Copy-Item (Join-Path $RepoRoot "assets") (Join-Path $WebRoot "assets") -Recurse -Force
 
@@ -85,6 +92,7 @@ RouletteBridge Windows x64
    http://127.0.0.1:17820/soop-overlay.html?ws=ws://127.0.0.1:17821
 4. Runtime data is stored in data/, tickets/, backups/, and logs/.
 5. Do not delete those folders when updating the program.
+6. Text data/log files are written as UTF-8. The Windows console keeps its host console charset.
 
 This distribution contains its own Java runtime. A separate Java installation is not required.
 "@

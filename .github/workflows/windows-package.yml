@@ -11,6 +11,9 @@ on:
       - "soop-overlay.css"
       - "soop-overlay.js"
       - "soop-overlay-archive.js"
+      - "soop-admin.html"
+      - "soop-admin.css"
+      - "soop-admin.js"
       - ".github/workflows/windows-package.yml"
 
 permissions:
@@ -44,11 +47,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-f-probe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --encoding-probe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build Windows portable app
         working-directory: bridge
         shell: pwsh
-        run: ./package-windows.ps1 -Version 0.1.0 -SkipBuild
+        run: ./package-windows.ps1 -Version 0.1.1 -SkipBuild
 
       - name: Verify packaged executable and config
         working-directory: bridge
@@ -63,6 +68,8 @@ jobs:
           if (-not (Test-Path $runtime)) { throw "bundled Java runtime missing" }
           & $exe --phase-f-probe
           if ($LASTEXITCODE -ne 0) { throw "packaged RouletteBridge.exe self-test failed: $LASTEXITCODE" }
+          & $exe --encoding-probe
+          if ($LASTEXITCODE -ne 0) { throw "packaged RouletteBridge.exe encoding test failed: $LASTEXITCODE" }
           Write-Host "Packaged EXE: $exe"
           Write-Host "Config: $config"
 

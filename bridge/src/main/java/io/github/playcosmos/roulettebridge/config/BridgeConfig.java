@@ -4,14 +4,16 @@ public record BridgeConfig(
     String streamerId,
     Ticket ticket,
     Server server,
-    Storage storage
+    Storage storage,
+    Soop soop
 ) {
     public static BridgeConfig defaults() {
         return new BridgeConfig(
             "STREAMER_ID",
             new Ticket(50, 28, 7),
             new Server("127.0.0.1", 17820, 17821, false),
-            new Storage("./data/roulette.db", "./tickets", "./web")
+            new Storage("./data/roulette.db", "./tickets", "./web"),
+            new Soop(true, 30)
         );
     }
 
@@ -20,10 +22,11 @@ public record BridgeConfig(
         var normalizedTicket = ticket == null ? d.ticket : ticket.normalized();
         var normalizedServer = server == null ? d.server : server.normalized();
         var normalizedStorage = storage == null ? d.storage : storage.normalized();
+        var normalizedSoop = soop == null ? d.soop : soop.normalized();
         var normalizedStreamerId = streamerId == null || streamerId.isBlank()
             ? d.streamerId
             : streamerId.trim();
-        return new BridgeConfig(normalizedStreamerId, normalizedTicket, normalizedServer, normalizedStorage);
+        return new BridgeConfig(normalizedStreamerId, normalizedTicket, normalizedServer, normalizedStorage, normalizedSoop);
     }
 
     public record Ticket(int balloonsPerTicket, int numberMax, int numberCount) {
@@ -57,6 +60,13 @@ public record BridgeConfig(
 
         private static String valueOrDefault(String value, String fallback) {
             return value == null || value.isBlank() ? fallback : value.trim();
+        }
+    }
+
+    public record Soop(boolean enabled, int offlinePollSeconds) {
+        Soop normalized() {
+            int poll = offlinePollSeconds >= 5 ? offlinePollSeconds : 30;
+            return new Soop(enabled, poll);
         }
     }
 }

@@ -51,7 +51,7 @@ public final class BridgeDatabase {
             SELECT ticket_id, donor_id, nickname_at_issue, ticket_sequence,
                    numbers_json, status, image_path, created_at
             FROM ticket
-            WHERE status <> 'ISSUED'
+            WHERE status NOT IN ('ISSUED', 'FAILED')
             ORDER BY created_at ASC
             """;
 
@@ -76,7 +76,9 @@ public final class BridgeDatabase {
 
     public int countRecoverableTickets() throws SQLException {
         try (var connection = open();
-             var statement = connection.prepareStatement("SELECT COUNT(*) FROM ticket WHERE status <> 'ISSUED'");
+             var statement = connection.prepareStatement(
+                 "SELECT COUNT(*) FROM ticket WHERE status NOT IN ('ISSUED', 'FAILED')"
+             );
              var rows = statement.executeQuery()) {
             return rows.next() ? rows.getInt(1) : 0;
         }

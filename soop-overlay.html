@@ -43,7 +43,7 @@
         />
       </div>
 
-      <div class="roulette-progress" id="rouletteProgress">티켓 번호 추첨 중</div>
+      <div class="roulette-progress" id="rouletteProgress" style="display:none !important" aria-hidden="true">티켓 번호 추첨 중</div>
     </section>
 
     <section class="ticket-scene" id="ticketScene" aria-label="발급된 티켓" aria-hidden="true">
@@ -52,11 +52,11 @@
         <span>티켓 발급 완료</span>
       </div>
       <img class="ticket-preview" id="ticketPreview" alt="발급된 티켓 이미지" />
-      <div class="ticket-numbers" id="ticketNumbers"></div>
-      <div class="ticket-id" id="ticketId"></div>
+      <div class="ticket-numbers" id="ticketNumbers" style="display:none !important" aria-hidden="true"></div>
+      <div class="ticket-id" id="ticketId" style="display:none !important" aria-hidden="true"></div>
     </section>
 
-    <section class="debug-panel" id="debugPanel" hidden>
+    <section class="debug-panel" id="debugPanel" style="display:none !important" aria-hidden="true" hidden>
       <button type="button" id="testIssueButton">테스트 티켓 발급</button>
       <span id="debugStatus">대기 중</span>
     </section>

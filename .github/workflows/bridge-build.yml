@@ -30,3 +30,14 @@ jobs:
       - name: Build bridge
         working-directory: bridge
         run: mvn --batch-mode --no-transfer-progress clean package
+
+      - name: Probe SOOP streamer 20221010
+        id: soop_probe
+        continue-on-error: true
+        timeout-minutes: 2
+        working-directory: bridge
+        run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --probe 20221010
+
+      - name: Report probe result
+        shell: pwsh
+        run: Write-Host "SOOP live probe outcome = ${{ steps.soop_probe.outcome }}"

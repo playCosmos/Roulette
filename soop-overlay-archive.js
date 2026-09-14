@@ -32,6 +32,24 @@
     return blob;
   }
 
+  async function acknowledgeCompleted(ticket) {
+    const apiBase = resolveApiBase();
+    if (!apiBase) return { skipped: true, reason: "bridge-api-unavailable" };
+    if (!ticket?.ticketId || String(ticket.ticketId).startsWith("TEST-")) {
+      return { skipped: true, reason: "debug-ticket" };
+    }
+
+    const endpoint = `${apiBase}/api/tickets/${encodeURIComponent(ticket.ticketId)}/completed`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      throw new Error(`룰렛 완료 상태 저장 실패 (${response.status})`);
+    }
+    return response.json().catch(() => ({}));
+  }
+
   async function uploadTicket(ticket, dataUrl) {
     const apiBase = resolveApiBase();
     if (!apiBase) return { skipped: true, reason: "bridge-api-unavailable" };
@@ -86,13 +104,21 @@
     const dataUrl = document.getElementById("ticketPreview")?.src || "";
     uploadChain = uploadChain
       .catch(() => undefined)
-      .then(() => uploadTicket(ticket, dataUrl))
+      .then(async () => {
+        try {
+          await acknowledgeCompleted(ticket);
+        } catch (error) {
+          console.warn("룰렛 완료 acknowledgement 실패. PNG 저장은 계속 시도합니다.", error);
+        }
+        return uploadTicket(ticket, dataUrl);
+      })
       .catch(() => undefined);
   });
 
   window.RouletteOverlayArchive = Object.freeze({
+    acknowledgeCompleted,
     uploadTicket,
     resolveApiBase,
-    version: "1.0.0"
+    version: "1.1.0"
   });
 })();

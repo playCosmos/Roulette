@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class BridgeDatabase {
-    private static final int CURRENT_SCHEMA_VERSION = 2;
+    private static final int CURRENT_SCHEMA_VERSION = 3;
     private final Path databasePath;
     private final String jdbcUrl;
 
@@ -97,22 +97,30 @@ public final class BridgeDatabase {
 
         if (version < 1) {
             applyMigration(connection, "/db/migration/V1__initial.sql");
-            try (var statement = connection.createStatement()) {
-                statement.execute("PRAGMA user_version=1");
-            }
+            setVersion(connection, 1);
             version = 1;
         }
 
         if (version < 2) {
             applyMigration(connection, "/db/migration/V2__phase_d_issuance.sql");
-            try (var statement = connection.createStatement()) {
-                statement.execute("PRAGMA user_version=2");
-            }
+            setVersion(connection, 2);
             version = 2;
+        }
+
+        if (version < 3) {
+            applyMigration(connection, "/db/migration/V3__operations.sql");
+            setVersion(connection, 3);
+            version = 3;
         }
 
         if (version != CURRENT_SCHEMA_VERSION) {
             throw new SQLException("unsupported database schema version: " + version);
+        }
+    }
+
+    private static void setVersion(Connection connection, int version) throws SQLException {
+        try (var statement = connection.createStatement()) {
+            statement.execute("PRAGMA user_version=" + version);
         }
     }
 

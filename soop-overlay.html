@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#000000" />
+  <title>먀로또 · SOOP 자동 발급 오버레이</title>
+  <link rel="preload" as="image" href="./assets/Frame3.png" />
+  <link rel="preload" as="image" href="./assets/Yellow2.png" />
+  <link rel="preload" as="image" href="./assets/Red2.png" />
+  <link rel="preload" as="image" href="./assets/Green2.png" />
+  <link rel="preload" as="image" href="./assets/Blue2.png" />
+  <link rel="preload" as="image" href="./assets/mask.png" />
+  <link rel="stylesheet" href="./soop-overlay.css?v=20260914-1" />
+</head>
+<body>
+  <main class="overlay-root" id="overlayRoot" aria-live="polite">
+    <section class="roulette-scene" id="rouletteScene" aria-label="자동 티켓 룰렛" aria-hidden="true">
+      <div class="donor-banner" id="donorBanner">
+        <span class="donor-name" id="donorName">후원자</span>
+        <span class="donor-message">님의 티켓을 추첨합니다</span>
+      </div>
+
+      <div class="character-stage" id="characterStage">
+        <div class="mouth-reels" id="mouthReels" aria-hidden="true">
+          <div class="reel" data-reel="0"><span>01</span></div>
+          <div class="reel" data-reel="1"><span>02</span></div>
+          <div class="reel" data-reel="2"><span>03</span></div>
+          <div class="reel" data-reel="3"><span>04</span></div>
+          <div class="reel" data-reel="4"><span>05</span></div>
+          <div class="reel" data-reel="5"><span>06</span></div>
+          <div class="reel" data-reel="6"><span>07</span></div>
+        </div>
+
+        <img
+          class="character-image"
+          src="./assets/Frame3.png"
+          alt="먀로또 룰렛 프레임"
+          loading="eager"
+          decoding="async"
+          draggable="false"
+        />
+      </div>
+
+      <div class="roulette-progress" id="rouletteProgress">티켓 번호 추첨 중</div>
+    </section>
+
+    <section class="ticket-scene" id="ticketScene" aria-label="발급된 티켓" aria-hidden="true">
+      <div class="ticket-heading">
+        <strong id="ticketOwner">후원자</strong>
+        <span>티켓 발급 완료</span>
+      </div>
+      <img class="ticket-preview" id="ticketPreview" alt="발급된 티켓 이미지" />
+      <div class="ticket-numbers" id="ticketNumbers"></div>
+      <div class="ticket-id" id="ticketId"></div>
+    </section>
+
+    <section class="debug-panel" id="debugPanel" hidden>
+      <button type="button" id="testIssueButton">테스트 티켓 발급</button>
+      <span id="debugStatus">대기 중</span>
+    </section>
+  </main>
+
+  <script src="./soop-overlay.js?v=20260914-1" defer></script>
+</body>
+</html>

@@ -9,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
-import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -262,12 +261,20 @@ public final class TicketArchiveService {
     }
 
     private static String sanitize(String value, int maxLength) {
-        String safe = value == null ? "" : value.trim()
-            .replaceAll("[<>:\\"/\\\\|?*\\x00-\\x1F]", "_")
-            .replaceAll("[. ]+$", "")
-            .replaceAll("_+", "_");
-        if (safe.isBlank()) safe = "unknown";
-        return safe.length() <= maxLength ? safe : safe.substring(0, maxLength);
+        String source = value == null ? "" : value.trim();
+        var safe = new StringBuilder(Math.min(source.length(), maxLength));
+        for (int index = 0; index < source.length() && safe.length() < maxLength; index++) {
+            char ch = source.charAt(index);
+            boolean forbidden = ch < 0x20
+                || ch == '<' || ch == '>' || ch == ':' || ch == '"'
+                || ch == '/' || ch == '\\' || ch == '|' || ch == '?' || ch == '*';
+            safe.append(forbidden ? '_' : ch);
+        }
+        while (!safe.isEmpty() && (safe.charAt(safe.length() - 1) == '.' || safe.charAt(safe.length() - 1) == ' ')) {
+            safe.setLength(safe.length() - 1);
+        }
+        if (safe.isEmpty()) return "unknown";
+        return safe.toString();
     }
 
     private static String hash8(String value) {

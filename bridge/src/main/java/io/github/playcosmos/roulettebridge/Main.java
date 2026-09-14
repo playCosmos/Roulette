@@ -7,6 +7,7 @@ import io.github.playcosmos.roulettebridge.issuance.DonationIssuanceEngine;
 import io.github.playcosmos.roulettebridge.issuance.PhaseDProbe;
 import io.github.playcosmos.roulettebridge.operations.AdminOperationsHandler;
 import io.github.playcosmos.roulettebridge.operations.DatabaseBackupService;
+import io.github.playcosmos.roulettebridge.operations.EncodingProbe;
 import io.github.playcosmos.roulettebridge.operations.FileLog;
 import io.github.playcosmos.roulettebridge.operations.ManualAdjustmentService;
 import io.github.playcosmos.roulettebridge.recovery.PhaseFProbe;
@@ -45,6 +46,10 @@ public final class Main {
         }
         if (args.length > 0 && "--phase-f-probe".equals(args[0])) {
             System.exit(PhaseFProbe.run());
+            return;
+        }
+        if (args.length > 0 && "--encoding-probe".equals(args[0])) {
+            System.exit(EncodingProbe.run());
             return;
         }
 

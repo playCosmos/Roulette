@@ -31,6 +31,10 @@ jobs:
         working-directory: bridge
         run: mvn --batch-mode --no-transfer-progress clean package
 
+      - name: Verify phase D issuance
+        working-directory: bridge
+        run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-d-probe
+
       - name: Probe SOOP streamer 20221010
         id: soop_probe
         continue-on-error: true

@@ -4,10 +4,14 @@ on:
   push:
     paths:
       - "bridge/**"
+      - "soop-overlay.html"
+      - "soop-overlay-archive.js"
       - ".github/workflows/bridge-build.yml"
   pull_request:
     paths:
       - "bridge/**"
+      - "soop-overlay.html"
+      - "soop-overlay-archive.js"
       - ".github/workflows/bridge-build.yml"
 
 permissions:
@@ -27,6 +31,9 @@ jobs:
           java-version: "25"
           cache: maven
 
+      - name: Check overlay archive JavaScript
+        run: node --check soop-overlay-archive.js
+
       - name: Build bridge
         working-directory: bridge
         run: mvn --batch-mode --no-transfer-progress clean package
@@ -34,6 +41,10 @@ jobs:
       - name: Verify phase D issuance
         working-directory: bridge
         run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-d-probe
+
+      - name: Verify phase E archive
+        working-directory: bridge
+        run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-e-probe
 
       - name: Probe SOOP streamer 20221010
         id: soop_probe

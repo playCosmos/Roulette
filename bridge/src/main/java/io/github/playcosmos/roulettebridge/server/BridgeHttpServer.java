@@ -2,6 +2,7 @@ package io.github.playcosmos.roulettebridge.server;
 
 import com.google.gson.Gson;
 import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import io.github.playcosmos.roulettebridge.config.BridgeConfig;
 import io.github.playcosmos.roulettebridge.recovery.TicketRecoveryService;
@@ -40,7 +41,8 @@ public final class BridgeHttpServer implements AutoCloseable {
         IntSupplier websocketClientCount,
         Supplier<Map<String, Object>> soopState,
         TicketArchiveService ticketArchive,
-        TicketRecoveryService recovery
+        TicketRecoveryService recovery,
+        HttpHandler adminOperations
     ) throws IOException {
         var host = config.server().host();
         var port = config.server().port();
@@ -57,12 +59,14 @@ public final class BridgeHttpServer implements AutoCloseable {
 
         server.createContext("/api/state", exchange -> {
             var payload = new LinkedHashMap<String, Object>();
-            payload.put("version", "0.4.0");
+            payload.put("version", "0.5.0");
             payload.put("streamerId", config.streamerId());
             payload.put("pendingTickets", pendingTicketCount.getAsInt());
             payload.put("websocketClients", websocketClientCount.getAsInt());
             payload.put("database", databasePath.toString());
             payload.put("ticketRoot", ticketArchive.ticketRoot().toString());
+            payload.put("backupRoot", workingDirectory.resolve(config.storage().backupDirectory()).normalize().toString());
+            payload.put("logRoot", workingDirectory.resolve(config.storage().logDirectory()).normalize().toString());
             payload.put("webRoot", webRoot.toString());
             payload.put("websocketUrl", "ws://" + host + ":" + config.server().websocketPort());
             payload.put("soop", soopState.get());
@@ -70,6 +74,7 @@ public final class BridgeHttpServer implements AutoCloseable {
         });
 
         server.createContext(TICKET_API_PREFIX, this::handleTicketApi);
+        server.createContext("/api/admin", adminOperations);
         server.createContext("/", this::serveStatic);
     }
 
@@ -135,7 +140,7 @@ public final class BridgeHttpServer implements AutoCloseable {
                     return;
                 }
             } catch (NumberFormatException ignored) {
-                // Chunked/invalid Content-Length is handled by the bounded read below.
+                // bounded read below handles invalid or chunked content lengths.
             }
         }
 

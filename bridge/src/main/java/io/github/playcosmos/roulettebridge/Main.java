@@ -10,6 +10,7 @@ import io.github.playcosmos.roulettebridge.server.OverlayWebSocketServer;
 import io.github.playcosmos.roulettebridge.soop.SoopBridgeAdapter;
 import io.github.playcosmos.roulettebridge.soop.SoopProbe;
 import io.github.playcosmos.roulettebridge.soop.SoopRuntimeState;
+import io.github.playcosmos.roulettebridge.storage.TicketArchiveService;
 import java.awt.Desktop;
 import java.net.URI;
 import java.nio.file.Path;
@@ -55,6 +56,12 @@ public final class Main {
         var websocket = new OverlayWebSocketServer(config.server().host(), config.server().websocketPort());
         websocket.start();
 
+        var archive = new TicketArchiveService(
+            database,
+            workingDirectory.resolve(config.storage().ticketDirectory()),
+            pendingTicketCount::addAndGet
+        );
+
         var issuance = new DonationIssuanceEngine(
             database,
             config.ticket(),
@@ -89,7 +96,8 @@ public final class Main {
             database.path(),
             pendingTicketCount::get,
             websocket::connectedClients,
-            soopState::snapshot
+            soopState::snapshot,
+            archive
         );
         http.start();
         soop.start();

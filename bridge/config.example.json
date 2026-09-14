@@ -1,0 +1,19 @@
+{
+  "streamerId": "STREAMER_ID",
+  "ticket": {
+    "balloonsPerTicket": 50,
+    "numberMax": 28,
+    "numberCount": 7
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 17820,
+    "websocketPort": 17821,
+    "openBrowserOnStart": false
+  },
+  "storage": {
+    "databasePath": "./data/roulette.db",
+    "ticketDirectory": "./tickets",
+    "webRoot": "./web"
+  }
+}

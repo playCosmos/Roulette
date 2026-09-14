@@ -1,0 +1,62 @@
+package io.github.playcosmos.roulettebridge.config;
+
+public record BridgeConfig(
+    String streamerId,
+    Ticket ticket,
+    Server server,
+    Storage storage
+) {
+    public static BridgeConfig defaults() {
+        return new BridgeConfig(
+            "STREAMER_ID",
+            new Ticket(50, 28, 7),
+            new Server("127.0.0.1", 17820, 17821, false),
+            new Storage("./data/roulette.db", "./tickets", "./web")
+        );
+    }
+
+    public BridgeConfig normalized() {
+        var d = defaults();
+        var normalizedTicket = ticket == null ? d.ticket : ticket.normalized();
+        var normalizedServer = server == null ? d.server : server.normalized();
+        var normalizedStorage = storage == null ? d.storage : storage.normalized();
+        var normalizedStreamerId = streamerId == null || streamerId.isBlank()
+            ? d.streamerId
+            : streamerId.trim();
+        return new BridgeConfig(normalizedStreamerId, normalizedTicket, normalizedServer, normalizedStorage);
+    }
+
+    public record Ticket(int balloonsPerTicket, int numberMax, int numberCount) {
+        Ticket normalized() {
+            int threshold = balloonsPerTicket > 0 ? balloonsPerTicket : 50;
+            int max = numberMax > 0 ? numberMax : 28;
+            int count = numberCount > 0 && numberCount <= max ? numberCount : 7;
+            return new Ticket(threshold, max, count);
+        }
+    }
+
+    public record Server(String host, int port, int websocketPort, boolean openBrowserOnStart) {
+        Server normalized() {
+            String normalizedHost = host == null || host.isBlank() ? "127.0.0.1" : host.trim();
+            int normalizedPort = port > 0 && port <= 65535 ? port : 17820;
+            int normalizedWsPort = websocketPort > 0 && websocketPort <= 65535
+                ? websocketPort
+                : normalizedPort + 1;
+            return new Server(normalizedHost, normalizedPort, normalizedWsPort, openBrowserOnStart);
+        }
+    }
+
+    public record Storage(String databasePath, String ticketDirectory, String webRoot) {
+        Storage normalized() {
+            return new Storage(
+                valueOrDefault(databasePath, "./data/roulette.db"),
+                valueOrDefault(ticketDirectory, "./tickets"),
+                valueOrDefault(webRoot, "./web")
+            );
+        }
+
+        private static String valueOrDefault(String value, String fallback) {
+            return value == null || value.isBlank() ? fallback : value.trim();
+        }
+    }
+}

@@ -1,0 +1,6 @@
+target/
+config.json
+data/
+tickets/
+logs/
+web/

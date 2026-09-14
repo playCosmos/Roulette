@@ -46,30 +46,53 @@ public final class TicketArchiveService {
     public synchronized SaveResult savePng(String ticketId, byte[] pngBytes) throws SQLException, IOException {
         validatePng(pngBytes);
         var ticket = loadTicket(ticketId);
-        var donorDirectory = ticketRoot.resolve(folderName(ticket.nickname(), ticket.donorId())).normalize();
-        if (!donorDirectory.startsWith(ticketRoot)) {
-            throw new IOException("ticket directory escaped configured root");
-        }
+        var donorDirectory = directoryFor(ticket.nickname(), ticket.donorId());
         Files.createDirectories(donorDirectory);
 
         String fileName = fileName(ticket);
         Path imagePath = donorDirectory.resolve(fileName).normalize();
         writeAtomically(imagePath, pngBytes);
 
-        String relativeImagePath = ticketRoot.relativize(imagePath).toString().replace('\\', '/');
+        String relativeImagePath = relative(imagePath);
         boolean issuedNow = finalizeTicket(ticket.ticketId(), relativeImagePath);
         if (issuedNow) pendingTicketDelta.accept(-1);
 
         Path manifestPath = donorDirectory.resolve("issued.json");
-        writeManifest(ticket.donorId(), manifestPath);
+        writeManifest(ticket.donorId(), ticket.nickname(), manifestPath);
 
         return new SaveResult(
             ticket.ticketId(),
             relativeImagePath,
-            ticketRoot.relativize(manifestPath).toString().replace('\\', '/'),
+            relative(manifestPath),
             issuedNow,
             "ISSUED"
         );
+    }
+
+    public synchronized int rebuildAllManifests() throws SQLException, IOException {
+        var groups = new ArrayList<ManifestGroup>();
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 SELECT DISTINCT donor_id, nickname_at_issue
+                 FROM ticket
+                 WHERE status = 'ISSUED'
+                 ORDER BY donor_id, nickname_at_issue
+                 """);
+             var rows = statement.executeQuery()) {
+            while (rows.next()) {
+                groups.add(new ManifestGroup(
+                    rows.getString("donor_id"),
+                    rows.getString("nickname_at_issue")
+                ));
+            }
+        }
+
+        for (var group : groups) {
+            Path directory = directoryFor(group.nickname(), group.donorId());
+            Files.createDirectories(directory);
+            writeManifest(group.donorId(), group.nickname(), directory.resolve("issued.json"));
+        }
+        return groups.size();
     }
 
     private TicketRecord loadTicket(String ticketId) throws SQLException {
@@ -180,11 +203,12 @@ public final class TicketArchiveService {
         }
     }
 
-    private void writeManifest(String donorId, Path manifestPath) throws SQLException, IOException {
+    private void writeManifest(String donorId, String nicknameAtIssue, Path manifestPath)
+        throws SQLException, IOException {
         var tickets = new ArrayList<ManifestTicket>();
-        String nickname = "";
+        String currentNickname = "";
         long totalBalloons = 0;
-        int issuedTicketCount = 0;
+        int totalIssuedTicketCount = 0;
 
         try (var connection = database.open()) {
             try (var donor = connection.prepareStatement("""
@@ -194,9 +218,9 @@ public final class TicketArchiveService {
                 donor.setString(1, donorId);
                 try (var rows = donor.executeQuery()) {
                     if (rows.next()) {
-                        nickname = rows.getString("current_nickname");
+                        currentNickname = rows.getString("current_nickname");
                         totalBalloons = rows.getLong("total_balloons");
-                        issuedTicketCount = rows.getInt("issued_ticket_count");
+                        totalIssuedTicketCount = rows.getInt("issued_ticket_count");
                     }
                 }
             }
@@ -204,10 +228,11 @@ public final class TicketArchiveService {
             try (var statement = connection.prepareStatement("""
                 SELECT ticket_id, nickname_at_issue, ticket_sequence, numbers_json, image_path, issued_at
                 FROM ticket
-                WHERE donor_id = ? AND status = 'ISSUED'
+                WHERE donor_id = ? AND nickname_at_issue = ? AND status = 'ISSUED'
                 ORDER BY ticket_sequence ASC
                 """)) {
                 statement.setString(1, donorId);
+                statement.setString(2, nicknameAtIssue);
                 try (var rows = statement.executeQuery()) {
                     while (rows.next()) {
                         String image = rows.getString("image_path");
@@ -227,13 +252,27 @@ public final class TicketArchiveService {
 
         var manifest = new DonorManifest(
             donorId,
-            nickname,
+            nicknameAtIssue,
+            currentNickname,
             totalBalloons,
-            issuedTicketCount,
+            tickets.size(),
+            totalIssuedTicketCount,
             Instant.now().toString(),
             List.copyOf(tickets)
         );
         writeAtomically(manifestPath, GSON.toJson(manifest).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private Path directoryFor(String nickname, String donorId) throws IOException {
+        Path directory = ticketRoot.resolve(folderName(nickname, donorId)).normalize();
+        if (!directory.startsWith(ticketRoot)) {
+            throw new IOException("ticket directory escaped configured root");
+        }
+        return directory;
+    }
+
+    private String relative(Path path) {
+        return ticketRoot.relativize(path).toString().replace('\\', '/');
     }
 
     private static List<Integer> parseNumbers(String json) {
@@ -333,6 +372,8 @@ public final class TicketArchiveService {
         String issuedAt
     ) {}
 
+    private record ManifestGroup(String donorId, String nickname) {}
+
     private record ManifestTicket(
         int ticketNumber,
         String ticketId,
@@ -344,9 +385,11 @@ public final class TicketArchiveService {
 
     private record DonorManifest(
         String donorId,
+        String nickname,
         String currentNickname,
         long totalBalloons,
-        int issuedTicketCount,
+        int nicknameIssuedTicketCount,
+        int totalIssuedTicketCount,
         String updatedAt,
         List<ManifestTicket> tickets
     ) {}

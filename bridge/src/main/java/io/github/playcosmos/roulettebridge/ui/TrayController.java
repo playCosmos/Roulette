@@ -16,6 +16,7 @@ import java.net.URI;
 import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 public final class TrayController implements AutoCloseable {
@@ -23,20 +24,26 @@ public final class TrayController implements AutoCloseable {
     private final String overlayUrl;
     private final Supplier<String> statusSupplier;
     private final Runnable reconnectAction;
+    private final Runnable exitAction;
+    private final AtomicBoolean exitRequested = new AtomicBoolean(false);
     private final Timer refreshTimer = new Timer("tray-status", true);
     private final TrayIcon trayIcon;
     private final MenuItem statusItem;
+    private final MenuItem reconnectItem;
+    private final MenuItem exitItem;
 
     private TrayController(
         String adminUrl,
         String overlayUrl,
         Supplier<String> statusSupplier,
-        Runnable reconnectAction
+        Runnable reconnectAction,
+        Runnable exitAction
     ) throws AWTException {
         this.adminUrl = Objects.requireNonNull(adminUrl, "adminUrl");
         this.overlayUrl = Objects.requireNonNull(overlayUrl, "overlayUrl");
         this.statusSupplier = Objects.requireNonNull(statusSupplier, "statusSupplier");
         this.reconnectAction = Objects.requireNonNull(reconnectAction, "reconnectAction");
+        this.exitAction = Objects.requireNonNull(exitAction, "exitAction");
 
         var popup = new PopupMenu();
         statusItem = new MenuItem("상태: 확인 중");
@@ -52,23 +59,28 @@ public final class TrayController implements AutoCloseable {
         openOverlay.addActionListener(event -> open(overlayUrl));
         popup.add(openOverlay);
 
-        var reconnect = new MenuItem("SOOP 재연결");
-        reconnect.addActionListener(event -> reconnectAction.run());
-        popup.add(reconnect);
+        reconnectItem = new MenuItem("SOOP 재연결");
+        reconnectItem.addActionListener(event -> {
+            if (!exitRequested.get()) reconnectAction.run();
+        });
+        popup.add(reconnectItem);
 
         popup.addSeparator();
-        var exit = new MenuItem("종료");
-        exit.addActionListener(event -> System.exit(0));
-        popup.add(exit);
+        exitItem = new MenuItem("종료");
+        exitItem.addActionListener(event -> requestExit());
+        popup.add(exitItem);
 
         trayIcon = new TrayIcon(createIcon(), "RouletteBridge", popup);
         trayIcon.setImageAutoSize(true);
-        trayIcon.addActionListener(event -> open(adminUrl));
+        trayIcon.addActionListener(event -> {
+            if (!exitRequested.get()) open(adminUrl);
+        });
         SystemTray.getSystemTray().add(trayIcon);
 
         refreshTimer.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {
+                if (exitRequested.get()) return;
                 String status = statusSupplier.get();
                 EventQueue.invokeLater(() -> updateStatus(status));
             }
@@ -79,14 +91,21 @@ public final class TrayController implements AutoCloseable {
         String adminUrl,
         String overlayUrl,
         Supplier<String> statusSupplier,
-        Runnable reconnectAction
+        Runnable reconnectAction,
+        Runnable exitAction
     ) {
         if (!SystemTray.isSupported()) {
             System.err.println("[tray] system tray is not supported");
             return null;
         }
         try {
-            var controller = new TrayController(adminUrl, overlayUrl, statusSupplier, reconnectAction);
+            var controller = new TrayController(
+                adminUrl,
+                overlayUrl,
+                statusSupplier,
+                reconnectAction,
+                exitAction
+            );
             System.out.println("[tray] installed");
             return controller;
         } catch (Exception error) {
@@ -95,7 +114,20 @@ public final class TrayController implements AutoCloseable {
         }
     }
 
+    private void requestExit() {
+        if (!exitRequested.compareAndSet(false, true)) return;
+        statusItem.setLabel("상태: 종료 중");
+        trayIcon.setToolTip("RouletteBridge · 종료 중");
+        reconnectItem.setEnabled(false);
+        exitItem.setEnabled(false);
+
+        // Never call System.exit() on the AWT tray event thread. Delegate the request and
+        // return immediately so the shutdown coordinator can remove AWT resources safely.
+        Thread.ofPlatform().name("roulette-bridge-tray-exit-request").start(exitAction);
+    }
+
     private void updateStatus(String status) {
+        if (exitRequested.get()) return;
         String label = switch (status == null ? "" : status) {
             case "CONNECTED" -> "연결됨";
             case "PROBING" -> "방송 확인 중";
@@ -145,6 +177,7 @@ public final class TrayController implements AutoCloseable {
 
     @Override
     public void close() {
+        exitRequested.set(true);
         refreshTimer.cancel();
         try {
             SystemTray.getSystemTray().remove(trayIcon);

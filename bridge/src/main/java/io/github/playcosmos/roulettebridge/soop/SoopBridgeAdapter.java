@@ -2,6 +2,8 @@ package io.github.playcosmos.roulettebridge.soop;
 
 import com.github.getcurrentthread.soopapi.SOOPClient;
 import com.github.getcurrentthread.soopapi.event.ChatEvent;
+import com.github.getcurrentthread.soopapi.event.StreamEventListener;
+import com.github.getcurrentthread.soopapi.event.model.BaseEvent;
 import com.github.getcurrentthread.soopapi.event.model.DisconnectedEvent;
 import com.github.getcurrentthread.soopapi.event.model.JoinChannelEvent;
 import com.github.getcurrentthread.soopapi.event.model.ReconnectedEvent;
@@ -16,6 +18,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public final class SoopBridgeAdapter implements AutoCloseable {
@@ -24,6 +27,7 @@ public final class SoopBridgeAdapter implements AutoCloseable {
     private volatile BridgeConfig config;
     private final SoopRuntimeState state;
     private final Consumer<SoopDonation> donationSink;
+    private final BiConsumer<String, BaseEvent> channelEventSink;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
         Thread.ofVirtual().name("soop-supervisor-", 0).factory()
     );
@@ -37,11 +41,13 @@ public final class SoopBridgeAdapter implements AutoCloseable {
     public SoopBridgeAdapter(
         BridgeConfig config,
         SoopRuntimeState state,
-        Consumer<SoopDonation> donationSink
+        Consumer<SoopDonation> donationSink,
+        BiConsumer<String, BaseEvent> channelEventSink
     ) {
         this.config = Objects.requireNonNull(config, "config").normalized();
         this.state = Objects.requireNonNull(state, "state");
         this.donationSink = Objects.requireNonNull(donationSink, "donationSink");
+        this.channelEventSink = Objects.requireNonNull(channelEventSink, "channelEventSink");
     }
 
     public void start() {
@@ -248,6 +254,18 @@ public final class SoopBridgeAdapter implements AutoCloseable {
     }
 
     private void attachListeners(SOOPClient soop, long listenerGeneration) {
+        StreamEventListener<BaseEvent> eventTap = (bid, event) -> {
+            if (!isCurrent(listenerGeneration)) return;
+            try {
+                channelEventSink.accept(bid, event);
+            } catch (Exception error) {
+                System.err.println("[soop] channel event monitor failed: " + error.getMessage());
+            }
+        };
+        for (ChatEvent eventType : ChatEvent.values()) {
+            soop.on(eventType, eventTap);
+        }
+
         soop.on(ChatEvent.JOIN_CHANNEL, (String bid, JoinChannelEvent event) -> {
             if (!isCurrent(listenerGeneration)) return;
             forcedReconnectInFlight.set(false);

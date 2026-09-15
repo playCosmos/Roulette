@@ -7,7 +7,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; background: #0b0d10; color: #f4f6f8; }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: default; opacity: .55; }
 
@@ -47,8 +47,10 @@ p { margin: 0; }
 
 button { border: 1px solid #343a43; border-radius: 9px; background: #20252c; color: #f4f6f8; padding: 10px 14px; font-weight: 750; }
 button:hover:not(:disabled) { background: #292f38; }
-input { width: 100%; min-width: 0; border: 1px solid #343a43; border-radius: 9px; background: #0d1014; color: #f4f6f8; padding: 10px 11px; outline: none; }
-input:focus { border-color: #697789; }
+input,
+select { width: 100%; min-width: 0; border: 1px solid #343a43; border-radius: 9px; background: #0d1014; color: #f4f6f8; padding: 10px 11px; outline: none; }
+input:focus,
+select:focus { border-color: #697789; }
 input[readonly] { color: #c9d1dc; background: #0a0d11; }
 .action-row input { width: 180px; }
 .adjust-form label { flex: 1 1 180px; color: #a5adb8; font-size: 12px; font-weight: 700; }
@@ -60,7 +62,8 @@ input[readonly] { color: #c9d1dc; background: #0a0d11; }
 .config-form fieldset { margin: 0; padding: 14px; border: 1px solid #282e36; border-radius: 11px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .config-form legend { padding: 0 7px; color: #c7ced8; font-size: 13px; font-weight: 800; }
 .config-form label { color: #a5adb8; font-size: 12px; font-weight: 700; }
-.config-form label input { display: block; margin-top: 6px; }
+.config-form label input,
+.config-form label select { display: block; margin-top: 6px; }
 .config-form .wide { grid-column: span 2; }
 .config-form .check-label { display: flex; align-items: center; gap: 8px; min-height: 40px; padding-top: 17px; }
 .config-form .check-label input { width: auto; margin: 0; accent-color: currentColor; }

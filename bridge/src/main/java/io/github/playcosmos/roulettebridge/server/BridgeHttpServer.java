@@ -19,6 +19,7 @@ import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
@@ -32,6 +33,7 @@ public final class BridgeHttpServer implements AutoCloseable {
     private final Path webRoot;
     private final TicketArchiveService ticketArchive;
     private final TicketRecoveryService recovery;
+    private final String instanceId = UUID.randomUUID().toString();
 
     public BridgeHttpServer(
         BridgeConfig config,
@@ -52,14 +54,25 @@ public final class BridgeHttpServer implements AutoCloseable {
         this.server = HttpServer.create(new InetSocketAddress(host, port), 0);
         this.server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
 
-        server.createContext("/health", exchange -> sendJson(exchange, 200, Map.of(
-            "status", "ok",
-            "time", OffsetDateTime.now().toString()
-        )));
+        server.createContext("/health", exchange -> {
+            exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+            exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, OPTIONS");
+            if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                exchange.sendResponseHeaders(204, -1);
+                exchange.close();
+                return;
+            }
+            sendJson(exchange, 200, Map.of(
+                "status", "ok",
+                "instanceId", instanceId,
+                "time", OffsetDateTime.now().toString()
+            ));
+        });
 
         server.createContext("/api/state", exchange -> {
             var payload = new LinkedHashMap<String, Object>();
-            payload.put("version", "0.5.0");
+            payload.put("version", "0.6.0");
+            payload.put("instanceId", instanceId);
             payload.put("streamerId", config.streamerId());
             payload.put("pendingTickets", pendingTicketCount.getAsInt());
             payload.put("websocketClients", websocketClientCount.getAsInt());

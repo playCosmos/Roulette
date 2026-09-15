@@ -15,6 +15,9 @@ on:
       - "soop-admin.html"
       - "soop-admin.css"
       - "soop-admin.js"
+      - "soop-channel.html"
+      - "soop-channel.css"
+      - "soop-channel.js"
       - ".github/workflows/windows-package.yml"
 
 permissions:
@@ -38,6 +41,8 @@ jobs:
         shell: pwsh
         run: |
           node --check soop-admin.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check soop-channel.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --check soop-overlay-connection.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -66,7 +71,7 @@ jobs:
       - name: Build Windows portable app
         working-directory: bridge
         shell: pwsh
-        run: ./package-windows.ps1 -Version 0.1.6 -SkipBuild
+        run: ./package-windows.ps1 -Version 0.1.8 -SkipBuild
 
       - name: Verify packaged executable and config
         working-directory: bridge
@@ -83,8 +88,12 @@ jobs:
           $configJson = Get-Content $config -Raw | ConvertFrom-Json
           if (-not [string]::IsNullOrWhiteSpace([string]$configJson.streamerId)) { throw "distribution streamerId must be empty" }
           @(
+            "web/soop-admin.html",
             "web/soop-admin.js",
             "web/soop-admin.css",
+            "web/soop-channel.html",
+            "web/soop-channel.js",
+            "web/soop-channel.css",
             "web/soop-overlay-connection.js",
             "web/soop-overlay.js",
             "web/soop-overlay-archive.js"
@@ -103,7 +112,7 @@ jobs:
       - name: Upload Windows portable package
         uses: actions/upload-artifact@v4
         with:
-          name: RouletteBridge-Windows-x64-v0.1.6
+          name: RouletteBridge-Windows-x64-v0.1.8
           path: bridge/dist/RouletteBridge/**
           if-no-files-found: error
           retention-days: 30

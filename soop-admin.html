@@ -121,7 +121,9 @@
     <section class="panel donor-panel">
       <div class="panel-heading">
         <div><h2>후원자 누적</h2><p>최대 500명, 최근 갱신 순입니다.</p></div>
+        <button type="button" id="openTicketsFolderButton">티켓 폴더 열기</button>
       </div>
+      <p class="operation-result" id="ticketsFolderResult">현재 설정된 티켓 저장 폴더를 Windows 탐색기로 엽니다.</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>닉네임</th><th>SOOP ID</th><th>누적</th><th>할당</th><th>발급완료</th><th>잔여</th></tr></thead>
@@ -137,6 +139,38 @@
       const configForm = document.getElementById("configForm");
       const heading = setupPanel?.querySelector(".panel-heading");
       const soopStatus = document.getElementById("soopStatus");
+      const openTicketsFolderButton = document.getElementById("openTicketsFolderButton");
+      const ticketsFolderResult = document.getElementById("ticketsFolderResult");
+
+      if (openTicketsFolderButton && ticketsFolderResult) {
+        openTicketsFolderButton.addEventListener("click", async () => {
+          openTicketsFolderButton.disabled = true;
+          ticketsFolderResult.textContent = "티켓 폴더를 여는 중…";
+          ticketsFolderResult.className = "operation-result working";
+          try {
+            const response = await fetch("/api/admin/tickets/open-folder", {
+              method: "POST",
+              cache: "no-store",
+              headers: { "Accept": "application/json" }
+            });
+            const text = await response.text();
+            let payload = {};
+            if (text) {
+              try { payload = JSON.parse(text); }
+              catch { payload = { error: text }; }
+            }
+            if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
+            ticketsFolderResult.textContent = `티켓 폴더를 열었습니다: ${payload.path || ""}`;
+            ticketsFolderResult.className = "operation-result success";
+          } catch (error) {
+            ticketsFolderResult.textContent = `티켓 폴더 열기 실패: ${error.message}`;
+            ticketsFolderResult.className = "operation-result error-text";
+          } finally {
+            openTicketsFolderButton.disabled = false;
+          }
+        });
+      }
+
       if (!setupPanel || !configForm || !heading || !soopStatus) return;
 
       const toggle = document.createElement("button");

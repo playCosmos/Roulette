@@ -51,7 +51,7 @@ public final class RestartService {
 
         Thread.ofPlatform().name("roulette-bridge-restart-exit").start(() -> {
             try {
-                Thread.sleep(650);
+                Thread.sleep(1500);
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }

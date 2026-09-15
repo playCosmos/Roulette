@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark" />
   <title>먀로또 · SOOP 브리지 관리</title>
-  <link rel="stylesheet" href="./soop-admin.css?v=20260915-3" />
+  <link rel="stylesheet" href="./soop-admin.css?v=20260915-4" />
 </head>
 <body>
   <main class="admin-shell">
@@ -28,7 +28,7 @@
       <div class="panel-heading">
         <div>
           <h2>브리지 설정</h2>
-          <p>설정은 배포 폴더의 config.json에 저장됩니다. 스트리머와 SOOP 연결 설정은 저장 즉시 적용됩니다.</p>
+          <p>설정은 config.json에 저장됩니다. 재실행이 필요한 항목도 저장 후 브리지가 자동으로 재시작하므로 EXE를 다시 실행할 필요가 없습니다.</p>
         </div>
       </div>
       <form class="config-form" id="configForm">
@@ -74,7 +74,7 @@
       <div class="panel-heading">
         <div>
           <h2>OBS 오버레이 주소</h2>
-          <p>OBS의 브라우저 소스 URL에 아래 주소를 그대로 입력합니다.</p>
+          <p>OBS의 브라우저 소스 URL에 아래 주소를 그대로 입력합니다. 브리지 재시작 중에도 열려 있는 오버레이는 자동 재연결합니다.</p>
         </div>
       </div>
       <div class="copy-row">
@@ -100,15 +100,19 @@
 
     <section class="panel">
       <div class="panel-heading">
-        <div><h2>수동 누적 보정</h2><p>모든 보정은 감사 이력에 남습니다. 이미 할당한 티켓 권리를 취소하는 음수 보정은 거부됩니다.</p></div>
+        <div>
+          <h2>수동 누적 보정</h2>
+          <p>SOOP 사용자 ID 또는 현재 닉네임 중 하나만 입력해도 기존 DB에서 먼저 찾고, 신규 값이면 별도 SOOP 직접 조회 경로로 확인합니다.</p>
+        </div>
       </div>
       <form class="adjust-form" id="adjustForm">
-        <label>SOOP 사용자 ID<input name="donorId" required maxlength="120" /></label>
-        <label>현재 닉네임<input name="nickname" required maxlength="80" /></label>
+        <label>SOOP 사용자 ID<input name="donorId" maxlength="120" autocomplete="off" placeholder="ID 또는 닉네임 중 하나만 입력 가능" /></label>
+        <label>현재 닉네임<input name="nickname" maxlength="80" autocomplete="off" placeholder="자동으로 상대 값을 채웁니다" /></label>
         <label>별풍선 증감<input name="balloonDelta" type="number" required step="1" /></label>
         <label class="reason">사유<input name="reason" required maxlength="500" /></label>
         <button type="submit">보정 적용</button>
       </form>
+      <p class="operation-result" id="adjustLookupResult">ID 또는 닉네임을 입력하면 자동으로 사용자를 확인합니다.</p>
     </section>
 
     <section class="panel donor-panel">
@@ -123,6 +127,6 @@
       </div>
     </section>
   </main>
-  <script src="./soop-admin.js?v=20260915-3" defer></script>
+  <script src="./soop-admin.js?v=20260915-4" defer></script>
 </body>
 </html>

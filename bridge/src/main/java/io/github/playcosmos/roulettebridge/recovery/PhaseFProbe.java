@@ -29,10 +29,17 @@ public final class PhaseFProbe {
             root = Files.createTempDirectory("roulette-phase-f-");
             var database = new BridgeDatabase(root.resolve("data/roulette.db"));
             database.initialize();
-            var ticketConfig = new BridgeConfig.Ticket(50, 28, 7);
+            var singleDonationConfig = new BridgeConfig.Ticket(50, 28, 7);
+            var cumulativeConfig = new BridgeConfig.Ticket(
+                50,
+                28,
+                7,
+                BridgeConfig.Ticket.MODE_CUMULATIVE
+            );
 
-            verifyRecovery(database, root, ticketConfig);
-            verifyOperations(database, root, ticketConfig);
+            verifyRecovery(database, root, singleDonationConfig);
+            verifySingleDonationAdjustments(database, singleDonationConfig);
+            verifyOperations(database, root, cumulativeConfig);
             verifyFileLog(root);
 
             System.out.println("[phase-f] PASS");
@@ -114,6 +121,29 @@ public final class PhaseFProbe {
         System.out.println("[phase-f] FAILED ticket excluded=" + created.get(1).ticketId());
     }
 
+    private static void verifySingleDonationAdjustments(
+        BridgeDatabase database,
+        BridgeConfig.Ticket ticketConfig
+    ) throws Exception {
+        var pending = new AtomicInteger();
+        var emitted = new ArrayList<TicketIssueEvent>();
+        var adjustment = new ManualAdjustmentService(
+            database,
+            ticketConfig,
+            emitted::add,
+            pending::addAndGet
+        );
+
+        var plus55 = adjustment.adjust("phase-f-count-only", "카운트전용", 55, "single mode count-only +55");
+        require(plus55.totalBalloons() == 55, "single adjustment +55 total mismatch");
+        require(plus55.newTickets().isEmpty(), "single mode manual adjustment must not allocate tickets");
+        require(plus55.remainderBalloons() == 55, "single mode manual adjustment must remain count-only");
+        require(emitted.isEmpty(), "single mode manual adjustment must not emit overlay tickets");
+        require(pending.get() == 0, "single mode manual adjustment must not increase pending tickets");
+
+        System.out.println("[phase-f] single_donation manual adjustment countOnly=55");
+    }
+
     private static void verifyOperations(
         BridgeDatabase database,
         Path root,
@@ -135,7 +165,7 @@ public final class PhaseFProbe {
 
         var plus55 = adjustment.adjust("phase-f-ops", "첫닉", 55, "probe +55");
         require(plus55.totalBalloons() == 55, "manual +55 total mismatch");
-        require(plus55.newTickets().size() == 1, "manual +55 must allocate one ticket");
+        require(plus55.newTickets().size() == 1, "cumulative manual +55 must allocate one ticket");
         var firstTicket = plus55.newTickets().getFirst();
         var firstSave = archive.savePng(firstTicket.ticketId(), ONE_PIXEL_PNG);
 
@@ -191,7 +221,7 @@ public final class PhaseFProbe {
             }
         }
 
-        System.out.println("[phase-f] operations backup=" + backupPath.getFileName());
+        System.out.println("[phase-f] cumulative operations backup=" + backupPath.getFileName());
         System.out.println("[phase-f] nickname manifests separated and rebuilt");
     }
 

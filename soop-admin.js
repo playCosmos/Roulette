@@ -15,6 +15,12 @@
   const testTicketButton = $("testTicketButton");
   const testNickname = $("testNickname");
   const adjustForm = $("adjustForm");
+  const configForm = $("configForm");
+  const saveConfigButton = $("saveConfigButton");
+  const configResult = $("configResult");
+  const overlayUrlInput = $("overlayUrlInput");
+  const copyOverlayButton = $("copyOverlayButton");
+  const copyResult = $("copyResult");
 
   let refreshTimer = null;
   let refreshing = false;
@@ -33,6 +39,12 @@
     DISABLED: ["비활성", "waiting"],
     STOPPED: ["중지됨", "waiting"],
     IDLE: ["대기 중", "waiting"]
+  };
+
+  const RESTART_LABELS = {
+    ticket: "티켓 규칙",
+    server: "로컬 서버",
+    storage: "저장 경로"
   };
 
   async function fetchJson(url, options) {
@@ -58,12 +70,22 @@
     operationResult.className = `operation-result${tone ? ` ${tone}` : ""}`;
   }
 
+  function showConfig(text, tone = "") {
+    configResult.textContent = text;
+    configResult.className = `operation-result${tone ? ` ${tone}` : ""}`;
+  }
+
   function setConnection(status, error) {
     const [label, tone] = STATUS[status] || [status || "상태 확인 불가", "waiting"];
     connectionBadge.textContent = label;
     connectionBadge.className = `connection ${tone}`;
     soopStatus.textContent = label;
     soopStatus.title = error || "";
+  }
+
+  function updateOverlayUrl(state) {
+    const ws = state.websocketUrl || `ws://${location.hostname}:17821`;
+    overlayUrlInput.value = `${location.origin}/soop-overlay.html?ws=${ws}`;
   }
 
   function updateTestTicketAvailability() {
@@ -80,11 +102,95 @@
   function renderState(state) {
     const soop = state.soop || {};
     setConnection(soop.status, soop.lastError);
-    streamerId.textContent = state.streamerId || soop.streamerId || "미설정";
+    streamerId.textContent = soop.streamerId || state.streamerId || "미설정";
     pendingTickets.textContent = String(state.pendingTickets ?? 0);
     overlayClientCount = Number(state.websocketClients ?? 0);
     overlayClients.textContent = String(overlayClientCount);
     updateTestTicketAvailability();
+    updateOverlayUrl(state);
+  }
+
+  function formElement(name) {
+    return configForm.elements.namedItem(name);
+  }
+
+  function fillConfig(config) {
+    const ticket = config.ticket || {};
+    const server = config.server || {};
+    const storage = config.storage || {};
+    const soop = config.soop || {};
+    formElement("streamerId").value = config.streamerId || "";
+    formElement("soopEnabled").checked = soop.enabled !== false;
+    formElement("offlinePollSeconds").value = soop.offlinePollSeconds ?? 30;
+    formElement("balloonsPerTicket").value = ticket.balloonsPerTicket ?? 50;
+    formElement("numberMax").value = ticket.numberMax ?? 28;
+    formElement("numberCount").value = ticket.numberCount ?? 7;
+    formElement("host").value = server.host || "127.0.0.1";
+    formElement("port").value = server.port ?? 17820;
+    formElement("websocketPort").value = server.websocketPort ?? 17821;
+    formElement("openBrowserOnStart").checked = server.openBrowserOnStart === true;
+    formElement("databasePath").value = storage.databasePath || "./data/roulette.db";
+    formElement("ticketDirectory").value = storage.ticketDirectory || "./tickets";
+    formElement("webRoot").value = storage.webRoot || "./web";
+    formElement("backupDirectory").value = storage.backupDirectory || "./backups";
+    formElement("logDirectory").value = storage.logDirectory || "./logs";
+  }
+
+  function numberValue(name) {
+    return Number(formElement(name).value);
+  }
+
+  function configFromForm() {
+    const numberMax = numberValue("numberMax");
+    const numberCount = numberValue("numberCount");
+    const port = numberValue("port");
+    const websocketPort = numberValue("websocketPort");
+    if (!Number.isInteger(numberMax) || numberMax < 1) throw new Error("최대 번호는 1 이상이어야 합니다.");
+    if (!Number.isInteger(numberCount) || numberCount < 1 || numberCount > numberMax) {
+      throw new Error("선택 번호 개수는 1 이상이며 최대 번호보다 클 수 없습니다.");
+    }
+    if (port === websocketPort) throw new Error("HTTP Port와 WebSocket Port는 서로 달라야 합니다.");
+
+    return {
+      streamerId: formElement("streamerId").value.trim(),
+      ticket: {
+        balloonsPerTicket: numberValue("balloonsPerTicket"),
+        numberMax,
+        numberCount
+      },
+      server: {
+        host: formElement("host").value.trim(),
+        port,
+        websocketPort,
+        openBrowserOnStart: formElement("openBrowserOnStart").checked
+      },
+      storage: {
+        databasePath: formElement("databasePath").value.trim(),
+        ticketDirectory: formElement("ticketDirectory").value.trim(),
+        webRoot: formElement("webRoot").value.trim(),
+        backupDirectory: formElement("backupDirectory").value.trim(),
+        logDirectory: formElement("logDirectory").value.trim()
+      },
+      soop: {
+        enabled: formElement("soopEnabled").checked,
+        offlinePollSeconds: numberValue("offlinePollSeconds")
+      }
+    };
+  }
+
+  async function loadConfig() {
+    try {
+      const payload = await fetchJson("/api/admin/config");
+      fillConfig(payload.config || {});
+      if (payload.requiresRestart) {
+        const labels = (payload.restartFields || []).map((key) => RESTART_LABELS[key] || key).join(", ");
+        showConfig(`저장된 설정 중 ${labels} 변경은 프로그램 재실행 후 적용됩니다.`, "waiting");
+      } else {
+        showConfig("config.json을 불러왔습니다.");
+      }
+    } catch (error) {
+      showConfig(`설정을 불러오지 못했습니다: ${error.message}`, "error-text");
+    }
   }
 
   function cell(text) {
@@ -180,7 +286,56 @@
     }
   }
 
-  refreshButton.addEventListener("click", refresh);
+  configForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    saveConfigButton.disabled = true;
+    showConfig("config.json 저장 중…", "working");
+    try {
+      const requested = configFromForm();
+      const payload = await fetchJson("/api/admin/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requested)
+      });
+      fillConfig(payload.config || requested);
+      if (payload.requiresRestart) {
+        const labels = (payload.restartFields || []).map((key) => RESTART_LABELS[key] || key).join(", ");
+        showConfig(`저장 완료. ${labels} 변경은 프로그램 재실행 후 적용됩니다. 스트리머/SOOP 설정은 즉시 적용됩니다.`, "waiting");
+      } else if (payload.liveApplied) {
+        showConfig("저장 완료. SOOP 연결 설정을 즉시 적용했습니다.", "success");
+      } else {
+        showConfig("config.json 저장 완료.", "success");
+      }
+      await refresh();
+    } catch (error) {
+      showConfig(`저장 실패: ${error.message}`, "error-text");
+    } finally {
+      saveConfigButton.disabled = false;
+    }
+  });
+
+  copyOverlayButton.addEventListener("click", async () => {
+    const value = overlayUrlInput.value;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        overlayUrlInput.focus();
+        overlayUrlInput.select();
+        if (!document.execCommand("copy")) throw new Error("clipboard unavailable");
+      }
+      copyResult.textContent = "오버레이 주소를 복사했습니다. OBS 브라우저 소스 URL에 붙여넣으세요.";
+      copyResult.className = "operation-result success";
+    } catch {
+      copyResult.textContent = "자동 복사에 실패했습니다. 주소 입력란을 선택해 직접 복사하세요.";
+      copyResult.className = "operation-result error-text";
+    }
+  });
+
+  refreshButton.addEventListener("click", () => {
+    refresh();
+    loadConfig();
+  });
   backupButton.addEventListener("click", () => {
     runAction(backupButton, "/api/admin/backup", {}, (p) => `DB 백업 완료: ${p.path}`).catch(() => {});
   });
@@ -212,6 +367,7 @@
     }, "누적 보정을 적용했습니다.").then(() => adjustForm.reset()).catch(() => {});
   });
 
+  loadConfig();
   refresh();
   refreshTimer = window.setInterval(refresh, 3000);
   window.addEventListener("beforeunload", () => {

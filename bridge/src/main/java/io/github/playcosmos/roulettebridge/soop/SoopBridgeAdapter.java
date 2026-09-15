@@ -13,12 +13,15 @@ import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 public final class SoopBridgeAdapter implements AutoCloseable {
-    private final BridgeConfig config;
+    private static final long JOIN_TIMEOUT_SECONDS = 30;
+
+    private volatile BridgeConfig config;
     private final SoopRuntimeState state;
     private final Consumer<SoopDonation> donationSink;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
@@ -34,18 +37,19 @@ public final class SoopBridgeAdapter implements AutoCloseable {
         SoopRuntimeState state,
         Consumer<SoopDonation> donationSink
     ) {
-        this.config = Objects.requireNonNull(config, "config");
+        this.config = Objects.requireNonNull(config, "config").normalized();
         this.state = Objects.requireNonNull(state, "state");
         this.donationSink = Objects.requireNonNull(donationSink, "donationSink");
     }
 
     public void start() {
-        if (!config.soop().enabled()) {
+        var current = config;
+        if (!current.soop().enabled()) {
             state.status("DISABLED");
             System.out.println("[soop] disabled by config");
             return;
         }
-        if (!hasStreamerId()) {
+        if (!hasStreamerId(current)) {
             state.status("WAITING_FOR_STREAMER_ID");
             System.out.println("[soop] streamerId is not configured");
             return;
@@ -53,13 +57,39 @@ public final class SoopBridgeAdapter implements AutoCloseable {
         scheduleProbe(0);
     }
 
+    public void applyConfig(BridgeConfig newConfig) {
+        if (closed.get()) return;
+        var normalized = Objects.requireNonNull(newConfig, "newConfig").normalized();
+        config = normalized;
+        state.streamerId(normalized.streamerId());
+        scheduler.execute(() -> {
+            if (closed.get()) return;
+            generation.incrementAndGet();
+            closeClient();
+            if (!normalized.soop().enabled()) {
+                state.status("DISABLED");
+                System.out.println("[soop] disabled by updated config");
+                return;
+            }
+            if (!hasStreamerId(normalized)) {
+                state.status("WAITING_FOR_STREAMER_ID");
+                System.out.println("[soop] waiting for streamerId after config update");
+                return;
+            }
+            state.status("IDLE");
+            System.out.println("[soop] applying updated connection config");
+            probeAndConnect();
+        });
+    }
+
     public void reconnectNow() {
         if (closed.get()) return;
-        if (!config.soop().enabled()) {
+        var current = config;
+        if (!current.soop().enabled()) {
             state.status("DISABLED");
             return;
         }
-        if (!hasStreamerId()) {
+        if (!hasStreamerId(current)) {
             state.status("WAITING_FOR_STREAMER_ID");
             return;
         }
@@ -74,10 +104,10 @@ public final class SoopBridgeAdapter implements AutoCloseable {
         });
     }
 
-    private boolean hasStreamerId() {
-        return config.streamerId() != null
-            && !config.streamerId().isBlank()
-            && !"STREAMER_ID".equals(config.streamerId());
+    private static boolean hasStreamerId(BridgeConfig value) {
+        return value.streamerId() != null
+            && !value.streamerId().isBlank()
+            && !"STREAMER_ID".equals(value.streamerId());
     }
 
     private void scheduleProbe(long delaySeconds) {
@@ -99,6 +129,17 @@ public final class SoopBridgeAdapter implements AutoCloseable {
     private void probeAndConnect() {
         if (closed.get()) return;
 
+        var activeConfig = config;
+        if (!activeConfig.soop().enabled()) {
+            state.status("DISABLED");
+            return;
+        }
+        if (!hasStreamerId(activeConfig)) {
+            state.status("WAITING_FOR_STREAMER_ID");
+            return;
+        }
+
+        String streamerId = activeConfig.streamerId();
         long currentGeneration = generation.incrementAndGet();
         closeClient();
 
@@ -107,12 +148,13 @@ public final class SoopBridgeAdapter implements AutoCloseable {
         attachListeners(nextClient, currentGeneration);
         state.status("PROBING");
 
-        nextClient.live().detail(config.streamerId()).whenComplete((detail, error) -> {
+        nextClient.live().detail(streamerId).whenComplete((detail, error) -> {
             if (!isCurrent(currentGeneration)) return;
             if (error != null) {
                 state.status("OFFLINE_OR_UNAVAILABLE");
                 state.error(unwrap(error));
                 System.err.println("[soop] live probe failed: " + describe(error));
+                closeClient();
                 scheduleProbe(config.soop().offlinePollSeconds());
                 return;
             }
@@ -121,22 +163,39 @@ public final class SoopBridgeAdapter implements AutoCloseable {
             state.status("CONNECTING");
             System.out.println("[soop] live found: bno=" + detail.bno() + " title=" + detail.title());
 
-            var chat = nextClient.add(config.streamerId());
-            chat.connectToChat().whenComplete((ignored, connectError) -> {
+            try {
+                // SOOPClient.add() starts the asynchronous chat connection itself.
+                nextClient.add(streamerId);
+                scheduleJoinTimeout(currentGeneration);
+            } catch (Exception connectError) {
                 if (!isCurrent(currentGeneration)) return;
-                if (connectError != null) {
-                    state.status("CONNECTION_FAILED");
-                    state.error(unwrap(connectError));
-                    System.err.println("[soop] chat connection failed: " + describe(connectError));
-                    scheduleProbe(config.soop().offlinePollSeconds());
-                }
-            });
+                state.status("CONNECTION_FAILED");
+                state.error(connectError);
+                System.err.println("[soop] chat connection failed: " + describe(connectError));
+                generation.incrementAndGet();
+                closeClient();
+                scheduleProbe(config.soop().offlinePollSeconds());
+            }
         });
+    }
+
+    private void scheduleJoinTimeout(long expectedGeneration) {
+        scheduler.schedule(() -> {
+            if (!isCurrent(expectedGeneration) || !"CONNECTING".equals(state.status())) return;
+            var timeout = new TimeoutException("chat JOIN_CHANNEL timeout after " + JOIN_TIMEOUT_SECONDS + " seconds");
+            state.status("CONNECTION_FAILED");
+            state.error(timeout);
+            System.err.println("[soop] " + timeout.getMessage());
+            generation.incrementAndGet();
+            closeClient();
+            scheduleProbe(config.soop().offlinePollSeconds());
+        }, JOIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 
     private void attachListeners(SOOPClient soop, long listenerGeneration) {
         soop.on(ChatEvent.JOIN_CHANNEL, (String bid, JoinChannelEvent event) -> {
             if (!isCurrent(listenerGeneration)) return;
+            state.clearError();
             state.status("CONNECTED");
             System.out.println("[soop] joined chat: " + bid);
         });
@@ -166,6 +225,7 @@ public final class SoopBridgeAdapter implements AutoCloseable {
 
         soop.on(ChatEvent.RECONNECTED, (String bid, ReconnectedEvent event) -> {
             if (!isCurrent(listenerGeneration)) return;
+            state.clearError();
             state.status("CONNECTED");
             System.out.println("[soop] reconnected: " + bid);
         });

@@ -28,10 +28,13 @@
 - 프로그램/OBS 재시작 시 미완료 티켓을 같은 번호로 복구
 - SQLite 백업, 수동 누적 보정, 발급 기록 manifest 재생성 지원
 - Windows 시스템 트레이에서 백그라운드 실행
+- 관리자 페이지에서 `config.json` 편집 및 저장
+- 재시작이 필요한 설정은 브리지 자동 재실행
+- 관리자 페이지와 OBS 오버레이의 재연결 복구
 
 ## Windows 배포본
 
-Windows에서는 GitHub Releases의 `RouletteBridge-Windows-x64-v0.1.5.zip`을 받아 압축을 푼 뒤 `RouletteBridge.exe`를 실행합니다.
+Windows에서는 GitHub Releases의 `RouletteBridge-Windows-x64-v0.1.6.zip`을 받아 압축을 푼 뒤 `RouletteBridge.exe`를 실행합니다.
 
 별도 Java 설치는 필요하지 않습니다. Java 25 기반 런타임이 배포본에 포함됩니다.
 
@@ -41,6 +44,7 @@ Windows에서는 GitHub Releases의 `RouletteBridge-Windows-x64-v0.1.5.zip`을 �
 RouletteBridge/
 ├─ RouletteBridge.exe
 ├─ config.json
+├─ restart-bridge.ps1
 ├─ README.txt
 ├─ app/
 ├─ runtime/
@@ -53,6 +57,12 @@ RouletteBridge/
 `data/`, `tickets/`, `backups/`는 운영 데이터이므로 프로그램을 업데이트할 때 삭제하거나 덮어쓰지 않습니다. 이미 수정해서 사용 중인 `config.json` 역시 새 배포본으로 교체하지 않고 유지하는 것을 권장합니다.
 
 내부 로그는 실행 시 별도 `logs/` 폴더에 기록되며 Windows에서는 해당 폴더를 숨김 속성으로 처리합니다. 트레이나 관리자 페이지에 로그 폴더를 여는 메뉴는 제공하지 않습니다.
+
+### 최초 실행
+
+배포용 `config.json`의 `streamerId`는 비어 있습니다. 최초 실행 시 SOOP 연결을 시도하지 않고 관리자 페이지를 자동으로 엽니다. 사용자는 브라우저의 관리자 페이지에서 스트리머 ID와 필요한 설정을 입력하고 `config.json 저장`을 누르면 됩니다.
+
+스트리머/SOOP 연결 설정은 가능한 범위에서 즉시 적용합니다. 티켓 규칙, 서버 포트, 저장 경로처럼 현재 프로세스의 서비스 구성을 다시 만들어야 하는 설정은 저장 후 `restart-bridge.ps1`을 통해 `RouletteBridge.exe`가 자동으로 재실행됩니다. 사용자가 EXE를 직접 다시 실행할 필요는 없습니다.
 
 ### 시스템 트레이 동작
 
@@ -97,7 +107,11 @@ RouletteBridge/
 }
 ```
 
-`streamerId`에 실제 방송 대상 ID를 입력한 뒤 프로그램을 실행합니다. 값이 비어 있으면 SOOP 연결은 시작하지 않고 설정 대기 상태로 유지됩니다.
+관리 페이지에서 위 설정을 직접 수정할 수 있습니다.
+
+## SOOP 연결
+
+방송 정보 조회 후 채팅 연결은 `JOIN_CHANNEL` 이벤트를 최종 연결 완료 기준으로 사용합니다. `채팅 연결 중` 상태에서 30초 안에 JOIN 완료가 확인되지 않으면 연결 실패로 전환하고 클라이언트를 정리한 뒤 자동 재시도합니다. 따라서 채팅 연결 상태에 무기한 머무르지 않도록 처리합니다.
 
 ## SOOP 자동발급 흐름
 
@@ -142,11 +156,13 @@ PENDING
 
 ## OBS 방송용 페이지
 
-Windows Bridge 실행 후 OBS Browser Source에는 다음 주소를 사용합니다.
+Windows Bridge 실행 후 OBS Browser Source에는 기본적으로 다음 주소를 사용합니다.
 
 ```text
 http://127.0.0.1:17820/soop-overlay.html?ws=ws://127.0.0.1:17821
 ```
+
+관리 페이지의 `OBS 오버레이 주소` 영역에서 현재 설정에 맞는 주소를 확인하고 복사할 수 있습니다.
 
 방송용 페이지는 기존 `index.html`과 독립되어 있습니다.
 
@@ -158,6 +174,8 @@ http://127.0.0.1:17820/soop-overlay.html?ws=ws://127.0.0.1:17821
 - 발급 완료 후 다음 티켓 처리
 - 다수 티켓은 FIFO 큐로 순차 재생
 - 하단 선택번호 구슬, `roulette-progress`, `ticket-id`, 디버그 패널은 최종 오버레이에서 표시하지 않음
+
+브리지 프로세스가 종료되거나 설정 적용을 위해 자동 재시작되는 동안 열려 있는 오버레이는 WebSocket을 내부적으로 재연결합니다. 방송 화면에는 `연결 끊김`, `재연결 중`, `다시 연결됨` 같은 상태 문구를 표시하지 않습니다. 서버/API 포트가 변경되는 자동 재시작에서는 새 연결 주소를 전달받아 이후 연결과 PNG 업로드에 사용합니다.
 
 GitHub Pages에서 오버레이 외형만 확인할 수도 있지만 실제 자동 PNG 저장과 운영 데이터 처리는 로컬 Windows Bridge를 사용하는 구성을 기준으로 합니다.
 
@@ -206,34 +224,55 @@ Windows Bridge는 재시작 시 `ISSUED`가 아닌 미완료 티켓을 검색합
 
 위 상태의 티켓은 기존 `ticketId`와 기존 7개 번호를 유지한 채 다시 처리할 수 있습니다.
 
-운영용 로컬 API도 제공합니다.
+### 관리자 페이지
 
 ```text
+http://127.0.0.1:17820/soop-admin.html
+```
+
+관리 페이지는 3초 간격으로 상태와 후원자 목록을 갱신합니다. 후원자가 없으면 `등록된 후원자가 없습니다.`를 표시합니다.
+
+브리지 프로세스가 내려가면 페이지는 닫히지 않고 `브리지 연결 대기`를 표시하면서 계속 확인합니다. 같은 포트로 다시 실행되면 잠시 `다시 연결됨`을 표시한 뒤 정상 상태로 돌아옵니다. 설정 변경으로 HTTP 포트가 바뀌는 자동 재시작의 경우 새 `/health`가 응답할 때까지 기다린 뒤 새 관리자 주소로 자동 이동합니다.
+
+관리 페이지에서 지원하는 설정/운영 기능:
+
+- `config.json` 편집 및 저장
+- OBS 오버레이 주소 확인 및 복사
+- `DB 백업`
+- `issued.json 재생성`
+- `수동 누적 보정`
+- `테스트 티켓`
+- 후원자 누적 확인
+
+`테스트 티켓`은 Overlay WebSocket 클라이언트가 1개 이상 연결되어 있을 때만 활성화합니다. 연결 수가 0이면 버튼을 비활성화하고 연결 필요 안내를 표시합니다.
+
+### 수동 누적 보정 사용자 자동 확인
+
+수동 보정에서는 SOOP 사용자 ID 또는 현재 닉네임 중 하나만 입력해도 됩니다.
+
+1. 먼저 로컬 SQLite의 기존 후원자 기록을 정확 일치로 검색합니다.
+2. 유일하게 일치하면 ID 또는 닉네임의 상대 값을 자동으로 채웁니다.
+3. 로컬 기록에 없는 신규 값이면 별도 SOOP 직접 조회 경로를 호출합니다.
+4. 직접 조회에서도 ID/닉네임이 정확히 일치할 때만 자동 확정합니다.
+5. 후보가 여러 개이거나 정확 일치가 없으면 임의 선택하지 않고 후보를 표시해 사용자가 확인하도록 합니다.
+
+SOOP 직접 조회는 웹 검색 동작에 의존하는 best-effort 기능이므로 외부 변경으로 실패할 수 있습니다. 이 경우 ID와 닉네임을 모두 직접 입력할 수 있습니다.
+
+운영용 로컬 API:
+
+```text
+GET  /api/admin/config
+PUT  /api/admin/config
 GET  /api/admin/donors
+GET  /api/admin/donor-resolve?field=id|nickname|auto&value=...
+GET  /api/admin/donor-lookup?field=id|nickname|auto&value=...
 POST /api/admin/backup
 POST /api/admin/manifests/rebuild
 POST /api/admin/adjust
 POST /api/admin/test-ticket
 ```
 
-관리 API는 로컬 loopback 접근을 기준으로 하며 OBS 오버레이와 역할을 분리합니다.
-
-관리 페이지:
-
-```text
-http://127.0.0.1:17820/soop-admin.html
-```
-
-관리 페이지는 3초 간격으로 상태와 후원자 목록을 갱신합니다. 후원자가 없으면 `불러오는 중` 상태를 유지하지 않고 `등록된 후원자가 없습니다.`를 표시합니다. 브리지나 API 오류가 발생하면 오류 상태를 화면에 표시합니다.
-
-운영 도구 동작:
-
-- `DB 백업`: 오버레이 연결과 무관하게 실행
-- `issued.json 재생성`: 오버레이 연결과 무관하게 실행
-- `수동 누적 보정`: 오버레이 연결과 무관하게 실행하며 감사 이력 기록
-- `테스트 티켓`: Overlay WebSocket 클라이언트가 1개 이상 연결되어 있을 때만 활성화
-
-OBS/오버레이 연결 수가 0이면 테스트 티켓 버튼을 비활성화하고 연결 필요 안내를 표시합니다. API를 직접 호출해도 모호한 무응답 대신 구체적인 오류를 반환합니다.
+관리 API는 로컬 loopback 접근만 허용합니다.
 
 주요 로컬 주소:
 
@@ -252,7 +291,7 @@ ws://127.0.0.1:17821
 
 현재 Windows CI에서 다음 항목을 검사합니다.
 
-- Admin JavaScript 문법 검사
+- Admin/Overlay JavaScript 문법 검사
 - Java 25 Maven build
 - Phase D 후원 누적 및 자동 티켓 할당
 - 중복 후원 이벤트 차단
@@ -265,8 +304,9 @@ ws://127.0.0.1:17821
 - `FAILED` 자동복구 제외
 - Windows `jpackage` GUI/Tray EXE 생성
 - 내장 Java runtime 존재 확인
-- 관리자 JS/CSS가 패키지에 포함되는지 확인
-- 배포 config 구조 확인
+- `restart-bridge.ps1` 패키지 포함 확인
+- 관리자 JS/CSS와 오버레이 재연결 자산 포함 확인
+- 배포 `streamerId` 빈 값 확인
 - 배포본에 `logs/`가 사전 생성되지 않는지 확인
 - 패키지된 GUI EXE 자체 Phase F/encoding self-test
 
@@ -462,14 +502,16 @@ assets/
 ├─ roulette-ui.js
 ├─ soop-overlay.html              # 방송용 자동발급 오버레이
 ├─ soop-overlay.css
+├─ soop-overlay-connection.js     # WebSocket 자동 재연결
 ├─ soop-overlay.js
-├─ soop-overlay-archive.js        # PNG 업로드/상태 ACK
+├─ soop-overlay-archive.js        # PNG 업로드/상태 ACK 및 재시도
 ├─ soop-admin.html                # 로컬 관리 페이지
 ├─ soop-admin.css
 ├─ soop-admin.js
 ├─ bridge/                        # Windows Java Bridge
 │  ├─ pom.xml
 │  ├─ config.example.json
+│  ├─ restart-bridge.ps1
 │  ├─ package-windows.ps1
 │  ├─ README.md
 │  └─ src/

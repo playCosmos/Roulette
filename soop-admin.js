@@ -35,6 +35,8 @@
   let lookupSequence = 0;
   let autoFilledId = false;
   let autoFilledNickname = false;
+  let currentIssuanceMode = "single_donation";
+  let currentBalloonsPerTicket = 50;
   let reconnectBannerUntil = new URLSearchParams(location.search).get("restarted") === "1"
     ? Date.now() + 5000
     : 0;
@@ -149,10 +151,13 @@
     const server = config.server || {};
     const storage = config.storage || {};
     const soop = config.soop || {};
+    currentIssuanceMode = ticket.issuanceMode === "cumulative" ? "cumulative" : "single_donation";
+    currentBalloonsPerTicket = Number(ticket.balloonsPerTicket) > 0 ? Number(ticket.balloonsPerTicket) : 50;
     formElement("streamerId").value = config.streamerId || "";
     formElement("soopEnabled").checked = soop.enabled !== false;
     formElement("offlinePollSeconds").value = soop.offlinePollSeconds ?? 30;
-    formElement("balloonsPerTicket").value = ticket.balloonsPerTicket ?? 50;
+    formElement("issuanceMode").value = currentIssuanceMode;
+    formElement("balloonsPerTicket").value = currentBalloonsPerTicket;
     formElement("numberMax").value = ticket.numberMax ?? 28;
     formElement("numberCount").value = ticket.numberCount ?? 7;
     formElement("host").value = server.host || "127.0.0.1";
@@ -177,6 +182,7 @@
     const websocketPort = numberValue("websocketPort");
     const threshold = numberValue("balloonsPerTicket");
     const poll = numberValue("offlinePollSeconds");
+    const issuanceMode = formElement("issuanceMode").value === "cumulative" ? "cumulative" : "single_donation";
     if (!Number.isInteger(threshold) || threshold < 1) throw new Error("티켓당 별풍선은 1 이상이어야 합니다.");
     if (!Number.isInteger(numberMax) || numberMax < 1) throw new Error("최대 번호는 1 이상이어야 합니다.");
     if (!Number.isInteger(numberCount) || numberCount < 1 || numberCount > numberMax) {
@@ -187,7 +193,7 @@
 
     return {
       streamerId: formElement("streamerId").value.trim(),
-      ticket: { balloonsPerTicket: threshold, numberMax, numberCount },
+      ticket: { balloonsPerTicket: threshold, numberMax, numberCount, issuanceMode },
       server: {
         host: formElement("host").value.trim(),
         port,
@@ -242,13 +248,18 @@
     }
     for (const donor of donors) {
       const tr = document.createElement("tr");
+      const total = Number(donor.totalBalloons ?? 0);
+      const allocated = Number(donor.allocatedTickets ?? 0);
+      const remainder = currentIssuanceMode === "single_donation"
+        ? Math.max(0, total - allocated * currentBalloonsPerTicket)
+        : Number(donor.remainderBalloons ?? 0);
       tr.append(
         cell(donor.nickname || "익명"),
         cell(donor.donorId),
-        cell(donor.totalBalloons ?? 0),
-        cell(donor.allocatedTickets ?? 0),
+        cell(total),
+        cell(allocated),
         cell(donor.issuedTickets ?? 0),
-        cell(donor.remainderBalloons ?? 0)
+        cell(remainder)
       );
       donorRows.append(tr);
     }

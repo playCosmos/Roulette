@@ -1,5 +1,7 @@
 package io.github.playcosmos.roulettebridge.config;
 
+import java.util.Locale;
+
 public record BridgeConfig(
     String streamerId,
     Ticket ticket,
@@ -10,7 +12,7 @@ public record BridgeConfig(
     public static BridgeConfig defaults() {
         return new BridgeConfig(
             "",
-            new Ticket(50, 28, 7),
+            new Ticket(50, 28, 7, Ticket.MODE_SINGLE_DONATION),
             new Server("127.0.0.1", 17820, 17821, false),
             new Storage("./data/roulette.db", "./tickets", "./web", "./backups", "./logs"),
             new Soop(true, 30)
@@ -28,12 +30,37 @@ public record BridgeConfig(
         return new BridgeConfig(normalizedStreamerId, normalizedTicket, normalizedServer, normalizedStorage, normalizedSoop);
     }
 
-    public record Ticket(int balloonsPerTicket, int numberMax, int numberCount) {
+    public record Ticket(int balloonsPerTicket, int numberMax, int numberCount, String issuanceMode) {
+        public static final String MODE_SINGLE_DONATION = "single_donation";
+        public static final String MODE_CUMULATIVE = "cumulative";
+
+        public Ticket(int balloonsPerTicket, int numberMax, int numberCount) {
+            this(balloonsPerTicket, numberMax, numberCount, MODE_SINGLE_DONATION);
+        }
+
         Ticket normalized() {
             int threshold = balloonsPerTicket > 0 ? balloonsPerTicket : 50;
             int max = numberMax > 0 ? numberMax : 28;
             int count = numberCount > 0 && numberCount <= max ? numberCount : 7;
-            return new Ticket(threshold, max, count);
+            String mode = normalizedIssuanceMode(issuanceMode);
+            return new Ticket(threshold, max, count, mode);
+        }
+
+        public boolean singleDonationMode() {
+            return MODE_SINGLE_DONATION.equals(normalizedIssuanceMode(issuanceMode));
+        }
+
+        public boolean cumulativeMode() {
+            return MODE_CUMULATIVE.equals(normalizedIssuanceMode(issuanceMode));
+        }
+
+        private static String normalizedIssuanceMode(String value) {
+            if (value == null || value.isBlank()) return MODE_SINGLE_DONATION;
+            return switch (value.trim().toLowerCase(Locale.ROOT)) {
+                case "cumulative", "accumulate", "accumulated" -> MODE_CUMULATIVE;
+                case "single", "single_donation", "single-donation", "per_donation", "per-donation" -> MODE_SINGLE_DONATION;
+                default -> MODE_SINGLE_DONATION;
+            };
         }
     }
 

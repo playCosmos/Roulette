@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark" />
   <title>먀로또 · SOOP 브리지 관리</title>
-  <link rel="stylesheet" href="./soop-admin.css?v=20260915-2" />
+  <link rel="stylesheet" href="./soop-admin.css?v=20260915-3" />
 </head>
 <body>
   <main class="admin-shell">
@@ -22,6 +22,66 @@
       <article><span>Streamer</span><strong id="streamerId">-</strong></article>
       <article><span>Pending</span><strong id="pendingTickets">-</strong></article>
       <article><span>Overlay</span><strong id="overlayClients">-</strong></article>
+    </section>
+
+    <section class="panel setup-panel" id="setupPanel">
+      <div class="panel-heading">
+        <div>
+          <h2>브리지 설정</h2>
+          <p>설정은 배포 폴더의 config.json에 저장됩니다. 스트리머와 SOOP 연결 설정은 저장 즉시 적용됩니다.</p>
+        </div>
+      </div>
+      <form class="config-form" id="configForm">
+        <fieldset>
+          <legend>SOOP</legend>
+          <label class="wide">스트리머 ID<input name="streamerId" autocomplete="off" placeholder="방송 대상 ID" /></label>
+          <label class="check-label"><input name="soopEnabled" type="checkbox" />SOOP 연결 사용</label>
+          <label>오프라인 재확인(초)<input name="offlinePollSeconds" type="number" min="5" step="1" /></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>티켓 규칙</legend>
+          <label>티켓당 별풍선<input name="balloonsPerTicket" type="number" min="1" step="1" /></label>
+          <label>최대 번호<input name="numberMax" type="number" min="1" step="1" /></label>
+          <label>선택 번호 개수<input name="numberCount" type="number" min="1" step="1" /></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>로컬 서버</legend>
+          <label>Host<input name="host" autocomplete="off" /></label>
+          <label>HTTP Port<input name="port" type="number" min="1" max="65535" step="1" /></label>
+          <label>WebSocket Port<input name="websocketPort" type="number" min="1" max="65535" step="1" /></label>
+          <label class="check-label"><input name="openBrowserOnStart" type="checkbox" />실행 시 관리자 페이지 열기</label>
+        </fieldset>
+
+        <fieldset class="storage-fields">
+          <legend>저장 경로</legend>
+          <label>Database<input name="databasePath" autocomplete="off" /></label>
+          <label>Tickets<input name="ticketDirectory" autocomplete="off" /></label>
+          <label>Web Root<input name="webRoot" autocomplete="off" /></label>
+          <label>Backups<input name="backupDirectory" autocomplete="off" /></label>
+          <label>Logs<input name="logDirectory" autocomplete="off" /></label>
+        </fieldset>
+
+        <div class="config-actions">
+          <button type="submit" id="saveConfigButton">config.json 저장</button>
+          <p class="operation-result" id="configResult">설정을 불러오는 중…</p>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel overlay-guide">
+      <div class="panel-heading">
+        <div>
+          <h2>OBS 오버레이 주소</h2>
+          <p>OBS의 브라우저 소스 URL에 아래 주소를 그대로 입력합니다.</p>
+        </div>
+      </div>
+      <div class="copy-row">
+        <input id="overlayUrlInput" type="text" readonly value="주소 확인 중…" aria-label="OBS 오버레이 주소" />
+        <button type="button" id="copyOverlayButton">주소 복사</button>
+      </div>
+      <p class="operation-result" id="copyResult">Overlay 값이 1 이상이면 방송용 오버레이가 브리지에 연결된 상태입니다.</p>
     </section>
 
     <section class="panel actions-panel">
@@ -63,6 +123,6 @@
       </div>
     </section>
   </main>
-  <script src="./soop-admin.js?v=20260915-2" defer></script>
+  <script src="./soop-admin.js?v=20260915-3" defer></script>
 </body>
 </html>

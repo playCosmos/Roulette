@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>먀로또 · 현재 채널 분석</title>
+  <link rel="stylesheet" href="./soop-channel.css?v=20260915-1" />
+</head>
+<body>
+  <main class="channel-shell">
+    <header class="channel-header">
+      <div>
+        <p class="eyebrow">MYA LOTTO / SOOP CHANNEL ANALYZER</p>
+        <h1>현재 채널 분석</h1>
+        <p class="subcopy">현재 브리지 프로세스가 수신한 SOOP 이벤트를 채팅부터 후원, 관리, 연결 이벤트까지 시간순으로 확인합니다.</p>
+      </div>
+      <div class="header-actions">
+        <span class="connection waiting" id="connectionBadge">연결 확인 중</span>
+        <a class="link-button" href="./soop-admin.html">관리 페이지</a>
+      </div>
+    </header>
+
+    <section class="status-grid" aria-label="채널 분석 상태">
+      <article><span>SOOP</span><strong id="soopStatus">-</strong></article>
+      <article><span>Streamer</span><strong id="streamerId">-</strong></article>
+      <article><span>Captured</span><strong id="capturedCount">0</strong></article>
+      <article><span>Buffered</span><strong id="bufferedCount">0 / 5000</strong></article>
+      <article><span>Dropped</span><strong id="droppedCount">0</strong></article>
+    </section>
+
+    <section class="panel controls-panel">
+      <div class="panel-heading">
+        <div>
+          <h2>이벤트 스트림</h2>
+          <p>수집은 브리지 메모리에서 계속 진행됩니다. 화면 일시정지는 표시 갱신만 멈춥니다.</p>
+        </div>
+        <div class="live-indicator" id="liveIndicator"><span></span> LIVE</div>
+      </div>
+      <div class="controls">
+        <label>이벤트 종류
+          <select id="eventFilter">
+            <option value="">전체 이벤트</option>
+          </select>
+        </label>
+        <label class="search-control">검색
+          <input id="searchInput" type="search" placeholder="닉네임, ID, 메시지, 이벤트명, raw 검색" autocomplete="off" />
+        </label>
+        <label class="check-control"><input id="autoScroll" type="checkbox" checked />새 이벤트 자동 스크롤</label>
+        <button type="button" id="pauseButton">화면 일시정지</button>
+        <button type="button" id="clearButton">화면 지우기</button>
+      </div>
+      <div class="event-counts" id="eventCounts" aria-label="이벤트 종류별 누적"></div>
+      <p class="notice" id="streamNotice">이벤트 수신 대기 중입니다.</p>
+    </section>
+
+    <section class="event-stream" id="eventStream" aria-live="polite">
+      <div class="empty-state" id="emptyState">아직 수신된 이벤트가 없습니다.</div>
+    </section>
+  </main>
+  <script src="./soop-channel.js?v=20260915-1" defer></script>
+</body>
+</html>

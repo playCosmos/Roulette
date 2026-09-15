@@ -73,10 +73,13 @@ public final class ManualAdjustmentService {
                 upsertDonor(connection, donorId, nickname, newTotal, now);
                 insertAdjustment(connection, adjustmentId, donorId, nickname, balloonDelta, reason, now);
 
-                long eligibleLong = newTotal / ticketConfig.balloonsPerTicket();
-                if (eligibleLong > Integer.MAX_VALUE) throw new SQLException("eligible ticket count exceeds supported range");
-                int eligible = (int) eligibleLong;
-                int newTicketCount = Math.max(0, eligible - allocatedBefore);
+                int newTicketCount = 0;
+                if (ticketConfig.cumulativeMode()) {
+                    long eligibleLong = newTotal / ticketConfig.balloonsPerTicket();
+                    if (eligibleLong > Integer.MAX_VALUE) throw new SQLException("eligible ticket count exceeds supported range");
+                    int eligible = (int) eligibleLong;
+                    newTicketCount = Math.max(0, eligible - allocatedBefore);
+                }
 
                 for (int index = 0; index < newTicketCount; index++) {
                     int sequence = allocatedBefore + index + 1;
@@ -124,9 +127,20 @@ public final class ManualAdjustmentService {
             balloonDelta,
             newTotal,
             allocatedAfter,
-            (int) (newTotal % ticketConfig.balloonsPerTicket()),
+            remainder(newTotal, allocatedAfter),
             List.copyOf(createdTickets)
         );
+    }
+
+    private int remainder(long totalBalloons, int allocatedTickets) {
+        if (ticketConfig.singleDonationMode()) {
+            long countedOnly = Math.max(
+                0L,
+                totalBalloons - (long) allocatedTickets * ticketConfig.balloonsPerTicket()
+            );
+            return countedOnly > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) countedOnly;
+        }
+        return (int) (totalBalloons % ticketConfig.balloonsPerTicket());
     }
 
     private static DonorState readDonorState(Connection connection, String donorId) throws SQLException {

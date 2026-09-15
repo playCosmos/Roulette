@@ -30,6 +30,7 @@
   let refreshing = false;
   let overlayClientCount = 0;
   let restartInProgress = false;
+  let bridgeWasOffline = false;
   let lookupTimer = null;
   let lookupSequence = 0;
   let autoFilledId = false;
@@ -114,17 +115,21 @@
   }
 
   function updateTestTicketAvailability() {
-    const available = overlayClientCount > 0 && !restartInProgress;
+    const available = overlayClientCount > 0 && !restartInProgress && !bridgeWasOffline;
     testTicketButton.disabled = !available;
     testTicketButton.title = available
       ? "연결된 오버레이에 테스트 티켓을 전송합니다."
       : "OBS 또는 방송용 오버레이가 연결되어 있어야 사용할 수 있습니다.";
-    if (!available && !restartInProgress && operationResult.textContent === "대기 중") {
+    if (!available && !restartInProgress && !bridgeWasOffline && operationResult.textContent === "대기 중") {
       showOperation("테스트 티켓은 OBS/오버레이 연결 후 사용할 수 있습니다.", "waiting");
     }
   }
 
   function renderState(state) {
+    if (bridgeWasOffline) {
+      bridgeWasOffline = false;
+      reconnectBannerUntil = Date.now() + 5000;
+    }
     const soop = state.soop || {};
     setConnection(soop.status, soop.lastError);
     streamerId.textContent = soop.streamerId || state.streamerId || "미설정";
@@ -252,9 +257,10 @@
   function renderDonorError(error) {
     donorRows.replaceChildren();
     const tr = document.createElement("tr");
-    const td = cell(restartInProgress ? "브리지 재시작을 기다리는 중입니다." : `후원자 목록을 불러오지 못했습니다: ${error.message}`);
+    const waiting = restartInProgress || bridgeWasOffline;
+    const td = cell(waiting ? "브리지 연결을 기다리는 중입니다." : `후원자 목록을 불러오지 못했습니다: ${error.message}`);
     td.colSpan = 6;
-    td.className = restartInProgress ? "empty-state" : "empty-state error-text";
+    td.className = waiting ? "empty-state" : "empty-state error-text";
     tr.append(td);
     donorRows.append(tr);
   }
@@ -271,10 +277,13 @@
       if (stateResult.status === "fulfilled") {
         renderState(stateResult.value);
       } else {
+        bridgeWasOffline = true;
         overlayClientCount = 0;
         updateTestTicketAvailability();
-        setConnection("DISCONNECTED_ERROR", stateResult.reason?.message);
-        soopStatus.textContent = "브리지 응답 없음";
+        connectionBadge.textContent = "브리지 연결 대기";
+        connectionBadge.className = "connection working";
+        soopStatus.textContent = "프로그램 연결 대기";
+        soopStatus.title = stateResult.reason?.message || "";
       }
       if (donorsResult.status === "fulfilled") renderDonors(donorsResult.value.donors || []);
       else renderDonorError(donorsResult.reason || new Error("알 수 없는 오류"));
@@ -319,7 +328,7 @@
     try { target = new URL(nextAdminUrl || location.href, location.href); }
     catch { target = new URL(location.href); }
     const healthUrl = `${target.origin}/health`;
-    await sleep(900);
+    await sleep(1700);
 
     for (let attempt = 0; attempt < 120; attempt++) {
       try {
@@ -337,6 +346,7 @@
     }
 
     restartInProgress = false;
+    bridgeWasOffline = true;
     connectionBadge.textContent = "재연결 실패";
     connectionBadge.className = "connection error";
     showConfig("자동 재시작 후 브리지에 다시 연결하지 못했습니다. 트레이 상태를 확인하세요.", "error-text");

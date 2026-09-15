@@ -3,7 +3,8 @@
   "ticket": {
     "balloonsPerTicket": 50,
     "numberMax": 28,
-    "numberCount": 7
+    "numberCount": 7,
+    "issuanceMode": "single_donation"
   },
   "server": {
     "host": "127.0.0.1",

@@ -9,7 +9,7 @@ public record BridgeConfig(
 ) {
     public static BridgeConfig defaults() {
         return new BridgeConfig(
-            "STREAMER_ID",
+            "",
             new Ticket(50, 28, 7),
             new Server("127.0.0.1", 17820, 17821, false),
             new Storage("./data/roulette.db", "./tickets", "./web", "./backups", "./logs"),
@@ -23,9 +23,8 @@ public record BridgeConfig(
         var normalizedServer = server == null ? d.server : server.normalized();
         var normalizedStorage = storage == null ? d.storage : storage.normalized();
         var normalizedSoop = soop == null ? d.soop : soop.normalized();
-        var normalizedStreamerId = streamerId == null || streamerId.isBlank()
-            ? d.streamerId
-            : streamerId.trim();
+        var normalizedStreamerId = streamerId == null ? "" : streamerId.trim();
+        if ("STREAMER_ID".equals(normalizedStreamerId)) normalizedStreamerId = "";
         return new BridgeConfig(normalizedStreamerId, normalizedTicket, normalizedServer, normalizedStorage, normalizedSoop);
     }
 

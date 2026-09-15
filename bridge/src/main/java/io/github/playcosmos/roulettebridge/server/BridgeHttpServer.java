@@ -44,7 +44,8 @@ public final class BridgeHttpServer implements AutoCloseable {
         Supplier<Map<String, Object>> soopState,
         TicketArchiveService ticketArchive,
         TicketRecoveryService recovery,
-        HttpHandler adminOperations
+        HttpHandler adminOperations,
+        HttpHandler channelEvents
     ) throws IOException {
         var host = config.server().host();
         var port = config.server().port();
@@ -71,7 +72,7 @@ public final class BridgeHttpServer implements AutoCloseable {
 
         server.createContext("/api/state", exchange -> {
             var payload = new LinkedHashMap<String, Object>();
-            payload.put("version", "0.6.0");
+            payload.put("version", "0.7.0");
             payload.put("instanceId", instanceId);
             payload.put("streamerId", config.streamerId());
             payload.put("pendingTickets", pendingTicketCount.getAsInt());
@@ -88,6 +89,7 @@ public final class BridgeHttpServer implements AutoCloseable {
 
         server.createContext(TICKET_API_PREFIX, this::handleTicketApi);
         server.createContext("/api/admin", adminOperations);
+        server.createContext("/api/channel", channelEvents);
         server.createContext("/", this::serveStatic);
     }
 

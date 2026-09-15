@@ -9,6 +9,7 @@ on:
       - "assets/**"
       - "soop-overlay.html"
       - "soop-overlay.css"
+      - "soop-overlay-connection.js"
       - "soop-overlay.js"
       - "soop-overlay-archive.js"
       - "soop-admin.html"
@@ -33,8 +34,17 @@ jobs:
           java-version: "25"
           cache: maven
 
-      - name: Check admin JavaScript
-        run: node --check soop-admin.js
+      - name: Check browser JavaScript
+        shell: pwsh
+        run: |
+          node --check soop-admin.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check soop-overlay-connection.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check soop-overlay.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check soop-overlay-archive.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build bridge
         working-directory: bridge
@@ -69,10 +79,18 @@ jobs:
           if (-not (Test-Path $exe)) { throw "RouletteBridge.exe missing" }
           if (-not (Test-Path $config)) { throw "config.json missing" }
           if (-not (Test-Path $runtime)) { throw "bundled Java runtime missing" }
+          if (-not (Test-Path (Join-Path $root "restart-bridge.ps1"))) { throw "restart-bridge.ps1 missing from package" }
           $configJson = Get-Content $config -Raw | ConvertFrom-Json
           if (-not [string]::IsNullOrWhiteSpace([string]$configJson.streamerId)) { throw "distribution streamerId must be empty" }
-          if (-not (Test-Path (Join-Path $root "web/soop-admin.js"))) { throw "soop-admin.js missing from package" }
-          if (-not (Test-Path (Join-Path $root "web/soop-admin.css"))) { throw "soop-admin.css missing from package" }
+          @(
+            "web/soop-admin.js",
+            "web/soop-admin.css",
+            "web/soop-overlay-connection.js",
+            "web/soop-overlay.js",
+            "web/soop-overlay-archive.js"
+          ) | ForEach-Object {
+            if (-not (Test-Path (Join-Path $root $_))) { throw "required packaged asset missing: $_" }
+          }
           if (Test-Path (Join-Path $root "logs")) { throw "logs directory must not be pre-created in distribution" }
 
           $phaseF = Start-Process -FilePath $exe -ArgumentList "--phase-f-probe" -Wait -PassThru

@@ -27,10 +27,11 @@
 - 후원자별 발급 번호·이미지 기록 유지
 - 프로그램/OBS 재시작 시 미완료 티켓을 같은 번호로 복구
 - SQLite 백업, 수동 누적 보정, 발급 기록 manifest 재생성 지원
+- Windows 시스템 트레이에서 백그라운드 실행
 
 ## Windows 배포본
 
-Windows에서는 GitHub Releases의 `RouletteBridge-Windows-x64-v0.1.4.zip`을 받아 압축을 푼 뒤 `RouletteBridge.exe`를 실행합니다.
+Windows에서는 GitHub Releases의 `RouletteBridge-Windows-x64-v0.1.5.zip`을 받아 압축을 푼 뒤 `RouletteBridge.exe`를 실행합니다.
 
 별도 Java 설치는 필요하지 않습니다. Java 25 기반 런타임이 배포본에 포함됩니다.
 
@@ -46,11 +47,25 @@ RouletteBridge/
 ├─ web/
 ├─ data/
 ├─ tickets/
-├─ backups/
-└─ logs/
+└─ backups/
 ```
 
-`data/`, `tickets/`, `backups/`, `logs/`는 운영 데이터이므로 프로그램을 업데이트할 때 삭제하거나 덮어쓰지 않습니다. 이미 수정해서 사용 중인 `config.json` 역시 새 배포본으로 교체하지 않고 유지하는 것을 권장합니다.
+`data/`, `tickets/`, `backups/`는 운영 데이터이므로 프로그램을 업데이트할 때 삭제하거나 덮어쓰지 않습니다. 이미 수정해서 사용 중인 `config.json` 역시 새 배포본으로 교체하지 않고 유지하는 것을 권장합니다.
+
+내부 로그는 실행 시 별도 `logs/` 폴더에 기록되며 Windows에서는 해당 폴더를 숨김 속성으로 처리합니다. 트레이나 관리자 페이지에 로그 폴더를 여는 메뉴는 제공하지 않습니다.
+
+### 시스템 트레이 동작
+
+배포 EXE는 콘솔 창을 띄우지 않고 Windows 알림 영역(System Tray)에서 동작합니다.
+
+- 트레이 아이콘 더블클릭: 관리자 페이지 열기
+- `상태`: SOOP 연결 상태 표시
+- `관리자 페이지 열기`
+- `OBS 오버레이 열기`
+- `SOOP 재연결`
+- `종료`: SOOP/HTTP/WebSocket을 정상 종료하고 프로그램 종료
+
+트레이를 사용할 수 없는 환경에서는 관리자 페이지를 여는 방식으로 fallback합니다.
 
 ### 기본 config.json
 
@@ -203,6 +218,23 @@ POST /api/admin/test-ticket
 
 관리 API는 로컬 loopback 접근을 기준으로 하며 OBS 오버레이와 역할을 분리합니다.
 
+관리 페이지:
+
+```text
+http://127.0.0.1:17820/soop-admin.html
+```
+
+관리 페이지는 3초 간격으로 상태와 후원자 목록을 갱신합니다. 후원자가 없으면 `불러오는 중` 상태를 유지하지 않고 `등록된 후원자가 없습니다.`를 표시합니다. 브리지나 API 오류가 발생하면 오류 상태를 화면에 표시합니다.
+
+운영 도구 동작:
+
+- `DB 백업`: 오버레이 연결과 무관하게 실행
+- `issued.json 재생성`: 오버레이 연결과 무관하게 실행
+- `수동 누적 보정`: 오버레이 연결과 무관하게 실행하며 감사 이력 기록
+- `테스트 티켓`: Overlay WebSocket 클라이언트가 1개 이상 연결되어 있을 때만 활성화
+
+OBS/오버레이 연결 수가 0이면 테스트 티켓 버튼을 비활성화하고 연결 필요 안내를 표시합니다. API를 직접 호출해도 모호한 무응답 대신 구체적인 오류를 반환합니다.
+
 주요 로컬 주소:
 
 ```text
@@ -212,14 +244,15 @@ http://127.0.0.1:17820/soop-admin.html
 ws://127.0.0.1:17821
 ```
 
-## Windows 한글 로그
+## 로그 및 한글
 
-배포본은 UTF-8 기반으로 `config.json`, 로그 파일, manifest를 저장합니다. Windows EXE 콘솔 역시 시작 시 UTF-8 코드페이지에 맞춰 출력하도록 구성되어 SOOP/JUL 로그의 `정보`와 한글 방송 제목·닉네임·로그 본문을 정상 표시하도록 처리합니다.
+`config.json`, 로그 파일, manifest는 UTF-8 기반으로 저장합니다. 배포 EXE는 콘솔 창 없이 트레이에서 실행하며 내부 로그는 Windows에서 숨김 처리되는 로그 디렉터리에 기록합니다. 개발용 콘솔을 연결해 실행하는 경우에는 Windows 콘솔 인코딩 처리도 유지합니다.
 
 ## 검증 상태
 
 현재 Windows CI에서 다음 항목을 검사합니다.
 
+- Admin JavaScript 문법 검사
 - Java 25 Maven build
 - Phase D 후원 누적 및 자동 티켓 할당
 - 중복 후원 이벤트 차단
@@ -230,10 +263,12 @@ ws://127.0.0.1:17821
 - Phase F 재시작 복구
 - 기존 번호 유지
 - `FAILED` 자동복구 제외
-- Windows `jpackage` EXE 생성
+- Windows `jpackage` GUI/Tray EXE 생성
 - 내장 Java runtime 존재 확인
-- 패키지된 EXE 자체 self-test
-- Windows/UTF-8 한글 인코딩 probe
+- 관리자 JS/CSS가 패키지에 포함되는지 확인
+- 배포 config 구조 확인
+- 배포본에 `logs/`가 사전 생성되지 않는지 확인
+- 패키지된 GUI EXE 자체 Phase F/encoding self-test
 
 SOOP 연결 probe는 스트리머 ID를 명시적으로 전달하여 방송 정보 조회, BNO 조회, 채팅 서버 연결 및 `JOIN_CHANNEL` 경로를 검증할 수 있습니다. 실제 `SEND_BALLOON` payload의 최종 실방송 검증은 실제 후원 이벤트가 발생해야 완료할 수 있습니다.
 
@@ -430,6 +465,8 @@ assets/
 ├─ soop-overlay.js
 ├─ soop-overlay-archive.js        # PNG 업로드/상태 ACK
 ├─ soop-admin.html                # 로컬 관리 페이지
+├─ soop-admin.css
+├─ soop-admin.js
 ├─ bridge/                        # Windows Java Bridge
 │  ├─ pom.xml
 │  ├─ config.example.json
@@ -457,4 +494,4 @@ mvn clean package
 java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar
 ```
 
-또는 배포본에서는 `RouletteBridge.exe`를 직접 실행합니다.
+또는 배포본에서는 `RouletteBridge.exe`를 직접 실행합니다. 배포본은 콘솔 창 대신 Windows 시스템 트레이에서 동작합니다.

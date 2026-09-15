@@ -27,10 +27,13 @@ import java.awt.Desktop;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class Main {
     private static final Gson GSON = new Gson();
+    private static final long EXPLICIT_EXIT_WATCHDOG_MILLIS = 10_000L;
 
     private Main() {}
 
@@ -193,12 +196,81 @@ public final class Main {
         System.out.println("[overlay] " + overlayUrl);
         System.out.println("[admin] " + adminUrl);
 
+        var shutdown = new CountDownLatch(1);
+        var shutdownStarted = new AtomicBoolean(false);
+        var trayRef = new AtomicReference<TrayController>();
+
+        Runnable stopServices = () -> {
+            if (!shutdownStarted.compareAndSet(false, true)) return;
+            System.out.println("[shutdown] stopping services");
+
+            TrayController currentTray = trayRef.getAndSet(null);
+            if (currentTray != null) {
+                try {
+                    currentTray.close();
+                } catch (Exception error) {
+                    System.err.println("[shutdown] tray close failed: " + error.getMessage());
+                }
+            }
+
+            try {
+                http.close();
+            } catch (Exception error) {
+                System.err.println("[shutdown] http close failed: " + error.getMessage());
+            }
+
+            try {
+                websocket.stop(2000);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+            } catch (Exception error) {
+                System.err.println("[shutdown] websocket close failed: " + error.getMessage());
+            }
+
+            try {
+                soop.close();
+            } catch (Exception error) {
+                System.err.println("[shutdown] soop close failed: " + error.getMessage());
+            }
+
+            System.out.println("[shutdown] complete");
+            try {
+                fileLog.close();
+            } catch (Exception ignored) {
+                // best effort at process shutdown
+            }
+            shutdown.countDown();
+        };
+
+        Runnable explicitExit = () -> {
+            Thread.ofPlatform().daemon(true).name("roulette-bridge-exit-watchdog").start(() -> {
+                try {
+                    Thread.sleep(EXPLICIT_EXIT_WATCHDOG_MILLIS);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                if (shutdown.getCount() > 0) {
+                    Runtime.getRuntime().halt(0);
+                }
+            });
+
+            stopServices.run();
+            System.exit(0);
+        };
+
+        Runtime.getRuntime().addShutdownHook(
+            Thread.ofPlatform().name("roulette-bridge-shutdown").unstarted(stopServices)
+        );
+
         TrayController tray = TrayController.install(
             adminUrl,
             overlayUrl,
             soopState::status,
-            soop::reconnectNow
+            soop::reconnectNow,
+            explicitExit
         );
+        trayRef.set(tray);
 
         if (setupRequired) {
             System.out.println("[setup] streamerId is empty; opening admin page");
@@ -206,22 +278,6 @@ public final class Main {
         } else if (tray == null || config.server().openBrowserOnStart()) {
             openBrowser(adminUrl);
         }
-
-        var shutdown = new CountDownLatch(1);
-        Runtime.getRuntime().addShutdownHook(Thread.ofPlatform().name("roulette-bridge-shutdown").unstarted(() -> {
-            System.out.println("[shutdown] stopping services");
-            if (tray != null) tray.close();
-            soop.close();
-            http.close();
-            try {
-                websocket.stop(2000);
-            } catch (InterruptedException ignored) {
-                Thread.currentThread().interrupt();
-            }
-            System.out.println("[shutdown] complete");
-            fileLog.close();
-            shutdown.countDown();
-        }));
 
         shutdown.await();
     }

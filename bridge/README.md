@@ -15,16 +15,30 @@ RouletteBridge/
 ├─ README.txt
 ├─ app/                 # 브리지 애플리케이션
 ├─ runtime/             # 내장 Java runtime
-├─ web/                 # 로컬 OBS overlay 자산
+├─ web/                 # 로컬 OBS/admin 자산
 ├─ data/                # SQLite DB
 ├─ tickets/             # 발급 PNG + issued.json
-├─ backups/             # DB backup
-└─ logs/                # 영구 로그
+└─ backups/             # DB backup
 ```
 
-사용자는 `config.json`의 `streamerId`를 설정한 뒤 `RouletteBridge.exe`를 실행한다. `data/`, `tickets/`, `backups/`, `logs/`는 운영 데이터이므로 프로그램 업데이트 시 삭제하거나 덮어쓰지 않는다.
+사용자는 `config.json`의 `streamerId`를 설정한 뒤 `RouletteBridge.exe`를 실행한다. `data/`, `tickets/`, `backups/`는 운영 데이터이므로 프로그램 업데이트 시 삭제하거나 덮어쓰지 않는다. 기존 `config.json`도 유지한다.
 
 패키지된 실행 파일은 `jpackage.app-path`를 이용해 EXE가 있는 폴더를 application root로 사용한다. 따라서 EXE를 탐색기에서 더블클릭하거나 다른 working directory에서 실행해도 `config.json`과 운영 데이터 위치가 바뀌지 않는다.
+
+### 시스템 트레이 실행
+
+배포 EXE는 콘솔 창을 띄우지 않고 Windows 알림 영역(System Tray)에서 동작한다.
+
+- 트레이 아이콘 더블클릭: 관리자 페이지 열기
+- `상태`: SOOP 연결 상태 표시
+- `관리자 페이지 열기`
+- `OBS 오버레이 열기`
+- `SOOP 재연결`
+- `종료`: SOOP/HTTP/WebSocket을 정상 종료한 뒤 프로그램 종료
+
+로그 폴더를 여는 메뉴는 제공하지 않는다. 내부 로그는 Windows에서 숨김 속성의 `logs/` 폴더에 UTF-8로 기록된다. 파일시스템이 DOS 숨김 속성을 지원하지 않는 경우에도 로깅 자체는 계속된다.
+
+트레이를 사용할 수 없는 환경에서는 관리자 페이지를 여는 방식으로 fallback한다.
 
 ## 소스 개발 요구 사항
 
@@ -102,8 +116,40 @@ bridge/dist/RouletteBridge/config.json
 
 `streamerId`에 실제 방송 대상 ID를 입력한 뒤 프로그램을 실행한다. 값이 비어 있으면 SOOP 연결은 시작하지 않고 설정 대기 상태로 유지된다.
 
+## 관리자 페이지
+
+관리 페이지:
+
+```text
+http://127.0.0.1:17820/soop-admin.html
+```
+
+3초 간격으로 브리지 상태와 후원자 목록을 갱신한다.
+
+상태 예시:
+
+- 연결됨
+- 방송 확인 중
+- 채팅 연결 중
+- 재연결 중
+- 방송 대기
+- 설정 필요
+- 연결 실패/연결 오류
+
+후원자가 한 명도 없으면 `불러오는 중`에 머물지 않고 `등록된 후원자가 없습니다.`를 표시한다. API 오류가 발생하면 해당 오류를 화면에 표시한다.
+
+운영 도구:
+
+- DB 백업
+- `issued.json` 재생성
+- 수동 별풍선 누적 보정
+- 테스트 티켓
+
+DB 백업, manifest 재생성, 수동 보정은 오버레이 연결 여부와 무관하다. 테스트 티켓은 실제 룰렛 연출을 보낼 Overlay WebSocket 클라이언트가 1개 이상 연결되어 있어야 한다. 연결 수가 0이면 버튼을 비활성화하고 연결 필요 안내를 표시하며, API도 명확한 오류를 반환한다.
+
 ## 로컬 주소
 
+- Admin: `http://127.0.0.1:17820/soop-admin.html`
 - Overlay: `http://127.0.0.1:17820/soop-overlay.html?ws=ws://127.0.0.1:17821`
 - Health: `http://127.0.0.1:17820/health`
 - Runtime state: `http://127.0.0.1:17820/api/state`
@@ -165,14 +211,16 @@ java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --probe <streamerId>
 `Windows Package` workflow는 다음을 모두 통과해야 artifact를 생성한다.
 
 ```text
-Maven build
+Admin JavaScript syntax check
+→ Maven build
 → Phase D/E/F self-test
-→ jpackage app-image 생성
-→ RouletteBridge.exe 존재 확인
-→ config.json 존재 확인
-→ bundled runtime 확인
-→ 패키지된 RouletteBridge.exe로 Phase F self-test 실행
+→ jpackage GUI/tray app-image 생성
+→ RouletteBridge.exe/config.json/bundled runtime 확인
+→ 관리자 JS/CSS 패키지 포함 확인
+→ 배포 config 구조 확인
+→ 배포 ZIP에 logs/가 사전 생성되지 않았는지 확인
+→ 패키지된 GUI EXE로 Phase F/encoding self-test 실행
 → RouletteBridge-Windows-x64 artifact 업로드
 ```
 
-따라서 artifact의 `RouletteBridge.exe`는 외부 Java 설치 없이 포함된 runtime으로 실행되는 배포본이다.
+따라서 artifact의 `RouletteBridge.exe`는 외부 Java 설치 없이 포함된 runtime으로 실행되는 Windows tray 배포본이다.

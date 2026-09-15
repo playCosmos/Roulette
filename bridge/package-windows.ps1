@@ -46,8 +46,7 @@ $jpackage = Get-Command jpackage -ErrorAction Stop
     --java-options "--enable-native-access=ALL-UNNAMED" `
     --java-options "-Dfile.encoding=UTF-8" `
     --java-options "-Dstdout.encoding=UTF-8" `
-    --java-options "-Dstderr.encoding=UTF-8" `
-    --win-console
+    --java-options "-Dstderr.encoding=UTF-8"
 
 if ($LASTEXITCODE -ne 0) {
     throw "jpackage failed with exit code $LASTEXITCODE"
@@ -68,19 +67,18 @@ New-Item -ItemType Directory -Path $WebRoot | Out-Null
     "soop-overlay.css",
     "soop-overlay.js",
     "soop-overlay-archive.js",
-    "soop-admin.html"
+    "soop-admin.html",
+    "soop-admin.css",
+    "soop-admin.js"
 ) | ForEach-Object {
     $source = Join-Path $RepoRoot $_
-    if (Test-Path $source) { Copy-Item $source (Join-Path $WebRoot $_) -Force }
-}
-@("soop-admin.css", "soop-admin.js") | ForEach-Object {
-    $source = Join-Path $RepoRoot $_
-    if (Test-Path $source) { Copy-Item $source (Join-Path $WebRoot $_) -Force }
+    if (-not (Test-Path $source)) { throw "Required web asset missing: $source" }
+    Copy-Item $source (Join-Path $WebRoot $_) -Force
 }
 Copy-Item (Join-Path $RepoRoot "assets") (Join-Path $WebRoot "assets") -Recurse -Force
 
-# These folders are runtime-owned. Existing contents must never be overwritten by an update package.
-@("data", "tickets", "backups", "logs") | ForEach-Object {
+# Runtime-owned visible data folders. The log folder is created hidden by the app on Windows.
+@("data", "tickets", "backups") | ForEach-Object {
     New-Item -ItemType Directory -Path (Join-Path $AppRoot $_) -Force | Out-Null
 }
 
@@ -89,12 +87,12 @@ RouletteBridge Windows x64
 =========================
 
 1. Edit config.json and set streamerId.
-2. Run RouletteBridge.exe.
-3. OBS Browser Source:
+2. Run RouletteBridge.exe. The bridge runs from the Windows notification area (system tray).
+3. Double-click the tray icon, or use "관리자 페이지 열기", to open the local admin page.
+4. OBS Browser Source:
    http://127.0.0.1:17820/soop-overlay.html?ws=ws://127.0.0.1:17821
-4. Runtime data is stored in data/, tickets/, backups/, and logs/.
-5. Do not delete those folders when updating the program.
-6. Text data/log files and the packaged Windows console are configured for UTF-8.
+5. Runtime data is stored in data/, tickets/, and backups/. Internal logs are kept separately by the app.
+6. Do not delete the runtime data folders or your existing config.json when updating.
 
 This distribution contains its own Java runtime. A separate Java installation is not required.
 "@

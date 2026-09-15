@@ -56,15 +56,15 @@ if (-not (Test-Path (Join-Path $AppRoot "RouletteBridge.exe"))) {
     throw "Packaged executable was not created"
 }
 
-# User-editable config lives beside RouletteBridge.exe.
 Copy-Item (Join-Path $BridgeRoot "config.example.json") (Join-Path $AppRoot "config.json") -Force
+Copy-Item (Join-Path $BridgeRoot "restart-bridge.ps1") (Join-Path $AppRoot "restart-bridge.ps1") -Force
 
-# The packaged app serves the OBS overlay locally. Keep the original GitHub page independent.
 $WebRoot = Join-Path $AppRoot "web"
 New-Item -ItemType Directory -Path $WebRoot | Out-Null
 @(
     "soop-overlay.html",
     "soop-overlay.css",
+    "soop-overlay-connection.js",
     "soop-overlay.js",
     "soop-overlay-archive.js",
     "soop-admin.html",
@@ -77,7 +77,6 @@ New-Item -ItemType Directory -Path $WebRoot | Out-Null
 }
 Copy-Item (Join-Path $RepoRoot "assets") (Join-Path $WebRoot "assets") -Recurse -Force
 
-# Runtime-owned visible data folders. The log folder is created hidden by the app on Windows.
 @("data", "tickets", "backups") | ForEach-Object {
     New-Item -ItemType Directory -Path (Join-Path $AppRoot $_) -Force | Out-Null
 }
@@ -86,13 +85,15 @@ $Readme = @"
 RouletteBridge Windows x64
 =========================
 
-1. Edit config.json and set streamerId.
-2. Run RouletteBridge.exe. The bridge runs from the Windows notification area (system tray).
-3. Double-click the tray icon, or use "관리자 페이지 열기", to open the local admin page.
-4. OBS Browser Source:
-   http://127.0.0.1:17820/soop-overlay.html?ws=ws://127.0.0.1:17821
-5. Runtime data is stored in data/, tickets/, and backups/. Internal logs are kept separately by the app.
-6. Do not delete the runtime data folders or your existing config.json when updating.
+1. Run RouletteBridge.exe. The bridge runs from the Windows notification area (system tray).
+2. On first run, if streamerId is empty, the admin page opens automatically.
+3. Edit config.json from the admin page. Settings that require a process restart are applied through the bundled restart script automatically.
+4. The admin page waits while the bridge restarts and reconnects to the new process automatically.
+5. Double-click the tray icon, or use "관리자 페이지 열기", to reopen the local admin page.
+6. The admin page shows the OBS Browser Source URL and provides an address copy button.
+7. An already-open overlay reconnects silently when the bridge restarts.
+8. Runtime data is stored in data/, tickets/, and backups/. Internal logs are kept separately by the app.
+9. Do not delete the runtime data folders or your existing config.json when updating.
 
 This distribution contains its own Java runtime. A separate Java installation is not required.
 "@

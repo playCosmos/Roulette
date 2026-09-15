@@ -12,6 +12,7 @@ Windows에서 실행되는 SOOP 별풍선 자동 티켓 발급 브리지다. 기
 RouletteBridge/
 ├─ RouletteBridge.exe
 ├─ config.json
+├─ restart-bridge.ps1
 ├─ README.txt
 ├─ app/                 # 브리지 애플리케이션
 ├─ runtime/             # 내장 Java runtime
@@ -21,7 +22,7 @@ RouletteBridge/
 └─ backups/             # DB backup
 ```
 
-사용자는 `config.json`의 `streamerId`를 설정한 뒤 `RouletteBridge.exe`를 실행한다. `data/`, `tickets/`, `backups/`는 운영 데이터이므로 프로그램 업데이트 시 삭제하거나 덮어쓰지 않는다. 기존 `config.json`도 유지한다.
+`data/`, `tickets/`, `backups/`는 운영 데이터이므로 프로그램 업데이트 시 삭제하거나 덮어쓰지 않는다. 기존 `config.json`도 유지한다. 내부 로그는 실행 시 숨김 `logs/` 폴더에 UTF-8로 기록되며 트레이와 관리자 UI에서는 로그 폴더를 노출하지 않는다.
 
 패키지된 실행 파일은 `jpackage.app-path`를 이용해 EXE가 있는 폴더를 application root로 사용한다. 따라서 EXE를 탐색기에서 더블클릭하거나 다른 working directory에서 실행해도 `config.json`과 운영 데이터 위치가 바뀌지 않는다.
 
@@ -36,55 +37,11 @@ RouletteBridge/
 - `SOOP 재연결`
 - `종료`: SOOP/HTTP/WebSocket을 정상 종료한 뒤 프로그램 종료
 
-로그 폴더를 여는 메뉴는 제공하지 않는다. 내부 로그는 Windows에서 숨김 속성의 `logs/` 폴더에 UTF-8로 기록된다. 파일시스템이 DOS 숨김 속성을 지원하지 않는 경우에도 로깅 자체는 계속된다.
-
 트레이를 사용할 수 없는 환경에서는 관리자 페이지를 여는 방식으로 fallback한다.
 
-## 소스 개발 요구 사항
+## 최초 실행과 config.json
 
-- JDK 25+
-- Maven 3.9+
-- SOOP 연결: `getCurrentThread/soopapi` v0.14.0 (JitPack)
-
-소스 실행:
-
-```bash
-cd bridge
-mvn clean package
-java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar
-```
-
-Windows portable app을 직접 만들려면 PowerShell에서 실행한다.
-
-```powershell
-cd bridge
-./package-windows.ps1
-```
-
-생성 위치:
-
-```text
-bridge/dist/RouletteBridge/RouletteBridge.exe
-bridge/dist/RouletteBridge/config.json
-```
-
-## 전체 동작
-
-1. `streamerId`로 현재 SOOP 방송 정보를 조회한다.
-2. 방송 중이면 BNO와 채팅 서버 정보를 확인하고 익명 read-only chat 연결을 시작한다.
-3. `SEND_BALLOON`을 내부 `SoopDonation`으로 변환한다.
-4. 후원자별 누적 별풍선을 SQLite transaction으로 반영한다.
-5. `floor(totalBalloons / balloonsPerTicket)` 기준으로 신규 티켓 수를 계산한다.
-6. 신규 티켓마다 1~28 범위의 중복 없는 7개 번호를 먼저 확정하여 DB에 저장한다.
-7. DB commit 후 `ticket.issue`를 Overlay WebSocket으로 보낸다.
-8. 오버레이는 저장된 번호를 사용해 룰렛을 먼저 실행하고 7개 릴을 순차 정지한다.
-9. 룰렛 종료 후 같은 번호로 티켓 Canvas를 렌더링한다.
-10. PNG를 로컬 bridge HTTP API로 전송한다.
-11. 브리지가 닉네임/후원자 ID별 폴더에 PNG를 저장하고 티켓을 `ISSUED`로 전환한다.
-12. 해당 발급 당시 닉네임 폴더의 `issued.json`을 갱신한다.
-13. 프로그램 또는 OBS가 재시작되면 아직 `ISSUED`가 아닌 티켓을 같은 번호로 재전송한다.
-
-## config.json
+배포본의 `streamerId`는 비어 있다. 최초 실행 시 SOOP 연결을 시도하지 않고 관리자 페이지를 자동으로 연다. 사용자는 관리자 페이지에서 `config.json`을 직접 편집·저장할 수 있다.
 
 ```json
 {
@@ -114,56 +71,112 @@ bridge/dist/RouletteBridge/config.json
 }
 ```
 
-`streamerId`에 실제 방송 대상 ID를 입력한 뒤 프로그램을 실행한다. 값이 비어 있으면 SOOP 연결은 시작하지 않고 설정 대기 상태로 유지된다.
+적용 정책:
+
+- `streamerId`, SOOP enabled, offline poll 변경: 저장 즉시 SOOP 연결에 적용
+- 티켓 규칙 변경: 브리지 프로세스 재시작 필요
+- HTTP/WebSocket 포트 또는 host 변경: 브리지 프로세스 재시작 필요
+- DB/티켓/web/backup/log 경로 변경: 브리지 프로세스 재시작 필요
+
+재시작이 필요한 설정은 사용자가 EXE를 다시 실행할 필요가 없다. `restart-bridge.ps1`가 현재 프로세스 PID가 완전히 종료될 때까지 기다린 뒤 같은 `RouletteBridge.exe`를 같은 application root에서 자동으로 다시 시작한다. 포트가 변경된 경우에도 관리자 페이지는 새 `/health` 주소를 확인한 뒤 새 관리자 주소로 자동 이동한다.
 
 ## 관리자 페이지
 
-관리 페이지:
+기본 주소:
 
 ```text
 http://127.0.0.1:17820/soop-admin.html
 ```
 
-3초 간격으로 브리지 상태와 후원자 목록을 갱신한다.
+관리 페이지 기능:
 
-상태 예시:
-
-- 연결됨
-- 방송 확인 중
-- 채팅 연결 중
-- 재연결 중
-- 방송 대기
-- 설정 필요
-- 연결 실패/연결 오류
-
-후원자가 한 명도 없으면 `불러오는 중`에 머물지 않고 `등록된 후원자가 없습니다.`를 표시한다. API 오류가 발생하면 해당 오류를 화면에 표시한다.
-
-운영 도구:
-
+- SOOP 상태, 스트리머 ID, 미완료 티켓, Overlay 연결 수 표시
+- `config.json` 전체 주요 항목 편집/저장
+- OBS Browser Source 주소 표시 및 복사
 - DB 백업
 - `issued.json` 재생성
-- 수동 별풍선 누적 보정
 - 테스트 티켓
+- 수동 별풍선 누적 보정
+- 후원자 누적 목록
 
-DB 백업, manifest 재생성, 수동 보정은 오버레이 연결 여부와 무관하다. 테스트 티켓은 실제 룰렛 연출을 보낼 Overlay WebSocket 클라이언트가 1개 이상 연결되어 있어야 한다. 연결 수가 0이면 버튼을 비활성화하고 연결 필요 안내를 표시하며, API도 명확한 오류를 반환한다.
+브리지가 종료되거나 재시작되면 페이지 자체는 열린 상태를 유지한다. `/api/state`가 응답하지 않는 동안 `브리지 연결 대기`를 표시하고 계속 폴링한다. 같은 포트에서 브리지가 다시 올라오면 잠시 `다시 연결됨`을 표시한 뒤 정상 상태로 복귀한다. 설정 변경으로 HTTP 포트가 변경된 자동 재시작의 경우 새 포트 `/health`가 응답할 때까지 기다렸다가 새 관리자 URL로 이동한다.
 
-## 로컬 주소
+후원자가 한 명도 없으면 `불러오는 중`에 머물지 않고 `등록된 후원자가 없습니다.`를 표시한다.
 
-- Admin: `http://127.0.0.1:17820/soop-admin.html`
-- Overlay: `http://127.0.0.1:17820/soop-overlay.html?ws=ws://127.0.0.1:17821`
-- Health: `http://127.0.0.1:17820/health`
-- Runtime state: `http://127.0.0.1:17820/api/state`
-- Overlay WebSocket: `ws://127.0.0.1:17821`
-- Ticket PNG: `POST /api/tickets/{ticketId}/image`
-- Admin API: `http://127.0.0.1:17820/api/admin/...` — loopback 전용
+### 수동 누적 보정 사용자 확인
 
-GitHub Pages의 `soop-overlay.html`은 화면 개발/미리보기 원본이고, 실제 방송에서는 EXE가 포함한 `web/` 자산을 localhost로 서비스한다. GitHub Pages 장애가 발생해도 이미 패키지된 overlay와 로컬 DB는 계속 사용할 수 있다.
+수동 보정에서는 SOOP 사용자 ID 또는 현재 닉네임 중 하나만 입력해도 된다.
+
+조회 순서:
+
+```text
+입력값
+  ↓
+GET /api/admin/donor-resolve
+  ↓ 기존 SQLite donor 정확 일치 검색
+  ├─ 유일한 일치 → 상대 ID/닉네임 자동 입력
+  └─ 없음 → GET /api/admin/donor-lookup
+                  ↓ SOOP 직접 검색
+                  ├─ 정확 일치 → 상대 값 자동 입력
+                  └─ 정확 일치 없음/복수 후보 → 자동 확정하지 않음
+```
+
+직접 검색 경로는 별도 API로 분리되어 있다. SOOP 검색 결과의 ID/닉네임이 입력값과 정확히 일치할 때만 자동 선택한다. 후보가 여러 개이거나 정확 일치가 없으면 후보만 표시하고 사용자가 확인하도록 한다. 외부 검색 경로는 SOOP 웹 검색 동작에 의존하므로 변경될 수 있으며, 실패 시 ID와 닉네임을 모두 직접 입력할 수 있다.
+
+관리 API:
+
+```text
+GET  /api/admin/config
+PUT  /api/admin/config
+GET  /api/admin/donors
+GET  /api/admin/donor-resolve?field=id|nickname|auto&value=...
+GET  /api/admin/donor-lookup?field=id|nickname|auto&value=...
+POST /api/admin/backup
+POST /api/admin/manifests/rebuild
+POST /api/admin/adjust
+POST /api/admin/test-ticket
+```
+
+관리 API는 loopback 접근만 허용한다.
+
+## OBS 오버레이
+
+기본 Browser Source 주소:
+
+```text
+http://127.0.0.1:17820/soop-overlay.html?ws=ws://127.0.0.1:17821
+```
+
+관리 페이지에서 현재 설정에 맞는 주소를 보여주고 복사할 수 있다.
+
+열려 있는 오버레이는 브리지 프로세스가 종료되거나 자동 재시작되어 WebSocket이 끊겨도 내부적으로 재연결한다. 방송 화면에는 `연결 끊김`, `재연결 중`, `다시 연결됨` 같은 연결 상태 문구를 표시하지 않는다. 설정 변경으로 WebSocket/API 포트가 바뀌는 자동 재시작에서는 브리지가 재시작 제어 메시지로 다음 WebSocket/API 주소를 전달하고 오버레이가 새 주소를 사용한다.
+
+PNG 완료 ACK와 이미지 업로드도 브리지 재시작 동안 재시도한다. 이미 번호가 확정된 티켓은 DB에서 같은 ticketId/번호를 복구하므로 재접속을 이유로 재추첨하지 않는다.
+
+## SOOP 연결 상태
+
+`SoopBridgeAdapter`는 `SOOPClient.add(streamerId)`로 비동기 채팅 연결을 시작하고 `JOIN_CHANNEL`을 최종 연결 완료 기준으로 사용한다. `JOIN_CHANNEL`이 30초 이내 오지 않으면 `CONNECTION_FAILED`로 전환하고 클라이언트를 정리한 뒤 설정된 주기에 따라 재시도한다. 따라서 `채팅 연결 중` 상태에 무기한 머물지 않는다.
+
+## 전체 자동발급 동작
+
+1. `streamerId`로 현재 SOOP 방송 정보를 조회한다.
+2. 방송 중이면 BNO와 채팅 서버 정보를 확인하고 익명 read-only chat 연결을 시작한다.
+3. `JOIN_CHANNEL` 완료 후 후원 이벤트를 대기한다.
+4. `SEND_BALLOON`을 내부 `SoopDonation`으로 변환한다.
+5. 후원자별 누적 별풍선을 SQLite transaction으로 반영한다.
+6. `floor(totalBalloons / balloonsPerTicket)` 기준으로 신규 티켓 수를 계산한다.
+7. 신규 티켓마다 1~28 범위의 중복 없는 7개 번호를 먼저 확정하여 DB에 저장한다.
+8. DB commit 후 `ticket.issue`를 Overlay WebSocket으로 보낸다.
+9. 오버레이는 저장된 번호를 사용해 룰렛을 실행하고 7개 릴을 순차 정지한다.
+10. 같은 번호로 티켓 Canvas를 렌더링한다.
+11. PNG를 로컬 bridge HTTP API로 전송한다.
+12. 브리지가 닉네임/후원자 ID별 폴더에 PNG를 저장하고 티켓을 `ISSUED`로 전환한다.
+13. 발급 당시 닉네임 폴더의 `issued.json`을 갱신한다.
+14. 프로그램 또는 OBS가 재시작되면 아직 `ISSUED`가 아닌 티켓을 같은 번호로 재전송한다.
 
 ## 영구 데이터와 복구
 
 운영 원본은 `data/roulette.db`다. 주요 데이터는 `donor`, `donation_event`, `ticket`, `adjustment_event`에 저장한다.
-
-티켓 상태는 다음 순서를 사용한다.
 
 ```text
 NUMBERS_CONFIRMED
@@ -173,7 +186,7 @@ NUMBERS_CONFIRMED
 → ISSUED
 ```
 
-`FAILED` 티켓은 자동 복구 대상에서 제외한다. 그 외 미완료 티켓은 재실행 또는 overlay 재접속 시 DB에서 같은 `ticketId`와 같은 번호를 읽어 다시 전달한다. 번호를 다시 추첨하지 않는다.
+`FAILED` 티켓은 자동 복구 대상에서 제외한다. 그 외 미완료 티켓은 재실행 또는 overlay 재접속 시 DB에서 같은 `ticketId`와 같은 번호를 읽어 다시 전달한다.
 
 티켓 출력 예시:
 
@@ -186,17 +199,33 @@ tickets/
 
 닉네임이 변경되면 발급 당시 닉네임별 폴더와 manifest를 분리하지만, 누적 별풍선은 안정적인 SOOP 사용자 ID 기준으로 이어진다.
 
-## Self-test
+## 소스 개발 요구 사항
 
-SOOP 실후원 없이 핵심 규칙을 검증할 수 있다.
+- JDK 25+
+- Maven 3.9+
+- SOOP 연결: `getCurrentThread/soopapi` v0.14.0 (JitPack)
+
+```bash
+cd bridge
+mvn clean package
+java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar
+```
+
+Windows portable app:
+
+```powershell
+cd bridge
+./package-windows.ps1
+```
+
+## Self-test
 
 ```bash
 java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-d-probe
 java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-e-probe
 java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-f-probe
+java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --encoding-probe
 ```
-
-Phase D는 누적/중복 방지/티켓 할당을, Phase E는 PNG 저장 및 `issued.json`/멱등성을, Phase F는 재시작 복구/상태 전이/FAILED 제외/운영 데이터 기능을 검증한다.
 
 SOOP 연결 probe:
 
@@ -204,23 +233,22 @@ SOOP 연결 probe:
 java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --probe <streamerId>
 ```
 
-이 probe는 live detail, chat server 연결, `JOIN_CHANNEL`까지 검증한다. 실제 `SEND_BALLOON` payload의 최종 실방송 검증은 테스트 시간에 실제 별풍선 이벤트가 발생해야 완료할 수 있다.
-
 ## Windows CI 검증
 
 `Windows Package` workflow는 다음을 모두 통과해야 artifact를 생성한다.
 
 ```text
-Admin JavaScript syntax check
+Admin/Overlay JavaScript syntax check
 → Maven build
-→ Phase D/E/F self-test
+→ Phase D/E/F + encoding self-test
 → jpackage GUI/tray app-image 생성
 → RouletteBridge.exe/config.json/bundled runtime 확인
-→ 관리자 JS/CSS 패키지 포함 확인
-→ 배포 config 구조 확인
+→ restart-bridge.ps1 포함 확인
+→ admin/overlay/reconnect 자산 포함 확인
+→ 배포 streamerId 빈 값 확인
 → 배포 ZIP에 logs/가 사전 생성되지 않았는지 확인
 → 패키지된 GUI EXE로 Phase F/encoding self-test 실행
-→ RouletteBridge-Windows-x64 artifact 업로드
+→ Windows x64 artifact 업로드
 ```
 
 따라서 artifact의 `RouletteBridge.exe`는 외부 Java 설치 없이 포함된 runtime으로 실행되는 Windows tray 배포본이다.

@@ -1,0 +1,117 @@
+name: Release v0.1.9
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "release/v0.1.9.md"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Check browser JavaScript
+        shell: pwsh
+        run: |
+          node --check soop-admin.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check soop-channel.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check soop-overlay-connection.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check soop-overlay.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check soop-overlay-archive.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build bridge
+        working-directory: bridge
+        run: mvn --batch-mode --no-transfer-progress clean package
+
+      - name: Run bridge self-tests
+        working-directory: bridge
+        shell: pwsh
+        run: |
+          java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-d-probe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-e-probe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-f-probe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --encoding-probe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build Windows tray package
+        working-directory: bridge
+        shell: pwsh
+        run: ./package-windows.ps1 -Version 0.1.9 -SkipBuild
+
+      - name: Verify packaged executable
+        working-directory: bridge
+        shell: pwsh
+        run: |
+          $root = Resolve-Path "dist/RouletteBridge"
+          $exe = Join-Path $root "RouletteBridge.exe"
+          $config = Join-Path $root "config.json"
+          $runtime = Join-Path $root "runtime/bin/server/jvm.dll"
+          if (-not (Test-Path $exe)) { throw "RouletteBridge.exe missing" }
+          if (-not (Test-Path $config)) { throw "config.json missing" }
+          if (-not (Test-Path $runtime)) { throw "bundled Java runtime missing" }
+          if (-not (Test-Path (Join-Path $root "restart-bridge.ps1"))) { throw "restart-bridge.ps1 missing from package" }
+          $configJson = Get-Content $config -Raw | ConvertFrom-Json
+          if (-not [string]::IsNullOrWhiteSpace([string]$configJson.streamerId)) { throw "distribution streamerId must be empty" }
+          @(
+            "web/soop-admin.html",
+            "web/soop-admin.js",
+            "web/soop-admin.css",
+            "web/soop-channel.html",
+            "web/soop-channel.js",
+            "web/soop-channel.css",
+            "web/soop-overlay-connection.js",
+            "web/soop-overlay.js",
+            "web/soop-overlay-archive.js"
+          ) | ForEach-Object {
+            if (-not (Test-Path (Join-Path $root $_))) { throw "required packaged asset missing: $_" }
+          }
+          if (Test-Path (Join-Path $root "logs")) { throw "logs directory must not be pre-created in distribution" }
+
+          $phaseF = Start-Process -FilePath $exe -ArgumentList "--phase-f-probe" -Wait -PassThru
+          if ($phaseF.ExitCode -ne 0) { throw "packaged EXE phase-f probe failed: $($phaseF.ExitCode)" }
+          $encoding = Start-Process -FilePath $exe -ArgumentList "--encoding-probe" -Wait -PassThru
+          if ($encoding.ExitCode -ne 0) { throw "packaged EXE encoding probe failed: $($encoding.ExitCode)" }
+
+      - name: Create release ZIP
+        working-directory: bridge
+        shell: pwsh
+        run: |
+          $zip = Join-Path $PWD "RouletteBridge-Windows-x64-v0.1.9.zip"
+          Compress-Archive -Path "dist/RouletteBridge/*" -DestinationPath $zip -Force
+          Get-FileHash $zip -Algorithm SHA256 | Format-List
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = Join-Path $PWD "bridge/RouletteBridge-Windows-x64-v0.1.9.zip"
+          $notes = Join-Path $PWD "release/v0.1.9.md"
+          gh release create v0.1.9 $zip `
+            --repo "${{ github.repository }}" `
+            --title "RouletteBridge v0.1.9" `
+            --notes-file $notes `
+            --target "${{ github.sha }}" `
+            --latest

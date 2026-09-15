@@ -12,12 +12,14 @@ import io.github.playcosmos.roulettebridge.issuance.TicketNumberGenerator;
 import io.github.playcosmos.roulettebridge.server.OverlayWebSocketServer;
 import io.github.playcosmos.roulettebridge.storage.TicketArchiveService;
 import java.io.IOException;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -36,6 +38,8 @@ public final class AdminOperationsHandler implements HttpHandler {
     private final TicketArchiveService archive;
     private final ManualAdjustmentService adjustment;
     private final OverlayWebSocketServer websocket;
+    private final RestartService restartService;
+    private final SoopUserLookupService directLookup;
     private final TicketNumberGenerator numberGenerator = new TicketNumberGenerator();
 
     public AdminOperationsHandler(
@@ -46,17 +50,21 @@ public final class AdminOperationsHandler implements HttpHandler {
         DatabaseBackupService backup,
         TicketArchiveService archive,
         ManualAdjustmentService adjustment,
-        OverlayWebSocketServer websocket
+        OverlayWebSocketServer websocket,
+        RestartService restartService,
+        SoopUserLookupService directLookup
     ) {
-        this.database = database;
+        this.database = Objects.requireNonNull(database, "database");
         this.startupConfig = Objects.requireNonNull(startupConfig, "startupConfig").normalized();
         this.ticketConfig = this.startupConfig.ticket();
         this.configPath = Objects.requireNonNull(configPath, "configPath").toAbsolutePath().normalize();
         this.liveConfigConsumer = Objects.requireNonNull(liveConfigConsumer, "liveConfigConsumer");
-        this.backup = backup;
-        this.archive = archive;
-        this.adjustment = adjustment;
-        this.websocket = websocket;
+        this.backup = Objects.requireNonNull(backup, "backup");
+        this.archive = Objects.requireNonNull(archive, "archive");
+        this.adjustment = Objects.requireNonNull(adjustment, "adjustment");
+        this.websocket = Objects.requireNonNull(websocket, "websocket");
+        this.restartService = Objects.requireNonNull(restartService, "restartService");
+        this.directLookup = Objects.requireNonNull(directLookup, "directLookup");
     }
 
     @Override
@@ -76,6 +84,14 @@ public final class AdminOperationsHandler implements HttpHandler {
         try {
             if ("GET".equalsIgnoreCase(method) && "/donors".equals(route)) {
                 sendJson(exchange, 200, Map.of("donors", listDonors()));
+                return;
+            }
+            if ("GET".equalsIgnoreCase(method) && "/donor-resolve".equals(route)) {
+                handleLocalDonorResolve(exchange);
+                return;
+            }
+            if ("GET".equalsIgnoreCase(method) && "/donor-lookup".equals(route)) {
+                handleDirectDonorLookup(exchange);
                 return;
             }
             if ("GET".equalsIgnoreCase(method) && "/config".equals(route)) {
@@ -128,19 +144,47 @@ public final class AdminOperationsHandler implements HttpHandler {
         BridgeConfig before = ConfigLoader.load(configPath);
         BridgeConfig requested = readConfig(exchange);
         BridgeConfig saved = ConfigLoader.save(configPath, requested);
+        List<String> restartFields = restartFields(saved);
 
         boolean liveChanged = !Objects.equals(before.streamerId(), saved.streamerId())
             || !Objects.equals(before.soop(), saved.soop());
-        if (liveChanged) liveConfigConsumer.accept(saved);
+        boolean liveApplied = false;
+        RestartService.RestartResult restart = null;
 
-        List<String> restartFields = restartFields(saved);
-        sendJson(exchange, 200, Map.of(
-            "saved", true,
-            "config", saved,
-            "liveApplied", liveChanged,
-            "requiresRestart", !restartFields.isEmpty(),
-            "restartFields", restartFields
-        ));
+        if (restartFields.isEmpty()) {
+            if (liveChanged) {
+                liveConfigConsumer.accept(saved);
+                liveApplied = true;
+            }
+        } else {
+            restart = restartService.schedule();
+            if (restart.scheduled()) {
+                String control = GSON.toJson(Map.of(
+                    "type", "bridge.restart",
+                    "websocketUrl", websocketUrl(saved),
+                    "apiBase", adminOrigin(saved),
+                    "adminUrl", adminUrl(saved),
+                    "overlayUrl", overlayUrl(saved)
+                ));
+                websocket.broadcastTransient(control);
+            } else if (liveChanged) {
+                liveConfigConsumer.accept(saved);
+                liveApplied = true;
+            }
+        }
+
+        var payload = new LinkedHashMap<String, Object>();
+        payload.put("saved", true);
+        payload.put("config", saved);
+        payload.put("liveApplied", liveApplied);
+        payload.put("requiresRestart", !restartFields.isEmpty());
+        payload.put("restartFields", restartFields);
+        payload.put("restartScheduled", restart != null && restart.scheduled());
+        payload.put("restartMessage", restart == null ? "" : restart.message());
+        payload.put("nextAdminUrl", adminUrl(saved));
+        payload.put("nextOverlayUrl", overlayUrl(saved));
+        payload.put("nextWebsocketUrl", websocketUrl(saved));
+        sendJson(exchange, 200, payload);
     }
 
     private List<String> restartFields(BridgeConfig config) {
@@ -151,12 +195,53 @@ public final class AdminOperationsHandler implements HttpHandler {
         return List.copyOf(fields);
     }
 
+    private void handleLocalDonorResolve(HttpExchange exchange) throws Exception {
+        String value = query(exchange, "value");
+        String field = normalizeField(query(exchange, "field"));
+        if (value == null || value.isBlank()) throw new IllegalArgumentException("value is required");
+        var candidates = findLocalDonors(value.trim(), field);
+        sendJson(exchange, 200, Map.of(
+            "source", "local",
+            "query", value.trim(),
+            "field", field,
+            "resolved", candidates.size() == 1,
+            "match", candidates.size() == 1 ? candidates.getFirst() : Map.of(),
+            "candidates", candidates
+        ));
+    }
+
+    private void handleDirectDonorLookup(HttpExchange exchange) throws Exception {
+        String value = query(exchange, "value");
+        String field = normalizeField(query(exchange, "field"));
+        if (value == null || value.isBlank()) throw new IllegalArgumentException("value is required");
+        sendJson(exchange, 200, directLookup.lookup(value, field));
+    }
+
     private void handleAdjustment(HttpExchange exchange) throws Exception {
         JsonObject body = readJson(exchange);
         String donorId = string(body, "donorId", null);
-        String nickname = string(body, "nickname", "익명");
+        String nickname = string(body, "nickname", null);
         int delta = body.has("balloonDelta") ? body.get("balloonDelta").getAsInt() : 0;
         String reason = string(body, "reason", null);
+
+        if ((donorId == null || donorId.isBlank()) && (nickname == null || nickname.isBlank())) {
+            throw new IllegalArgumentException("SOOP 사용자 ID 또는 닉네임 중 하나 이상을 입력하세요.");
+        }
+        if (donorId == null || donorId.isBlank()) {
+            var matches = findLocalDonors(nickname, "nickname");
+            if (matches.size() != 1) {
+                throw new IllegalArgumentException("닉네임만으로 사용자를 확정할 수 없습니다. 자동 조회 결과를 확인하세요.");
+            }
+            donorId = String.valueOf(matches.getFirst().get("donorId"));
+        }
+        if (nickname == null || nickname.isBlank()) {
+            var matches = findLocalDonors(donorId, "id");
+            if (matches.size() != 1) {
+                throw new IllegalArgumentException("ID만으로 사용자를 확정할 수 없습니다. 자동 조회 결과를 확인하세요.");
+            }
+            nickname = String.valueOf(matches.getFirst().get("nickname"));
+        }
+
         var result = adjustment.adjust(donorId, nickname, delta, reason);
         sendJson(exchange, 200, result);
     }
@@ -228,6 +313,84 @@ public final class AdminOperationsHandler implements HttpHandler {
             }
         }
         return List.copyOf(donors);
+    }
+
+    private List<Map<String, Object>> findLocalDonors(String value, String field) throws Exception {
+        String sql = switch (field) {
+            case "id" -> """
+                SELECT donor_id, current_nickname, total_balloons, issued_ticket_count, updated_at
+                FROM donor WHERE donor_id = ? COLLATE NOCASE LIMIT 10
+                """;
+            case "nickname" -> """
+                SELECT donor_id, current_nickname, total_balloons, issued_ticket_count, updated_at
+                FROM donor WHERE current_nickname = ? LIMIT 10
+                """;
+            default -> """
+                SELECT donor_id, current_nickname, total_balloons, issued_ticket_count, updated_at
+                FROM donor
+                WHERE donor_id = ? COLLATE NOCASE OR current_nickname = ?
+                ORDER BY CASE WHEN donor_id = ? COLLATE NOCASE THEN 0 ELSE 1 END, updated_at DESC
+                LIMIT 10
+                """;
+        };
+        var result = new ArrayList<Map<String, Object>>();
+        try (var connection = database.open(); var statement = connection.prepareStatement(sql)) {
+            statement.setString(1, value);
+            if ("auto".equals(field)) {
+                statement.setString(2, value);
+                statement.setString(3, value);
+            }
+            try (var rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    var item = new LinkedHashMap<String, Object>();
+                    item.put("donorId", rows.getString("donor_id"));
+                    item.put("nickname", rows.getString("current_nickname"));
+                    item.put("totalBalloons", rows.getLong("total_balloons"));
+                    item.put("issuedTickets", rows.getInt("issued_ticket_count"));
+                    item.put("updatedAt", rows.getString("updated_at"));
+                    result.add(item);
+                }
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    private static String normalizeField(String field) {
+        if (field == null || field.isBlank()) return "auto";
+        return switch (field.trim().toLowerCase(Locale.ROOT)) {
+            case "id", "donorid", "user_id" -> "id";
+            case "nickname", "nick", "user_nick" -> "nickname";
+            default -> "auto";
+        };
+    }
+
+    private static String query(HttpExchange exchange, String key) {
+        String raw = exchange.getRequestURI().getRawQuery();
+        if (raw == null || raw.isBlank()) return null;
+        for (String pair : raw.split("&")) {
+            int split = pair.indexOf('=');
+            String name = split >= 0 ? pair.substring(0, split) : pair;
+            if (!URLDecoder.decode(name, StandardCharsets.UTF_8).equals(key)) continue;
+            String value = split >= 0 ? pair.substring(split + 1) : "";
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        }
+        return null;
+    }
+
+    private static String adminOrigin(BridgeConfig config) {
+        return "http://127.0.0.1:" + config.server().port();
+    }
+
+    private static String adminUrl(BridgeConfig config) {
+        return adminOrigin(config) + "/soop-admin.html?restarted=1";
+    }
+
+    private static String websocketUrl(BridgeConfig config) {
+        return "ws://127.0.0.1:" + config.server().websocketPort();
+    }
+
+    private static String overlayUrl(BridgeConfig config) {
+        return adminOrigin(config) + "/soop-overlay.html?ws=" + websocketUrl(config);
     }
 
     private static BridgeConfig readConfig(HttpExchange exchange) throws IOException {

@@ -18,6 +18,7 @@
 
   let refreshTimer = null;
   let refreshing = false;
+  let overlayClientCount = 0;
 
   const STATUS = {
     CONNECTED: ["연결됨", "ok"],
@@ -52,6 +53,11 @@
     return payload;
   }
 
+  function showOperation(text, tone = "") {
+    operationResult.textContent = text;
+    operationResult.className = `operation-result${tone ? ` ${tone}` : ""}`;
+  }
+
   function setConnection(status, error) {
     const [label, tone] = STATUS[status] || [status || "상태 확인 불가", "waiting"];
     connectionBadge.textContent = label;
@@ -60,12 +66,25 @@
     soopStatus.title = error || "";
   }
 
+  function updateTestTicketAvailability() {
+    const available = overlayClientCount > 0;
+    testTicketButton.disabled = !available;
+    testTicketButton.title = available
+      ? "연결된 오버레이에 테스트 티켓을 전송합니다."
+      : "OBS 또는 방송용 오버레이가 연결되어 있어야 사용할 수 있습니다.";
+    if (!available && operationResult.textContent === "대기 중") {
+      showOperation("테스트 티켓은 OBS/오버레이 연결 후 사용할 수 있습니다.", "waiting");
+    }
+  }
+
   function renderState(state) {
     const soop = state.soop || {};
     setConnection(soop.status, soop.lastError);
     streamerId.textContent = state.streamerId || soop.streamerId || "미설정";
     pendingTickets.textContent = String(state.pendingTickets ?? 0);
-    overlayClients.textContent = String(state.websocketClients ?? 0);
+    overlayClientCount = Number(state.websocketClients ?? 0);
+    overlayClients.textContent = String(overlayClientCount);
+    updateTestTicketAvailability();
   }
 
   function cell(text) {
@@ -123,6 +142,8 @@
       if (stateResult.status === "fulfilled") {
         renderState(stateResult.value);
       } else {
+        overlayClientCount = 0;
+        updateTestTicketAvailability();
         setConnection("DISCONNECTED_ERROR", stateResult.reason?.message);
         soopStatus.textContent = "브리지 응답 없음";
       }
@@ -140,24 +161,22 @@
 
   async function runAction(button, url, body, successText) {
     button.disabled = true;
-    operationResult.textContent = "처리 중…";
-    operationResult.className = "operation-result working";
+    showOperation("처리 중…", "working");
     try {
       const payload = await fetchJson(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body || {})
       });
-      operationResult.textContent = typeof successText === "function" ? successText(payload) : successText;
-      operationResult.className = "operation-result success";
+      showOperation(typeof successText === "function" ? successText(payload) : successText, "success");
       await refresh();
       return payload;
     } catch (error) {
-      operationResult.textContent = `실패: ${error.message}`;
-      operationResult.className = "operation-result error-text";
+      showOperation(`실패: ${error.message}`, "error-text");
       throw error;
     } finally {
       button.disabled = false;
+      if (button === testTicketButton) updateTestTicketAvailability();
     }
   }
 
@@ -169,7 +188,16 @@
     runAction(rebuildButton, "/api/admin/manifests/rebuild", {}, (p) => `issued.json ${p.rebuilt ?? 0}개 재생성 완료`).catch(() => {});
   });
   testTicketButton.addEventListener("click", () => {
-    runAction(testTicketButton, "/api/admin/test-ticket", { nickname: testNickname.value.trim() || "테스트" }, "테스트 티켓을 오버레이에 전송했습니다.").catch(() => {});
+    if (overlayClientCount <= 0) {
+      showOperation("실패: OBS 또는 방송용 오버레이가 연결되어 있지 않습니다.", "error-text");
+      return;
+    }
+    runAction(
+      testTicketButton,
+      "/api/admin/test-ticket",
+      { nickname: testNickname.value.trim() || "테스트" },
+      "테스트 티켓을 오버레이에 전송했습니다."
+    ).catch(() => {});
   });
 
   adjustForm.addEventListener("submit", (event) => {

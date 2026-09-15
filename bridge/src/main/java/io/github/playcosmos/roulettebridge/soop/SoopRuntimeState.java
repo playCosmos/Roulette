@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class SoopRuntimeState {
-    private final String streamerId;
+    private final AtomicReference<String> streamerId = new AtomicReference<>("");
     private final AtomicReference<String> status = new AtomicReference<>("IDLE");
     private final AtomicReference<String> bno = new AtomicReference<>();
     private final AtomicReference<String> title = new AtomicReference<>();
@@ -16,7 +16,14 @@ public final class SoopRuntimeState {
     private final AtomicLong donationEvents = new AtomicLong();
 
     public SoopRuntimeState(String streamerId) {
-        this.streamerId = streamerId;
+        streamerId(streamerId);
+    }
+
+    public void streamerId(String value) {
+        streamerId.set(value == null ? "" : value.trim());
+        bno.set(null);
+        title.set(null);
+        lastError.set(null);
     }
 
     public void status(String value) {
@@ -33,6 +40,10 @@ public final class SoopRuntimeState {
         this.lastError.set(null);
     }
 
+    public void clearError() {
+        lastError.set(null);
+    }
+
     public void error(Throwable error) {
         String message = error == null ? null : error.getMessage();
         if (message == null && error != null) message = error.getClass().getSimpleName();
@@ -46,7 +57,7 @@ public final class SoopRuntimeState {
 
     public Map<String, Object> snapshot() {
         var result = new LinkedHashMap<String, Object>();
-        result.put("streamerId", streamerId);
+        result.put("streamerId", streamerId.get());
         result.put("status", status.get());
         result.put("bno", bno.get());
         result.put("title", title.get());

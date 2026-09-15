@@ -33,6 +33,7 @@ public final class FileLog implements AutoCloseable {
     public static FileLog install(Path directory) throws IOException {
         Path root = directory.toAbsolutePath().normalize();
         Files.createDirectories(root);
+        hideDirectoryOnWindows(root);
         Path path = root.resolve("roulette-bridge-" + LocalDateTime.now().format(FILE_TIME) + ".log");
         var stream = Files.newOutputStream(
             path,
@@ -48,6 +49,15 @@ public final class FileLog implements AutoCloseable {
             + " console-err=" + log.originalErr.charset()
             + " file=UTF-8");
         return log;
+    }
+
+    private static void hideDirectoryOnWindows(Path root) {
+        if (!System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) return;
+        try {
+            Files.setAttribute(root, "dos:hidden", true);
+        } catch (Exception ignored) {
+            // Logging must continue even when the filesystem does not expose DOS attributes.
+        }
     }
 
     public Path path() {

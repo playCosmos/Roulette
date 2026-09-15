@@ -128,5 +128,60 @@
     </section>
   </main>
   <script src="./soop-admin.js?v=20260915-4" defer></script>
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const setupPanel = document.getElementById("setupPanel");
+      const configForm = document.getElementById("configForm");
+      const heading = setupPanel?.querySelector(".panel-heading");
+      const soopStatus = document.getElementById("soopStatus");
+      if (!setupPanel || !configForm || !heading || !soopStatus) return;
+
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.id = "toggleSetupButton";
+      toggle.setAttribute("aria-controls", "configForm");
+      heading.append(toggle);
+
+      let collapsed = false;
+      let userOverride = false;
+      let autoCollapsedAfterConnection = false;
+
+      function applyCollapsed(next) {
+        collapsed = Boolean(next);
+        configForm.hidden = collapsed;
+        toggle.textContent = collapsed ? "설정 펼치기" : "설정 접기";
+        toggle.setAttribute("aria-expanded", String(!collapsed));
+        setupPanel.dataset.collapsed = String(collapsed);
+      }
+
+      function applyStatus() {
+        const status = soopStatus.textContent.trim();
+        if (status === "설정 필요") {
+          userOverride = false;
+          autoCollapsedAfterConnection = false;
+          applyCollapsed(false);
+          return;
+        }
+        if (status === "연결됨" && !userOverride && !autoCollapsedAfterConnection) {
+          autoCollapsedAfterConnection = true;
+          applyCollapsed(true);
+        }
+      }
+
+      toggle.addEventListener("click", () => {
+        userOverride = true;
+        applyCollapsed(!collapsed);
+      });
+
+      new MutationObserver(applyStatus).observe(soopStatus, {
+        childList: true,
+        characterData: true,
+        subtree: true
+      });
+
+      applyCollapsed(false);
+      applyStatus();
+    });
+  </script>
 </body>
 </html>

@@ -10,6 +10,8 @@ import io.github.playcosmos.roulettebridge.operations.DatabaseBackupService;
 import io.github.playcosmos.roulettebridge.operations.EncodingProbe;
 import io.github.playcosmos.roulettebridge.operations.FileLog;
 import io.github.playcosmos.roulettebridge.operations.ManualAdjustmentService;
+import io.github.playcosmos.roulettebridge.operations.RestartService;
+import io.github.playcosmos.roulettebridge.operations.SoopUserLookupService;
 import io.github.playcosmos.roulettebridge.operations.WindowsConsoleEncoding;
 import io.github.playcosmos.roulettebridge.recovery.PhaseFProbe;
 import io.github.playcosmos.roulettebridge.recovery.TicketRecoveryService;
@@ -166,7 +168,9 @@ public final class Main {
             backup,
             archive,
             adjustment,
-            websocket
+            websocket,
+            new RestartService(workingDirectory),
+            new SoopUserLookupService()
         );
 
         var http = new BridgeHttpServer(

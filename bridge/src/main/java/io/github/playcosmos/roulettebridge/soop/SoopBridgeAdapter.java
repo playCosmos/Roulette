@@ -30,6 +30,7 @@ public final class SoopBridgeAdapter implements AutoCloseable {
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AtomicBoolean probeScheduled = new AtomicBoolean(false);
     private final AtomicLong generation = new AtomicLong(0);
+    private final AtomicLong connectionAttempt = new AtomicLong(0);
     private volatile SOOPClient client;
 
     public SoopBridgeAdapter(
@@ -65,6 +66,7 @@ public final class SoopBridgeAdapter implements AutoCloseable {
         scheduler.execute(() -> {
             if (closed.get()) return;
             generation.incrementAndGet();
+            connectionAttempt.incrementAndGet();
             closeClient();
             if (!normalized.soop().enabled()) {
                 state.status("DISABLED");
@@ -84,22 +86,56 @@ public final class SoopBridgeAdapter implements AutoCloseable {
 
     public void reconnectNow() {
         if (closed.get()) return;
-        var current = config;
-        if (!current.soop().enabled()) {
+        var currentConfig = config;
+        if (!currentConfig.soop().enabled()) {
             state.status("DISABLED");
             return;
         }
-        if (!hasStreamerId(current)) {
+        if (!hasStreamerId(currentConfig)) {
             state.status("WAITING_FOR_STREAMER_ID");
             return;
         }
 
         scheduler.execute(() -> {
             if (closed.get()) return;
-            generation.incrementAndGet();
-            closeClient();
+
+            var activeConfig = config;
+            String streamerId = activeConfig.streamerId();
+            var currentClient = client;
+            long currentGeneration = generation.get();
+
+            if (currentClient != null
+                && currentClient.get(streamerId) != null
+                && isCurrent(currentGeneration)) {
+                long attempt = connectionAttempt.incrementAndGet();
+                state.clearError();
+                state.status("RECONNECTING");
+                System.out.println("[soop] manual force reconnect requested");
+
+                try {
+                    currentClient.reconnect(streamerId).whenComplete((ignored, error) -> {
+                        if (error == null) return;
+                        scheduler.execute(() -> {
+                            if (!isCurrentAttempt(currentGeneration, attempt)) return;
+                            state.status("CONNECTION_FAILED");
+                            state.error(unwrap(error));
+                            System.err.println("[soop] manual reconnect failed: " + describe(error));
+                            scheduleProbe(config.soop().offlinePollSeconds());
+                        });
+                    });
+                    scheduleConnectionTimeout(currentGeneration, attempt);
+                } catch (Exception reconnectError) {
+                    if (!isCurrentAttempt(currentGeneration, attempt)) return;
+                    state.status("CONNECTION_FAILED");
+                    state.error(reconnectError);
+                    System.err.println("[soop] manual reconnect failed: " + describe(reconnectError));
+                    scheduleProbe(config.soop().offlinePollSeconds());
+                }
+                return;
+            }
+
             state.status("IDLE");
-            System.out.println("[soop] manual reconnect requested");
+            System.out.println("[soop] reconnect requested without reusable chat client; starting fresh probe");
             probeAndConnect();
         });
     }
@@ -141,6 +177,7 @@ public final class SoopBridgeAdapter implements AutoCloseable {
 
         String streamerId = activeConfig.streamerId();
         long currentGeneration = generation.incrementAndGet();
+        long attempt = connectionAttempt.incrementAndGet();
         closeClient();
 
         var nextClient = new SOOPClient();
@@ -149,11 +186,13 @@ public final class SoopBridgeAdapter implements AutoCloseable {
         state.status("PROBING");
 
         nextClient.live().detail(streamerId).whenComplete((detail, error) -> {
-            if (!isCurrent(currentGeneration)) return;
+            if (!isCurrentAttempt(currentGeneration, attempt)) return;
             if (error != null) {
                 state.status("OFFLINE_OR_UNAVAILABLE");
                 state.error(unwrap(error));
                 System.err.println("[soop] live probe failed: " + describe(error));
+                generation.incrementAndGet();
+                connectionAttempt.incrementAndGet();
                 closeClient();
                 scheduleProbe(config.soop().offlinePollSeconds());
                 return;
@@ -166,28 +205,36 @@ public final class SoopBridgeAdapter implements AutoCloseable {
             try {
                 // SOOPClient.add() starts the asynchronous chat connection itself.
                 nextClient.add(streamerId);
-                scheduleJoinTimeout(currentGeneration);
+                scheduleConnectionTimeout(currentGeneration, attempt);
             } catch (Exception connectError) {
-                if (!isCurrent(currentGeneration)) return;
+                if (!isCurrentAttempt(currentGeneration, attempt)) return;
                 state.status("CONNECTION_FAILED");
                 state.error(connectError);
                 System.err.println("[soop] chat connection failed: " + describe(connectError));
                 generation.incrementAndGet();
+                connectionAttempt.incrementAndGet();
                 closeClient();
                 scheduleProbe(config.soop().offlinePollSeconds());
             }
         });
     }
 
-    private void scheduleJoinTimeout(long expectedGeneration) {
+    private void scheduleConnectionTimeout(long expectedGeneration, long expectedAttempt) {
         scheduler.schedule(() -> {
-            if (!isCurrent(expectedGeneration) || !"CONNECTING".equals(state.status())) return;
-            var timeout = new TimeoutException("chat JOIN_CHANNEL timeout after " + JOIN_TIMEOUT_SECONDS + " seconds");
+            if (!isCurrentAttempt(expectedGeneration, expectedAttempt)) return;
+            String status = state.status();
+            if (!"CONNECTING".equals(status) && !"RECONNECTING".equals(status)) return;
+
+            var timeout = new TimeoutException(
+                "chat connection timeout after " + JOIN_TIMEOUT_SECONDS + " seconds"
+            );
             state.status("CONNECTION_FAILED");
             state.error(timeout);
             System.err.println("[soop] " + timeout.getMessage());
-            generation.incrementAndGet();
-            closeClient();
+
+            // Do not discard the registered SOOP client here. A subsequent manual reconnect
+            // must be able to call forceReconnect(), which tears down an in-flight/backoff
+            // connection even when SOOPChatClient.isConnected() is false.
             scheduleProbe(config.soop().offlinePollSeconds());
         }, JOIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
@@ -243,6 +290,10 @@ public final class SoopBridgeAdapter implements AutoCloseable {
         return !closed.get() && generation.get() == expectedGeneration;
     }
 
+    private boolean isCurrentAttempt(long expectedGeneration, long expectedAttempt) {
+        return isCurrent(expectedGeneration) && connectionAttempt.get() == expectedAttempt;
+    }
+
     private void closeClient() {
         var current = client;
         client = null;
@@ -274,6 +325,7 @@ public final class SoopBridgeAdapter implements AutoCloseable {
     public void close() {
         if (!closed.compareAndSet(false, true)) return;
         generation.incrementAndGet();
+        connectionAttempt.incrementAndGet();
         closeClient();
         scheduler.shutdownNow();
         try {

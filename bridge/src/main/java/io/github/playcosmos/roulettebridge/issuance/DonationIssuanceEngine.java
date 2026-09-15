@@ -71,7 +71,7 @@ public final class DonationIssuanceEngine {
                         total,
                         allocated,
                         0,
-                        remainder(total),
+                        remainder(total, allocated),
                         List.of()
                     );
                 }
@@ -82,12 +82,7 @@ public final class DonationIssuanceEngine {
 
                 long totalBalloons = readDonorTotal(connection, donation.donorId());
                 int allocatedBefore = countAllocatedTickets(connection, donation.donorId());
-                long eligibleLong = totalBalloons / ticketConfig.balloonsPerTicket();
-                if (eligibleLong > Integer.MAX_VALUE) {
-                    throw new SQLException("eligible ticket count exceeds supported range: " + eligibleLong);
-                }
-                int eligibleTickets = (int) eligibleLong;
-                int newTicketCount = Math.max(0, eligibleTickets - allocatedBefore);
+                int newTicketCount = calculateNewTicketCount(donation, totalBalloons, allocatedBefore);
 
                 for (int i = 0; i < newTicketCount; i++) {
                     int ticketSequence = allocatedBefore + i + 1;
@@ -117,13 +112,14 @@ public final class DonationIssuanceEngine {
                 markDonationProcessed(connection, eventId, Instant.now().toString());
                 connection.commit();
 
+                int allocatedAfter = allocatedBefore + newTicketCount;
                 result = new DonationResult(
                     false,
                     eventId,
                     totalBalloons,
-                    allocatedBefore + newTicketCount,
+                    allocatedAfter,
                     newTicketCount,
-                    remainder(totalBalloons),
+                    remainder(totalBalloons, allocatedAfter),
                     List.copyOf(createdTickets)
                 );
             } catch (Exception error) {
@@ -149,7 +145,28 @@ public final class DonationIssuanceEngine {
         return result;
     }
 
-    private int remainder(long totalBalloons) {
+    private int calculateNewTicketCount(SoopDonation donation, long totalBalloons, int allocatedBefore) throws SQLException {
+        long eligibleLong;
+        if (ticketConfig.singleDonationMode()) {
+            eligibleLong = donation.balloonCount() / (long) ticketConfig.balloonsPerTicket();
+        } else {
+            eligibleLong = totalBalloons / ticketConfig.balloonsPerTicket();
+            eligibleLong = Math.max(0L, eligibleLong - allocatedBefore);
+        }
+        if (eligibleLong > Integer.MAX_VALUE) {
+            throw new SQLException("eligible ticket count exceeds supported range: " + eligibleLong);
+        }
+        return (int) eligibleLong;
+    }
+
+    private int remainder(long totalBalloons, int allocatedTickets) {
+        if (ticketConfig.singleDonationMode()) {
+            long countedOnly = Math.max(
+                0L,
+                totalBalloons - (long) allocatedTickets * ticketConfig.balloonsPerTicket()
+            );
+            return countedOnly > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) countedOnly;
+        }
         return (int) (totalBalloons % ticketConfig.balloonsPerTicket());
     }
 

@@ -8,6 +8,8 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class RestartService {
+    private static final long EXIT_DELAY_MILLIS = 4000;
+
     private final Path applicationRoot;
     private final AtomicBoolean scheduled = new AtomicBoolean(false);
 
@@ -49,9 +51,13 @@ public final class RestartService {
             .redirectError(ProcessBuilder.Redirect.DISCARD)
             .start();
 
+        // Config saving happens on the HTTP request thread. Give the 200 response and
+        // browser-side save handling enough time to complete before terminating this
+        // process; otherwise the file is saved correctly but the admin page can see a
+        // network abort and incorrectly report "저장 실패".
         Thread.ofPlatform().name("roulette-bridge-restart-exit").start(() -> {
             try {
-                Thread.sleep(1500);
+                Thread.sleep(EXIT_DELAY_MILLIS);
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }

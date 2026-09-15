@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark" />
   <title>먀로또 · SOOP 브리지 관리</title>
-  <link rel="stylesheet" href="./soop-admin.css?v=20260915-6" />
+  <link rel="stylesheet" href="./soop-admin.css?v=20260915-7" />
 </head>
 <body>
   <main class="admin-shell">
@@ -44,6 +44,12 @@
 
         <fieldset>
           <legend>티켓 규칙</legend>
+          <label>발급 기준
+            <select name="issuanceMode">
+              <option value="single_donation">단일 후원 기준</option>
+              <option value="cumulative">누적 후원 기준</option>
+            </select>
+          </label>
           <label>티켓당 별풍선<input name="balloonsPerTicket" type="number" min="1" step="1" /></label>
           <label>최대 번호<input name="numberMax" type="number" min="1" step="1" /></label>
           <label>선택 번호 개수<input name="numberCount" type="number" min="1" step="1" /></label>
@@ -120,7 +126,7 @@
 
     <section class="panel donor-panel">
       <div class="panel-heading">
-        <div><h2>후원자 누적</h2><p>최대 500명, 최근 갱신 순입니다.</p></div>
+        <div><h2>후원자 누적</h2><p>단일 후원 모드의 잔여는 발급에 다시 사용하지 않고 카운트만 누적합니다. 최대 500명, 최근 갱신 순입니다.</p></div>
         <button type="button" id="openTicketsFolderButton">티켓 폴더 열기</button>
       </div>
       <p class="operation-result" id="ticketsFolderResult">현재 설정된 티켓 저장 폴더를 Windows 탐색기로 엽니다.</p>
@@ -132,7 +138,7 @@
       </div>
     </section>
   </main>
-  <script src="./soop-admin.js?v=20260915-4" defer></script>
+  <script src="./soop-admin.js?v=20260915-5" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       const setupPanel = document.getElementById("setupPanel");

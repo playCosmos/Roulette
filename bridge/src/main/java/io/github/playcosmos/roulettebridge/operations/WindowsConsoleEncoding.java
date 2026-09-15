@@ -7,15 +7,16 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 /**
- * Makes the attached Windows console use UTF-8 and aligns Java stdout/stderr
- * with that code page. This keeps localized JUL labels such as "정보" and
- * Korean log message bodies readable in the packaged console executable.
+ * Makes an attached Windows console use UTF-8 and aligns Java stdout/stderr
+ * with that code page. Tray/GUI packaging has no console, so this is skipped
+ * there to avoid spawning a transient command window.
  */
 public final class WindowsConsoleEncoding {
     private WindowsConsoleEncoding() {}
 
     public static void configure() {
         if (!System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) return;
+        if (System.console() == null) return;
 
         try {
             var process = new ProcessBuilder("cmd.exe", "/d", "/c", "chcp 65001 > nul")

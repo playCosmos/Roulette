@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
@@ -88,6 +89,7 @@ public final class BridgeHttpServer implements AutoCloseable {
         });
 
         server.createContext(TICKET_API_PREFIX, this::handleTicketApi);
+        server.createContext("/api/admin/tickets/open-folder", this::handleOpenTicketFolder);
         server.createContext("/api/admin", adminOperations);
         server.createContext("/api/channel", channelEvents);
         server.createContext("/", this::serveStatic);
@@ -98,6 +100,44 @@ public final class BridgeHttpServer implements AutoCloseable {
         System.out.println("[http] listening on http://" + server.getAddress().getHostString() + ":" + server.getAddress().getPort());
         System.out.println("[http] web root: " + webRoot);
         System.out.println("[http] ticket root: " + ticketArchive.ticketRoot());
+    }
+
+    private void handleOpenTicketFolder(HttpExchange exchange) throws IOException {
+        if (exchange.getRemoteAddress() == null
+            || exchange.getRemoteAddress().getAddress() == null
+            || !exchange.getRemoteAddress().getAddress().isLoopbackAddress()) {
+            sendJson(exchange, 403, Map.of("error", "ticket folder API is loopback-only"));
+            return;
+        }
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+
+        Path ticketRoot = ticketArchive.ticketRoot().toAbsolutePath().normalize();
+        try {
+            Files.createDirectories(ticketRoot);
+        } catch (IOException error) {
+            sendJson(exchange, 500, Map.of("error", "티켓 폴더를 만들 수 없습니다: " + error.getMessage()));
+            return;
+        }
+
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        if (!os.contains("win")) {
+            sendJson(exchange, 501, Map.of("error", "티켓 폴더 열기는 Windows 배포본에서 지원합니다."));
+            return;
+        }
+
+        try {
+            new ProcessBuilder("explorer.exe", ticketRoot.toString()).start();
+            sendJson(exchange, 200, Map.of(
+                "opened", true,
+                "path", ticketRoot.toString()
+            ));
+        } catch (IOException error) {
+            sendJson(exchange, 500, Map.of("error", "Windows 탐색기를 열지 못했습니다: " + error.getMessage()));
+        }
     }
 
     private void handleTicketApi(HttpExchange exchange) throws IOException {

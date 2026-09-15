@@ -104,6 +104,14 @@ public final class AdminOperationsHandler implements HttpHandler {
     }
 
     private void handleTestTicket(HttpExchange exchange) throws Exception {
+        if (websocket.connectedClients() <= 0) {
+            sendJson(exchange, 409, Map.of(
+                "error", "OBS 또는 방송용 오버레이가 연결되어 있지 않습니다.",
+                "overlayClients", 0
+            ));
+            return;
+        }
+
         JsonObject body = readJson(exchange);
         String nickname = string(body, "nickname", "테스트");
         var numbers = numberGenerator.generate(ticketConfig.numberMax(), ticketConfig.numberCount());
@@ -118,8 +126,16 @@ public final class AdminOperationsHandler implements HttpHandler {
             Instant.now().toString()
         );
         boolean delivered = websocket.broadcastTransient(GSON.toJson(event));
-        sendJson(exchange, delivered ? 200 : 409, Map.of(
-            "delivered", delivered,
+        if (!delivered) {
+            sendJson(exchange, 409, Map.of(
+                "error", "테스트 티켓 전송 직전에 오버레이 연결이 끊어졌습니다.",
+                "overlayClients", websocket.connectedClients()
+            ));
+            return;
+        }
+        sendJson(exchange, 200, Map.of(
+            "delivered", true,
+            "overlayClients", websocket.connectedClients(),
             "ticket", event
         ));
     }

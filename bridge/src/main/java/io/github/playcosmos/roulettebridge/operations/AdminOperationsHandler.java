@@ -301,13 +301,19 @@ public final class AdminOperationsHandler implements HttpHandler {
                  """);
              var rows = statement.executeQuery()) {
             while (rows.next()) {
+                long totalBalloons = rows.getLong("total_balloons");
+                int allocatedTickets = rows.getInt("allocated_ticket_count");
+                long remainderBalloons = ticketConfig.singleDonationMode()
+                    ? Math.max(0L, totalBalloons - (long) allocatedTickets * ticketConfig.balloonsPerTicket())
+                    : totalBalloons % ticketConfig.balloonsPerTicket();
+
                 var donor = new LinkedHashMap<String, Object>();
                 donor.put("donorId", rows.getString("donor_id"));
                 donor.put("nickname", rows.getString("current_nickname"));
-                donor.put("totalBalloons", rows.getLong("total_balloons"));
+                donor.put("totalBalloons", totalBalloons);
                 donor.put("issuedTickets", rows.getInt("issued_ticket_count"));
-                donor.put("allocatedTickets", rows.getInt("allocated_ticket_count"));
-                donor.put("remainderBalloons", rows.getLong("total_balloons") % ticketConfig.balloonsPerTicket());
+                donor.put("allocatedTickets", allocatedTickets);
+                donor.put("remainderBalloons", remainderBalloons);
                 donor.put("updatedAt", rows.getString("updated_at"));
                 donors.add(donor);
             }

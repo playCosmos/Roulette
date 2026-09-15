@@ -17,6 +17,7 @@ import io.github.playcosmos.roulettebridge.recovery.PhaseFProbe;
 import io.github.playcosmos.roulettebridge.recovery.TicketRecoveryService;
 import io.github.playcosmos.roulettebridge.server.BridgeHttpServer;
 import io.github.playcosmos.roulettebridge.server.OverlayWebSocketServer;
+import io.github.playcosmos.roulettebridge.soop.ChannelEventMonitor;
 import io.github.playcosmos.roulettebridge.soop.SoopBridgeAdapter;
 import io.github.playcosmos.roulettebridge.soop.SoopProbe;
 import io.github.playcosmos.roulettebridge.soop.SoopRuntimeState;
@@ -143,6 +144,7 @@ public final class Main {
         );
 
         var soopState = new SoopRuntimeState(config.streamerId());
+        var channelEvents = new ChannelEventMonitor();
         var soop = new SoopBridgeAdapter(config, soopState, donation -> {
             try {
                 var result = issuance.process(donation);
@@ -161,7 +163,7 @@ public final class Main {
                 System.err.println("[issuance] donation processing failed: " + error.getMessage());
                 error.printStackTrace(System.err);
             }
-        });
+        }, channelEvents::record);
 
         var admin = new AdminOperationsHandler(
             database,
@@ -185,7 +187,8 @@ public final class Main {
             soopState::snapshot,
             archive,
             recovery,
-            admin
+            admin,
+            channelEvents
         );
         http.start();
         soop.start();

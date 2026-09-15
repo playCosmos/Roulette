@@ -45,12 +45,39 @@ public final class SoopBridgeAdapter implements AutoCloseable {
             System.out.println("[soop] disabled by config");
             return;
         }
-        if (config.streamerId() == null || config.streamerId().isBlank() || "STREAMER_ID".equals(config.streamerId())) {
+        if (!hasStreamerId()) {
             state.status("WAITING_FOR_STREAMER_ID");
             System.out.println("[soop] streamerId is not configured");
             return;
         }
         scheduleProbe(0);
+    }
+
+    public void reconnectNow() {
+        if (closed.get()) return;
+        if (!config.soop().enabled()) {
+            state.status("DISABLED");
+            return;
+        }
+        if (!hasStreamerId()) {
+            state.status("WAITING_FOR_STREAMER_ID");
+            return;
+        }
+
+        scheduler.execute(() -> {
+            if (closed.get()) return;
+            generation.incrementAndGet();
+            closeClient();
+            state.status("IDLE");
+            System.out.println("[soop] manual reconnect requested");
+            probeAndConnect();
+        });
+    }
+
+    private boolean hasStreamerId() {
+        return config.streamerId() != null
+            && !config.streamerId().isBlank()
+            && !"STREAMER_ID".equals(config.streamerId());
     }
 
     private void scheduleProbe(long delaySeconds) {

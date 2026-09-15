@@ -70,6 +70,7 @@ public final class Main {
         System.out.println("[app] config: " + configPath);
 
         var config = ConfigLoader.loadOrCreate(configPath);
+        boolean setupRequired = config.streamerId() == null || config.streamerId().isBlank();
         var fileLog = FileLog.install(workingDirectory.resolve(config.storage().logDirectory()));
         var database = new BridgeDatabase(workingDirectory.resolve(config.storage().databasePath()));
         database.initialize();
@@ -135,14 +136,6 @@ public final class Main {
             database,
             workingDirectory.resolve(config.storage().backupDirectory())
         );
-        var admin = new AdminOperationsHandler(
-            database,
-            config.ticket(),
-            backup,
-            archive,
-            adjustment,
-            websocket
-        );
 
         var soopState = new SoopRuntimeState(config.streamerId());
         var soop = new SoopBridgeAdapter(config, soopState, donation -> {
@@ -164,6 +157,17 @@ public final class Main {
                 error.printStackTrace(System.err);
             }
         });
+
+        var admin = new AdminOperationsHandler(
+            database,
+            config,
+            configPath,
+            soop::applyConfig,
+            backup,
+            archive,
+            adjustment,
+            websocket
+        );
 
         var http = new BridgeHttpServer(
             config,
@@ -191,9 +195,11 @@ public final class Main {
             soopState::status,
             soop::reconnectNow
         );
-        if (tray == null) {
+
+        if (setupRequired) {
+            System.out.println("[setup] streamerId is empty; opening admin page");
             openBrowser(adminUrl);
-        } else if (config.server().openBrowserOnStart()) {
+        } else if (tray == null || config.server().openBrowserOnStart()) {
             openBrowser(adminUrl);
         }
 

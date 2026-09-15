@@ -69,7 +69,10 @@ New-Item -ItemType Directory -Path $WebRoot | Out-Null
     "soop-overlay-archive.js",
     "soop-admin.html",
     "soop-admin.css",
-    "soop-admin.js"
+    "soop-admin.js",
+    "soop-channel.html",
+    "soop-channel.css",
+    "soop-channel.js"
 ) | ForEach-Object {
     $source = Join-Path $RepoRoot $_
     if (-not (Test-Path $source)) { throw "Required web asset missing: $source" }
@@ -91,9 +94,10 @@ RouletteBridge Windows x64
 4. The admin page waits while the bridge restarts and reconnects to the new process automatically.
 5. Double-click the tray icon, or use "관리자 페이지 열기", to reopen the local admin page.
 6. The admin page shows the OBS Browser Source URL and provides an address copy button.
-7. An already-open overlay reconnects silently when the bridge restarts.
-8. Runtime data is stored in data/, tickets/, and backups/. Internal logs are kept separately by the app.
-9. Do not delete the runtime data folders or your existing config.json when updating.
+7. Use soop-channel.html from the admin page to inspect the current channel event stream, including chat, donation, moderation, and connection events.
+8. An already-open overlay reconnects silently when the bridge restarts.
+9. Runtime data is stored in data/, tickets/, and backups/. Internal logs are kept separately by the app.
+10. Do not delete the runtime data folders or your existing config.json when updating.
 
 This distribution contains its own Java runtime. A separate Java installation is not required.
 "@

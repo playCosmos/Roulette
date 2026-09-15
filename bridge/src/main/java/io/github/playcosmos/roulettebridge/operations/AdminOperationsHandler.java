@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import io.github.playcosmos.roulettebridge.config.BridgeConfig;
+import io.github.playcosmos.roulettebridge.config.ConfigLoader;
 import io.github.playcosmos.roulettebridge.db.BridgeDatabase;
 import io.github.playcosmos.roulettebridge.issuance.TicketIssueEvent;
 import io.github.playcosmos.roulettebridge.issuance.TicketNumberGenerator;
@@ -18,14 +19,19 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public final class AdminOperationsHandler implements HttpHandler {
     private static final Gson GSON = new Gson();
     private static final int MAX_JSON_BYTES = 64 * 1024;
 
     private final BridgeDatabase database;
+    private final BridgeConfig startupConfig;
     private final BridgeConfig.Ticket ticketConfig;
+    private final Path configPath;
+    private final Consumer<BridgeConfig> liveConfigConsumer;
     private final DatabaseBackupService backup;
     private final TicketArchiveService archive;
     private final ManualAdjustmentService adjustment;
@@ -34,14 +40,19 @@ public final class AdminOperationsHandler implements HttpHandler {
 
     public AdminOperationsHandler(
         BridgeDatabase database,
-        BridgeConfig.Ticket ticketConfig,
+        BridgeConfig startupConfig,
+        Path configPath,
+        Consumer<BridgeConfig> liveConfigConsumer,
         DatabaseBackupService backup,
         TicketArchiveService archive,
         ManualAdjustmentService adjustment,
         OverlayWebSocketServer websocket
     ) {
         this.database = database;
-        this.ticketConfig = ticketConfig;
+        this.startupConfig = Objects.requireNonNull(startupConfig, "startupConfig").normalized();
+        this.ticketConfig = this.startupConfig.ticket();
+        this.configPath = Objects.requireNonNull(configPath, "configPath").toAbsolutePath().normalize();
+        this.liveConfigConsumer = Objects.requireNonNull(liveConfigConsumer, "liveConfigConsumer");
         this.backup = backup;
         this.archive = archive;
         this.adjustment = adjustment;
@@ -60,13 +71,22 @@ public final class AdminOperationsHandler implements HttpHandler {
         String base = "/api/admin";
         String path = exchange.getRequestURI().getPath();
         String route = path != null && path.startsWith(base) ? path.substring(base.length()) : "";
+        String method = exchange.getRequestMethod();
 
         try {
-            if ("GET".equalsIgnoreCase(exchange.getRequestMethod()) && "/donors".equals(route)) {
+            if ("GET".equalsIgnoreCase(method) && "/donors".equals(route)) {
                 sendJson(exchange, 200, Map.of("donors", listDonors()));
                 return;
             }
-            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            if ("GET".equalsIgnoreCase(method) && "/config".equals(route)) {
+                handleConfigGet(exchange);
+                return;
+            }
+            if ("PUT".equalsIgnoreCase(method) && "/config".equals(route)) {
+                handleConfigSave(exchange);
+                return;
+            }
+            if (!"POST".equalsIgnoreCase(method)) {
                 exchange.sendResponseHeaders(405, -1);
                 exchange.close();
                 return;
@@ -91,6 +111,44 @@ public final class AdminOperationsHandler implements HttpHandler {
             error.printStackTrace(System.err);
             sendJson(exchange, 500, Map.of("error", error.getMessage() == null ? error.getClass().getName() : error.getMessage()));
         }
+    }
+
+    private void handleConfigGet(HttpExchange exchange) throws Exception {
+        BridgeConfig config = ConfigLoader.load(configPath);
+        List<String> restartFields = restartFields(config);
+        sendJson(exchange, 200, Map.of(
+            "config", config,
+            "configPath", configPath.toString(),
+            "requiresRestart", !restartFields.isEmpty(),
+            "restartFields", restartFields
+        ));
+    }
+
+    private void handleConfigSave(HttpExchange exchange) throws Exception {
+        BridgeConfig before = ConfigLoader.load(configPath);
+        BridgeConfig requested = readConfig(exchange);
+        BridgeConfig saved = ConfigLoader.save(configPath, requested);
+
+        boolean liveChanged = !Objects.equals(before.streamerId(), saved.streamerId())
+            || !Objects.equals(before.soop(), saved.soop());
+        if (liveChanged) liveConfigConsumer.accept(saved);
+
+        List<String> restartFields = restartFields(saved);
+        sendJson(exchange, 200, Map.of(
+            "saved", true,
+            "config", saved,
+            "liveApplied", liveChanged,
+            "requiresRestart", !restartFields.isEmpty(),
+            "restartFields", restartFields
+        ));
+    }
+
+    private List<String> restartFields(BridgeConfig config) {
+        var fields = new ArrayList<String>();
+        if (!Objects.equals(startupConfig.ticket(), config.ticket())) fields.add("ticket");
+        if (!Objects.equals(startupConfig.server(), config.server())) fields.add("server");
+        if (!Objects.equals(startupConfig.storage(), config.storage())) fields.add("storage");
+        return List.copyOf(fields);
     }
 
     private void handleAdjustment(HttpExchange exchange) throws Exception {
@@ -172,12 +230,25 @@ public final class AdminOperationsHandler implements HttpHandler {
         return List.copyOf(donors);
     }
 
+    private static BridgeConfig readConfig(HttpExchange exchange) throws IOException {
+        byte[] body = readBody(exchange);
+        if (body.length == 0) throw new IllegalArgumentException("config body is required");
+        var parsed = GSON.fromJson(new String(body, StandardCharsets.UTF_8), BridgeConfig.class);
+        if (parsed == null) throw new IllegalArgumentException("invalid config body");
+        return parsed.normalized();
+    }
+
     private static JsonObject readJson(HttpExchange exchange) throws IOException {
-        byte[] body = exchange.getRequestBody().readNBytes(MAX_JSON_BYTES + 1);
-        if (body.length > MAX_JSON_BYTES) throw new IllegalArgumentException("request body exceeds 64 KiB");
+        byte[] body = readBody(exchange);
         if (body.length == 0) return new JsonObject();
         var parsed = GSON.fromJson(new String(body, StandardCharsets.UTF_8), JsonObject.class);
         return parsed == null ? new JsonObject() : parsed;
+    }
+
+    private static byte[] readBody(HttpExchange exchange) throws IOException {
+        byte[] body = exchange.getRequestBody().readNBytes(MAX_JSON_BYTES + 1);
+        if (body.length > MAX_JSON_BYTES) throw new IllegalArgumentException("request body exceeds 64 KiB");
+        return body;
     }
 
     private static String string(JsonObject object, String key, String fallback) {

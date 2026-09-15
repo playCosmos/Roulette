@@ -20,6 +20,7 @@ import io.github.playcosmos.roulettebridge.soop.SoopProbe;
 import io.github.playcosmos.roulettebridge.soop.SoopRuntimeState;
 import io.github.playcosmos.roulettebridge.storage.PhaseEProbe;
 import io.github.playcosmos.roulettebridge.storage.TicketArchiveService;
+import io.github.playcosmos.roulettebridge.ui.TrayController;
 import java.awt.Desktop;
 import java.net.URI;
 import java.nio.file.Path;
@@ -180,14 +181,26 @@ public final class Main {
 
         String overlayUrl = "http://" + config.server().host() + ":" + config.server().port()
             + "/soop-overlay.html?ws=ws://" + config.server().host() + ":" + config.server().websocketPort();
+        String adminUrl = "http://127.0.0.1:" + config.server().port() + "/soop-admin.html";
         System.out.println("[overlay] " + overlayUrl);
-        System.out.println("[admin] loopback API: http://127.0.0.1:" + config.server().port() + "/api/admin");
+        System.out.println("[admin] " + adminUrl);
 
-        if (config.server().openBrowserOnStart()) openBrowser(overlayUrl);
+        TrayController tray = TrayController.install(
+            adminUrl,
+            overlayUrl,
+            soopState::status,
+            soop::reconnectNow
+        );
+        if (tray == null) {
+            openBrowser(adminUrl);
+        } else if (config.server().openBrowserOnStart()) {
+            openBrowser(adminUrl);
+        }
 
         var shutdown = new CountDownLatch(1);
         Runtime.getRuntime().addShutdownHook(Thread.ofPlatform().name("roulette-bridge-shutdown").unstarted(() -> {
             System.out.println("[shutdown] stopping services");
+            if (tray != null) tray.close();
             soop.close();
             http.close();
             try {

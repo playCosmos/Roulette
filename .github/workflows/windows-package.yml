@@ -71,7 +71,7 @@ jobs:
       - name: Build Windows portable app
         working-directory: bridge
         shell: pwsh
-        run: ./package-windows.ps1 -Version 0.1.11 -SkipBuild
+        run: ./package-windows.ps1 -Version 0.1.12 -SkipBuild
 
       - name: Verify packaged executable and config
         working-directory: bridge
@@ -87,6 +87,7 @@ jobs:
           if (-not (Test-Path (Join-Path $root "restart-bridge.ps1"))) { throw "restart-bridge.ps1 missing from package" }
           $configJson = Get-Content $config -Raw | ConvertFrom-Json
           if (-not [string]::IsNullOrWhiteSpace([string]$configJson.streamerId)) { throw "distribution streamerId must be empty" }
+          if ([string]$configJson.ticket.issuanceMode -ne "single_donation") { throw "distribution issuanceMode must default to single_donation" }
           @(
             "web/soop-admin.html",
             "web/soop-admin.js",
@@ -112,7 +113,7 @@ jobs:
       - name: Upload Windows portable package
         uses: actions/upload-artifact@v4
         with:
-          name: RouletteBridge-Windows-x64-v0.1.11
+          name: RouletteBridge-Windows-x64-v0.1.12
           path: bridge/dist/RouletteBridge/**
           if-no-files-found: error
           retention-days: 30

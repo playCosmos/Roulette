@@ -56,7 +56,7 @@ jobs:
       - name: Build Windows portable app
         working-directory: bridge
         shell: pwsh
-        run: ./package-windows.ps1 -Version 0.1.4 -SkipBuild
+        run: ./package-windows.ps1 -Version 0.1.5 -SkipBuild
 
       - name: Verify packaged executable and config
         working-directory: bridge
@@ -73,10 +73,12 @@ jobs:
           if (-not [string]::IsNullOrWhiteSpace([string]$configJson.streamerId)) { throw "distribution streamerId must be empty" }
           if (-not (Test-Path (Join-Path $root "web/soop-admin.js"))) { throw "soop-admin.js missing from package" }
           if (-not (Test-Path (Join-Path $root "web/soop-admin.css"))) { throw "soop-admin.css missing from package" }
-          & $exe --phase-f-probe
-          if ($LASTEXITCODE -ne 0) { throw "packaged RouletteBridge.exe self-test failed: $LASTEXITCODE" }
-          & $exe --encoding-probe
-          if ($LASTEXITCODE -ne 0) { throw "packaged RouletteBridge.exe encoding test failed: $LASTEXITCODE" }
+          if (Test-Path (Join-Path $root "logs")) { throw "logs directory must not be pre-created in distribution" }
+
+          $phaseF = Start-Process -FilePath $exe -ArgumentList "--phase-f-probe" -Wait -PassThru
+          if ($phaseF.ExitCode -ne 0) { throw "packaged RouletteBridge.exe self-test failed: $($phaseF.ExitCode)" }
+          $encoding = Start-Process -FilePath $exe -ArgumentList "--encoding-probe" -Wait -PassThru
+          if ($encoding.ExitCode -ne 0) { throw "packaged RouletteBridge.exe encoding test failed: $($encoding.ExitCode)" }
           Write-Host "Packaged EXE: $exe"
           Write-Host "Config: $config"
 

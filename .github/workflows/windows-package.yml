@@ -33,6 +33,9 @@ jobs:
           java-version: "25"
           cache: maven
 
+      - name: Check admin JavaScript
+        run: node --check soop-admin.js
+
       - name: Build bridge
         working-directory: bridge
         run: mvn --batch-mode --no-transfer-progress clean package
@@ -68,6 +71,8 @@ jobs:
           if (-not (Test-Path $runtime)) { throw "bundled Java runtime missing" }
           $configJson = Get-Content $config -Raw | ConvertFrom-Json
           if (-not [string]::IsNullOrWhiteSpace([string]$configJson.streamerId)) { throw "distribution streamerId must be empty" }
+          if (-not (Test-Path (Join-Path $root "web/soop-admin.js"))) { throw "soop-admin.js missing from package" }
+          if (-not (Test-Path (Join-Path $root "web/soop-admin.css"))) { throw "soop-admin.css missing from package" }
           & $exe --phase-f-probe
           if ($LASTEXITCODE -ne 0) { throw "packaged RouletteBridge.exe self-test failed: $LASTEXITCODE" }
           & $exe --encoding-probe

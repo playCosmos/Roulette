@@ -76,6 +76,25 @@ input[readonly] { color: #c9d1dc; background: #0a0d11; }
 .copy-row input { flex: 1 1 auto; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; }
 .copy-row button { flex: 0 0 auto; }
 
+.ticket-filter-row { display: flex; gap: 10px; align-items: center; }
+.ticket-filter-row input { max-width: 430px; }
+.ticket-donor-groups { display: grid; gap: 12px; margin-top: 12px; }
+.ticket-donor-group { overflow: hidden; border: 1px solid #292f37; border-radius: 12px; background: #0e1116; }
+.ticket-donor-head { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 13px 14px; border-bottom: 1px solid #252b32; background: #15191f; }
+.ticket-donor-identity { min-width: 0; }
+.ticket-donor-identity strong { display: block; font-size: 15px; overflow-wrap: anywhere; }
+.ticket-donor-identity span { display: block; margin-top: 4px; color: #8993a0; font-size: 12px; overflow-wrap: anywhere; }
+.ticket-donor-actions { display: flex; align-items: center; gap: 9px; flex: 0 0 auto; }
+.ticket-donor-count { color: #aab3be; font-size: 12px; font-weight: 750; white-space: nowrap; }
+.ticket-copy-all, .ticket-copy-one { padding: 7px 11px; white-space: nowrap; }
+.ticket-table-wrap { overflow-x: auto; }
+.ticket-table { min-width: 660px; }
+.ticket-table td:first-child { width: 82px; white-space: nowrap; color: #aab3be; }
+.ticket-table td:last-child { width: 82px; text-align: right; }
+.ticket-number-text { font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; font-weight: 800; letter-spacing: .035em; white-space: nowrap; }
+.ticket-issued-at { color: #8e99a8; white-space: nowrap; }
+.ticket-empty { padding: 28px 12px; border: 1px dashed #2b3139; border-radius: 10px; text-align: center; color: #7f8996; }
+
 .operation-result { min-height: 20px; margin-top: 12px; color: #8e99a8; font-size: 13px; line-height: 1.5; }
 .operation-result.working { color: #d4c66d; }
 .operation-result.success { color: #8bd5a4; }
@@ -99,4 +118,7 @@ tbody tr:last-child td { border-bottom: 0; }
   .config-form fieldset, .config-form .storage-fields { grid-template-columns: 1fr; }
   .config-form .wide, .config-form .storage-fields label:last-child { grid-column: auto; }
   .copy-row { align-items: stretch; flex-direction: column; }
+  .ticket-filter-row input { max-width: none; }
+  .ticket-donor-head { align-items: flex-start; flex-direction: column; }
+  .ticket-donor-actions { width: 100%; justify-content: space-between; }
 }

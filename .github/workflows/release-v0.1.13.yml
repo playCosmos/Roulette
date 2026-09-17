@@ -88,7 +88,9 @@ jobs:
           ) | ForEach-Object {
             if (-not (Test-Path (Join-Path $root $_))) { throw "required packaged asset missing: $_" }
           }
-          if (-not (Select-String -Path (Join-Path $root "web/soop-admin.html") -Pattern "ticketDonorGroups" -Quiet)) { throw "ticket lookup UI missing from packaged admin page" }
+          $adminHtml = Join-Path $root "web/soop-admin.html"
+          if (-not (Select-String -Path $adminHtml -Pattern "ticketDonorGroups" -Quiet)) { throw "ticket lookup UI missing from packaged admin page" }
+          if (-not (Select-String -Path $adminHtml -Pattern "ticket-group-toggle" -Quiet)) { throw "donor ticket collapse control missing from packaged admin page" }
           if (Test-Path (Join-Path $root "logs")) { throw "logs directory must not be pre-created in distribution" }
 
           $phaseF = Start-Process -FilePath $exe -ArgumentList "--phase-f-probe" -Wait -PassThru
@@ -126,6 +128,7 @@ jobs:
           이 패치에는 config.json, data/, tickets/, backups/, runtime/가 포함되지 않습니다.
           기존 스트리머 설정과 운영 데이터는 그대로 유지됩니다.
           v0.1.13에서는 관리자 페이지에 발급 티켓 조회 및 후원자별 전체복사/개별복사 기능이 추가됩니다.
+          발급 티켓 조회의 각 후원자 그룹은 개별적으로 접기/펼치기 할 수 있습니다.
           index.html은 변경하지 않습니다.
           "@
           Set-Content -Path (Join-Path $patchRoot "PATCH_README.txt") -Value $patchReadme -Encoding UTF8
@@ -146,7 +149,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish GitHub Release
+      - name: Publish or refresh GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -154,9 +157,22 @@ jobs:
           $fullZip = Join-Path $PWD "bridge/RouletteBridge-Windows-x64-v0.1.13.zip"
           $patchZip = Join-Path $PWD "bridge/RouletteBridge-Patch-v0.1.12-to-v0.1.13.zip"
           $notes = Join-Path $PWD "release/v0.1.13.md"
-          gh release create v0.1.13 $fullZip $patchZip `
-            --repo "${{ github.repository }}" `
-            --title "RouletteBridge v0.1.13" `
-            --notes-file $notes `
-            --target "${{ github.sha }}" `
-            --latest
+          gh release view v0.1.13 --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload v0.1.13 $fullZip $patchZip `
+              --repo "${{ github.repository }}" `
+              --clobber
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            gh release edit v0.1.13 `
+              --repo "${{ github.repository }}" `
+              --title "RouletteBridge v0.1.13" `
+              --notes-file $notes `
+              --latest
+          } else {
+            gh release create v0.1.13 $fullZip $patchZip `
+              --repo "${{ github.repository }}" `
+              --title "RouletteBridge v0.1.13" `
+              --notes-file $notes `
+              --target "${{ github.sha }}" `
+              --latest
+          }

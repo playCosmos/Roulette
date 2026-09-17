@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark" />
   <title>먀로또 · SOOP 브리지 관리</title>
-  <link rel="stylesheet" href="./soop-admin.css?v=20260915-7" />
+  <link rel="stylesheet" href="./soop-admin.css?v=20260917-1" />
 </head>
 <body>
   <main class="admin-shell">
@@ -124,6 +124,21 @@
       <p class="operation-result" id="adjustLookupResult">ID 또는 닉네임을 입력하면 자동으로 사용자를 확인합니다.</p>
     </section>
 
+    <section class="panel ticket-lookup-panel">
+      <div class="panel-heading">
+        <div>
+          <h2>발급 티켓 조회</h2>
+          <p>이미지 없이 발급 번호를 조회합니다. 전체복사는 한 줄에 한 조합으로 복사되어 index.html 추첨 페이지의 후원자 보유 번호 칸에 그대로 붙여넣을 수 있습니다.</p>
+        </div>
+        <button type="button" id="ticketRefreshButton">티켓 새로고침</button>
+      </div>
+      <div class="ticket-filter-row">
+        <input id="ticketSearchInput" type="search" autocomplete="off" placeholder="닉네임 또는 SOOP ID 검색" aria-label="발급 티켓 후원자 검색" />
+      </div>
+      <p class="operation-result" id="ticketCopyResult">발급된 티켓을 불러오는 중…</p>
+      <div class="ticket-donor-groups" id="ticketDonorGroups" aria-live="polite"></div>
+    </section>
+
     <section class="panel donor-panel">
       <div class="panel-heading">
         <div><h2>후원자 누적</h2><p>단일 후원 모드의 잔여는 발급에 다시 사용하지 않고 카운트만 누적합니다. 최대 500명, 최근 갱신 순입니다.</p></div>
@@ -138,7 +153,7 @@
       </div>
     </section>
   </main>
-  <script src="./soop-admin.js?v=20260915-5" defer></script>
+  <script src="./soop-admin.js?v=20260917-1" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       const setupPanel = document.getElementById("setupPanel");

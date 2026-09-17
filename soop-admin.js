@@ -22,12 +22,18 @@
   const overlayUrlInput = $("overlayUrlInput");
   const copyOverlayButton = $("copyOverlayButton");
   const copyResult = $("copyResult");
+  const ticketRefreshButton = $("ticketRefreshButton");
+  const ticketSearchInput = $("ticketSearchInput");
+  const ticketCopyResult = $("ticketCopyResult");
+  const ticketDonorGroups = $("ticketDonorGroups");
 
   const donorIdInput = adjustForm.elements.namedItem("donorId");
   const nicknameInput = adjustForm.elements.namedItem("nickname");
 
   let refreshTimer = null;
   let refreshing = false;
+  let ticketsRefreshing = false;
+  let issuedTicketCache = [];
   let overlayClientCount = 0;
   let restartInProgress = false;
   let bridgeWasOffline = false;
@@ -93,6 +99,218 @@
   function showLookup(text, tone = "") {
     adjustLookupResult.textContent = text;
     adjustLookupResult.className = `operation-result${tone ? ` ${tone}` : ""}`;
+  }
+
+  function showTicketResult(text, tone = "") {
+    ticketCopyResult.textContent = text;
+    ticketCopyResult.className = `operation-result${tone ? ` ${tone}` : ""}`;
+  }
+
+  async function copyPlainText(text) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      if (!document.execCommand("copy")) throw new Error("clipboard unavailable");
+    } finally {
+      textarea.remove();
+    }
+  }
+
+  function sortedTicketNumbers(ticket) {
+    if (!Array.isArray(ticket?.numbers)) return [];
+    return ticket.numbers
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value))
+      .sort((a, b) => a - b);
+  }
+
+  function ticketCopyLine(ticket) {
+    return sortedTicketNumbers(ticket).join(" ");
+  }
+
+  function formatIssuedAt(value) {
+    if (!value) return "-";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value);
+    return parsed.toLocaleString("ko-KR", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  }
+
+  function groupIssuedTickets(tickets) {
+    const groups = new Map();
+    for (const ticket of tickets) {
+      const donorId = String(ticket?.donorId || "").trim();
+      if (!donorId) continue;
+      let group = groups.get(donorId);
+      if (!group) {
+        group = {
+          donorId,
+          nickname: String(ticket?.nickname || ticket?.nicknameAtIssue || "익명"),
+          tickets: []
+        };
+        groups.set(donorId, group);
+      }
+      group.tickets.push(ticket);
+    }
+    return [...groups.values()];
+  }
+
+  function renderTicketGroups() {
+    ticketDonorGroups.replaceChildren();
+    const query = ticketSearchInput.value.trim().toLocaleLowerCase("ko-KR");
+    const groups = groupIssuedTickets(issuedTicketCache).filter((group) => {
+      if (!query) return true;
+      return group.nickname.toLocaleLowerCase("ko-KR").includes(query)
+        || group.donorId.toLocaleLowerCase("ko-KR").includes(query);
+    });
+
+    if (!groups.length) {
+      const empty = document.createElement("div");
+      empty.className = "ticket-empty";
+      empty.textContent = issuedTicketCache.length
+        ? "검색 조건에 맞는 발급 티켓이 없습니다."
+        : "발급 완료된 티켓이 없습니다.";
+      ticketDonorGroups.appendChild(empty);
+      return;
+    }
+
+    for (const group of groups) {
+      const article = document.createElement("article");
+      article.className = "ticket-donor-group";
+
+      const head = document.createElement("div");
+      head.className = "ticket-donor-head";
+
+      const identity = document.createElement("div");
+      identity.className = "ticket-donor-identity";
+      const name = document.createElement("strong");
+      name.textContent = group.nickname;
+      const id = document.createElement("span");
+      id.textContent = `SOOP ID: ${group.donorId}`;
+      identity.append(name, id);
+
+      const actions = document.createElement("div");
+      actions.className = "ticket-donor-actions";
+      const count = document.createElement("span");
+      count.className = "ticket-donor-count";
+      count.textContent = `${group.tickets.length}장`;
+      const copyAll = document.createElement("button");
+      copyAll.type = "button";
+      copyAll.className = "ticket-copy-all";
+      copyAll.textContent = "전체복사";
+      copyAll.addEventListener("click", async () => {
+        const text = group.tickets.map(ticketCopyLine).filter(Boolean).join("\n");
+        if (!text) {
+          showTicketResult(`${group.nickname}의 복사 가능한 번호가 없습니다.`, "error-text");
+          return;
+        }
+        try {
+          await copyPlainText(text);
+          showTicketResult(`${group.nickname}의 ${group.tickets.length}개 조합을 복사했습니다. index.html 추첨 페이지의 해당 후원자 보유 번호 칸에 그대로 붙여넣으면 됩니다.`, "success");
+        } catch (error) {
+          showTicketResult(`전체복사 실패: ${error.message}`, "error-text");
+        }
+      });
+      actions.append(count, copyAll);
+      head.append(identity, actions);
+
+      const tableWrap = document.createElement("div");
+      tableWrap.className = "ticket-table-wrap";
+      const table = document.createElement("table");
+      table.className = "ticket-table";
+      const thead = document.createElement("thead");
+      const headerRow = document.createElement("tr");
+      ["티켓", "번호", "발급 시각", ""].forEach((label) => {
+        const th = document.createElement("th");
+        th.textContent = label;
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+      const tbody = document.createElement("tbody");
+
+      for (const ticket of group.tickets) {
+        const row = document.createElement("tr");
+        row.title = ticket.ticketId || "";
+
+        const sequenceCell = document.createElement("td");
+        sequenceCell.textContent = `#${ticket.ticketNumber ?? "-"}`;
+
+        const numbersCell = document.createElement("td");
+        numbersCell.className = "ticket-number-text";
+        numbersCell.textContent = ticketCopyLine(ticket) || "-";
+
+        const issuedCell = document.createElement("td");
+        issuedCell.className = "ticket-issued-at";
+        issuedCell.textContent = formatIssuedAt(ticket.issuedAt || ticket.createdAt);
+
+        const copyCell = document.createElement("td");
+        const copyOne = document.createElement("button");
+        copyOne.type = "button";
+        copyOne.className = "ticket-copy-one";
+        copyOne.textContent = "복사";
+        copyOne.addEventListener("click", async () => {
+          const text = ticketCopyLine(ticket);
+          if (!text) {
+            showTicketResult(`${group.nickname} #${ticket.ticketNumber ?? "-"} 티켓의 번호가 없습니다.`, "error-text");
+            return;
+          }
+          try {
+            await copyPlainText(text);
+            showTicketResult(`${group.nickname} #${ticket.ticketNumber ?? "-"} 조합을 복사했습니다.`, "success");
+          } catch (error) {
+            showTicketResult(`개별복사 실패: ${error.message}`, "error-text");
+          }
+        });
+        copyCell.appendChild(copyOne);
+
+        row.append(sequenceCell, numbersCell, issuedCell, copyCell);
+        tbody.appendChild(row);
+      }
+
+      table.append(thead, tbody);
+      tableWrap.appendChild(table);
+      article.append(head, tableWrap);
+      ticketDonorGroups.appendChild(article);
+    }
+  }
+
+  async function refreshTickets() {
+    if (ticketsRefreshing || restartInProgress) return;
+    ticketsRefreshing = true;
+    ticketRefreshButton.disabled = true;
+    showTicketResult("발급 티켓을 불러오는 중…", "working");
+    try {
+      const payload = await fetchJson("/api/admin/tickets");
+      issuedTicketCache = Array.isArray(payload.tickets) ? payload.tickets : [];
+      renderTicketGroups();
+      const groups = groupIssuedTickets(issuedTicketCache).length;
+      showTicketResult(`발급 완료 티켓 ${issuedTicketCache.length}장 · 후원자 ${groups}명`, "success");
+    } catch (error) {
+      ticketDonorGroups.replaceChildren();
+      const empty = document.createElement("div");
+      empty.className = "ticket-empty error-text";
+      empty.textContent = `발급 티켓을 불러오지 못했습니다: ${error.message}`;
+      ticketDonorGroups.appendChild(empty);
+      showTicketResult(`발급 티켓 조회 실패: ${error.message}`, "error-text");
+    } finally {
+      ticketsRefreshing = false;
+      ticketRefreshButton.disabled = false;
+    }
   }
 
   function setConnection(status, error) {
@@ -402,12 +620,7 @@
   copyOverlayButton.addEventListener("click", async () => {
     const value = overlayUrlInput.value;
     try {
-      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
-      else {
-        overlayUrlInput.focus();
-        overlayUrlInput.select();
-        if (!document.execCommand("copy")) throw new Error("clipboard unavailable");
-      }
+      await copyPlainText(value);
       copyResult.textContent = "오버레이 주소를 복사했습니다. OBS 브라우저 소스 URL에 붙여넣으세요.";
       copyResult.className = "operation-result success";
     } catch {
@@ -498,8 +711,12 @@
     if (nicknameInput.value.trim() && !donorIdInput.value.trim()) resolveAdjustmentIdentity("nickname");
   });
 
+  ticketSearchInput.addEventListener("input", renderTicketGroups);
+  ticketRefreshButton.addEventListener("click", refreshTickets);
+
   refreshButton.addEventListener("click", () => {
     refresh();
+    refreshTickets();
     loadConfig();
   });
   backupButton.addEventListener("click", () => {
@@ -560,6 +777,7 @@
 
   loadConfig();
   refresh();
+  refreshTickets();
   refreshTimer = window.setInterval(refresh, 3000);
   window.addEventListener("beforeunload", () => {
     if (refreshTimer) window.clearInterval(refreshTimer);

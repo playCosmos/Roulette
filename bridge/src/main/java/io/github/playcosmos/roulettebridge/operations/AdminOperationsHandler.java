@@ -86,6 +86,10 @@ public final class AdminOperationsHandler implements HttpHandler {
                 sendJson(exchange, 200, Map.of("donors", listDonors()));
                 return;
             }
+            if ("GET".equalsIgnoreCase(method) && "/tickets".equals(route)) {
+                sendJson(exchange, 200, Map.of("tickets", listIssuedTickets()));
+                return;
+            }
             if ("GET".equalsIgnoreCase(method) && "/donor-resolve".equals(route)) {
                 handleLocalDonorResolve(exchange);
                 return;
@@ -319,6 +323,53 @@ public final class AdminOperationsHandler implements HttpHandler {
             }
         }
         return List.copyOf(donors);
+    }
+
+    private List<Map<String, Object>> listIssuedTickets() throws Exception {
+        var tickets = new ArrayList<Map<String, Object>>();
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 SELECT t.ticket_id,
+                        t.donor_id,
+                        COALESCE(d.current_nickname, t.nickname_at_issue) AS current_nickname,
+                        t.nickname_at_issue,
+                        t.ticket_sequence,
+                        t.numbers_json,
+                        t.status,
+                        t.issued_at,
+                        t.created_at
+                 FROM ticket t
+                 LEFT JOIN donor d ON d.donor_id = t.donor_id
+                 WHERE t.status = 'ISSUED'
+                 ORDER BY COALESCE(d.current_nickname, t.nickname_at_issue) COLLATE NOCASE,
+                          t.donor_id,
+                          t.ticket_sequence ASC
+                 """);
+             var rows = statement.executeQuery()) {
+            while (rows.next()) {
+                var ticket = new LinkedHashMap<String, Object>();
+                ticket.put("ticketId", rows.getString("ticket_id"));
+                ticket.put("donorId", rows.getString("donor_id"));
+                ticket.put("nickname", rows.getString("current_nickname"));
+                ticket.put("nicknameAtIssue", rows.getString("nickname_at_issue"));
+                ticket.put("ticketNumber", rows.getInt("ticket_sequence"));
+                ticket.put("numbers", parseTicketNumbers(rows.getString("numbers_json")));
+                ticket.put("status", rows.getString("status"));
+                ticket.put("issuedAt", rows.getString("issued_at"));
+                ticket.put("createdAt", rows.getString("created_at"));
+                tickets.add(ticket);
+            }
+        }
+        return List.copyOf(tickets);
+    }
+
+    private static List<Integer> parseTicketNumbers(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        Integer[] values = GSON.fromJson(json, Integer[].class);
+        if (values == null || values.length == 0) return List.of();
+        var numbers = new ArrayList<Integer>(List.of(values));
+        numbers.sort(Integer::compareTo);
+        return List.copyOf(numbers);
     }
 
     private List<Map<String, Object>> findLocalDonors(String value, String field) throws Exception {

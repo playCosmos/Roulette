@@ -128,7 +128,7 @@
       <div class="panel-heading">
         <div>
           <h2>발급 티켓 조회</h2>
-          <p>이미지 없이 발급 번호를 조회합니다. 전체복사는 한 줄에 한 조합으로 복사되어 index.html 추첨 페이지의 후원자 보유 번호 칸에 그대로 붙여넣을 수 있습니다.</p>
+          <p>이미지 없이 발급 번호를 조회합니다. 후원자별로 접기/펼치기가 가능하며, 전체복사는 한 줄에 한 조합으로 복사되어 index.html 추첨 페이지의 후원자 보유 번호 칸에 그대로 붙여넣을 수 있습니다.</p>
         </div>
         <button type="button" id="ticketRefreshButton">티켓 새로고침</button>
       </div>
@@ -162,6 +162,54 @@
       const soopStatus = document.getElementById("soopStatus");
       const openTicketsFolderButton = document.getElementById("openTicketsFolderButton");
       const ticketsFolderResult = document.getElementById("ticketsFolderResult");
+      const ticketDonorGroups = document.getElementById("ticketDonorGroups");
+      const collapsedTicketDonors = new Set();
+
+      function ticketDonorKey(group) {
+        const idText = group.querySelector(".ticket-donor-identity span")?.textContent || "";
+        return idText.replace(/^SOOP ID:\s*/, "").trim() || idText;
+      }
+
+      function enhanceTicketGroups() {
+        if (!ticketDonorGroups) return;
+        ticketDonorGroups.querySelectorAll(".ticket-donor-group").forEach((group) => {
+          if (group.dataset.collapseEnhanced === "true") return;
+
+          const actions = group.querySelector(".ticket-donor-actions");
+          const tableWrap = group.querySelector(".ticket-table-wrap");
+          const head = group.querySelector(".ticket-donor-head");
+          if (!actions || !tableWrap || !head) return;
+
+          const donorKey = ticketDonorKey(group);
+          const toggle = document.createElement("button");
+          toggle.type = "button";
+          toggle.className = "ticket-copy-all ticket-group-toggle";
+
+          const applyCollapsed = (collapsed) => {
+            tableWrap.hidden = collapsed;
+            group.dataset.collapsed = String(collapsed);
+            head.style.borderBottom = collapsed ? "0" : "";
+            toggle.textContent = collapsed ? "펼치기" : "접기";
+            toggle.setAttribute("aria-expanded", String(!collapsed));
+          };
+
+          toggle.addEventListener("click", () => {
+            const nextCollapsed = group.dataset.collapsed !== "true";
+            if (nextCollapsed) collapsedTicketDonors.add(donorKey);
+            else collapsedTicketDonors.delete(donorKey);
+            applyCollapsed(nextCollapsed);
+          });
+
+          actions.appendChild(toggle);
+          group.dataset.collapseEnhanced = "true";
+          applyCollapsed(collapsedTicketDonors.has(donorKey));
+        });
+      }
+
+      if (ticketDonorGroups) {
+        new MutationObserver(enhanceTicketGroups).observe(ticketDonorGroups, { childList: true });
+        enhanceTicketGroups();
+      }
 
       if (openTicketsFolderButton && ticketsFolderResult) {
         openTicketsFolderButton.addEventListener("click", async () => {

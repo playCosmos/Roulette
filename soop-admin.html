@@ -163,7 +163,7 @@
       const openTicketsFolderButton = document.getElementById("openTicketsFolderButton");
       const ticketsFolderResult = document.getElementById("ticketsFolderResult");
       const ticketDonorGroups = document.getElementById("ticketDonorGroups");
-      const collapsedTicketDonors = new Set();
+      const ticketDonorCollapsedState = new Map();
 
       function ticketDonorKey(group) {
         const idText = group.querySelector(".ticket-donor-identity span")?.textContent || "";
@@ -195,14 +195,16 @@
 
           toggle.addEventListener("click", () => {
             const nextCollapsed = group.dataset.collapsed !== "true";
-            if (nextCollapsed) collapsedTicketDonors.add(donorKey);
-            else collapsedTicketDonors.delete(donorKey);
+            ticketDonorCollapsedState.set(donorKey, nextCollapsed);
             applyCollapsed(nextCollapsed);
           });
 
           actions.appendChild(toggle);
           group.dataset.collapseEnhanced = "true";
-          applyCollapsed(collapsedTicketDonors.has(donorKey));
+          const initialCollapsed = ticketDonorCollapsedState.has(donorKey)
+            ? ticketDonorCollapsedState.get(donorKey)
+            : true;
+          applyCollapsed(initialCollapsed);
         });
       }
 

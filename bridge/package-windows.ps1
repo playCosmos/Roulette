@@ -61,23 +61,21 @@ Copy-Item (Join-Path $BridgeRoot "restart-bridge.ps1") (Join-Path $AppRoot "rest
 
 $WebRoot = Join-Path $AppRoot "web"
 New-Item -ItemType Directory -Path $WebRoot | Out-Null
+
 @(
     "soop-overlay.html",
-    "soop-overlay.css",
-    "soop-overlay-connection.js",
-    "soop-overlay.js",
-    "soop-overlay-archive.js",
     "soop-admin.html",
-    "soop-admin.css",
-    "soop-admin.js",
-    "soop-channel.html",
-    "soop-channel.css",
-    "soop-channel.js"
+    "soop-channel.html"
 ) | ForEach-Object {
     $source = Join-Path $RepoRoot $_
-    if (-not (Test-Path $source)) { throw "Required web asset missing: $source" }
+    if (-not (Test-Path $source)) { throw "Required web entry page missing: $source" }
     Copy-Item $source (Join-Path $WebRoot $_) -Force
 }
+
+$SoopSourceRoot = Join-Path $RepoRoot "soop"
+if (-not (Test-Path $SoopSourceRoot)) { throw "Required grouped SOOP source missing: $SoopSourceRoot" }
+Copy-Item $SoopSourceRoot (Join-Path $WebRoot "soop") -Recurse -Force
+
 Copy-Item (Join-Path $RepoRoot "assets") (Join-Path $WebRoot "assets") -Recurse -Force
 
 @("data", "tickets", "backups") | ForEach-Object {

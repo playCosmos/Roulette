@@ -2,6 +2,33 @@
 
 Ramyani Games(라먀니 게임즈)는 SOOP 방송 연동 게임을 한 저장소에서 제공하는 게임 허브 프로젝트입니다. GitHub Pages 루트는 게임 선택 랜딩 페이지로 사용하고, 각 게임은 `games/` 아래 독립 페이지로 분리합니다. 현재 첫 게임은 기존 웹 룰렛/티켓 발급기인 **먀로또**이며, Windows용 `RouletteBridge`를 통해 SOOP 별풍선 후원 기반 자동 발급도 지원합니다.
 
+## 저장소 구조
+
+브라우저 소스는 역할과 종류별로 묶습니다. 루트에는 GitHub Pages 및 Bridge가 직접 여는 HTML 진입점만 유지합니다.
+
+```text
+/
+├─ index.html                 # Ramyani Games 랜딩 진입점
+├─ hub/
+│  └─ hub.css                 # 랜딩 스타일
+├─ games/
+│  └─ lotto/
+│     ├─ index.html           # 먀로또 진입점
+│     ├─ css/                 # 먀로또 스타일
+│     └─ js/                  # 먀로또 동작 코드
+├─ soop-admin.html            # Bridge 관리자 진입점
+├─ soop-channel.html          # 채널 분석 진입점
+├─ soop-overlay.html          # OBS 오버레이 진입점
+├─ soop/
+│  ├─ admin/                  # 관리자 CSS/JS
+│  ├─ channel/                # 채널 분석 CSS/JS
+│  └─ overlay/                # 오버레이 CSS/JS
+├─ assets/                    # 공용 이미지/티켓 리소스
+├─ bridge/                    # Java SOOP Bridge
+├─ release/                   # 버전별 릴리스 노트
+└─ .github/workflows/         # 빌드/패키징 자동화
+```
+
 ## 주요 구성
 
 현재 프로젝트는 게임 허브, 개별 게임 페이지, Windows Bridge로 구성됩니다.

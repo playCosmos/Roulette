@@ -5,19 +5,15 @@ on:
     paths:
       - "bridge/**"
       - "soop-overlay.html"
-      - "soop-overlay-archive.js"
+      - "soop/**"
       - "soop-channel.html"
-      - "soop-channel.css"
-      - "soop-channel.js"
       - ".github/workflows/bridge-build.yml"
   pull_request:
     paths:
       - "bridge/**"
       - "soop-overlay.html"
-      - "soop-overlay-archive.js"
+      - "soop/**"
       - "soop-channel.html"
-      - "soop-channel.css"
-      - "soop-channel.js"
       - ".github/workflows/bridge-build.yml"
 
 permissions:
@@ -40,9 +36,9 @@ jobs:
       - name: Check browser JavaScript
         shell: pwsh
         run: |
-          node --check soop-channel.js
+          node --check soop/channel/soop-channel.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --check soop-overlay-archive.js
+          node --check soop/overlay/soop-overlay-archive.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build bridge

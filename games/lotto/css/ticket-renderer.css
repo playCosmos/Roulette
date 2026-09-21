@@ -1,0 +1,170 @@
+.ticket-output-settings {
+  margin-top: 8px;
+  padding: 10px 11px;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .025);
+}
+
+.ticket-output-toggle {
+  min-height: 33px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 199, 117, .18);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, .20);
+  color: #d9bd91;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ticket-output-toggle input {
+  accent-color: #d97927;
+}
+
+.ticket-output-toggle:has(input:disabled) {
+  opacity: .52;
+  cursor: not-allowed;
+}
+
+.ticket-nickname-field {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.ticket-nickname-field > span {
+  flex: 0 0 auto;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ticket-nickname-field input {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  min-height: 33px;
+  border: 1px solid rgba(255, 199, 117, .24);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, .28);
+  color: var(--cream);
+  padding: 7px 9px;
+  outline: none;
+}
+
+.ticket-nickname-field input:focus {
+  border-color: var(--gold-strong);
+}
+
+.ticket-nickname-field input:disabled {
+  opacity: .52;
+  cursor: not-allowed;
+}
+
+@media (max-width: 920px) {
+  .ticket-output-settings {
+    margin-top: 6px;
+    padding: 8px 9px;
+    gap: 7px;
+  }
+
+  /* 모바일은 화면 전체를 하나의 자연스러운 세로 스크롤 영역으로 사용한다. */
+  html,
+  body {
+    height: auto;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  body {
+    min-height: 100dvh;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: auto;
+  }
+
+  .app-shell {
+    width: 100%;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+    grid-template-rows: auto auto;
+    align-content: start;
+  }
+
+  .stage-card {
+    height: min(52dvh, 100vw);
+    min-height: 0;
+  }
+
+  .control-card {
+    height: auto;
+    min-height: 48dvh;
+    overflow: visible;
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+
+  .tab-content {
+    min-height: auto;
+    flex: 0 0 auto;
+    display: block;
+    overflow: visible;
+  }
+
+  .tab-panel,
+  .tab-panel.active {
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .history-panel {
+    min-height: auto;
+    flex: 0 0 auto;
+  }
+
+  .history-list {
+    min-height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  #checkPanel {
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  #checkPanel .participant-section {
+    min-height: auto;
+    flex: 0 0 auto;
+  }
+
+  #checkPanel .participant-list {
+    min-height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .keyboard-hint {
+    padding-bottom: 4px;
+  }
+}
+
+@media (max-width: 520px) {
+  .stage-card {
+    height: min(49dvh, 100vw);
+  }
+}

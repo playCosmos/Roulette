@@ -27,15 +27,15 @@ jobs:
       - name: Check browser JavaScript
         shell: pwsh
         run: |
-          node --check soop-admin.js
+          node --check soop/admin/soop-admin.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --check soop-channel.js
+          node --check soop/channel/soop-channel.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --check soop-overlay-connection.js
+          node --check soop/overlay/soop-overlay-connection.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --check soop-overlay.js
+          node --check soop/overlay/soop-overlay.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --check soop-overlay-archive.js
+          node --check soop/overlay/soop-overlay-archive.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build bridge
@@ -77,14 +77,14 @@ jobs:
           if ([string]$configJson.ticket.issuanceMode -ne "single_donation") { throw "distribution issuanceMode must default to single_donation" }
           @(
             "web/soop-admin.html",
-            "web/soop-admin.js",
-            "web/soop-admin.css",
+            "web/soop/admin/soop-admin.js",
+            "web/soop/admin/soop-admin.css",
             "web/soop-channel.html",
-            "web/soop-channel.js",
-            "web/soop-channel.css",
-            "web/soop-overlay-connection.js",
-            "web/soop-overlay.js",
-            "web/soop-overlay-archive.js"
+            "web/soop/channel/soop-channel.js",
+            "web/soop/channel/soop-channel.css",
+            "web/soop/overlay/soop-overlay-connection.js",
+            "web/soop/overlay/soop-overlay.js",
+            "web/soop/overlay/soop-overlay-archive.js"
           ) | ForEach-Object {
             if (-not (Test-Path (Join-Path $root $_))) { throw "required packaged asset missing: $_" }
           }
@@ -112,9 +112,9 @@ jobs:
 
           Copy-Item "dist/RouletteBridge/RouletteBridge.exe" (Join-Path $patchRoot "RouletteBridge.exe") -Force
           Copy-Item "dist/RouletteBridge/app" (Join-Path $patchRoot "app") -Recurse -Force
-          @("soop-admin.html", "soop-admin.css", "soop-admin.js") | ForEach-Object {
-            Copy-Item (Join-Path "dist/RouletteBridge/web" $_) (Join-Path (Join-Path $patchRoot "web") $_) -Force
-          }
+          Copy-Item "dist/RouletteBridge/web/soop-admin.html" (Join-Path $patchRoot "web/soop-admin.html") -Force
+          New-Item -ItemType Directory -Path (Join-Path $patchRoot "web/soop/admin") -Force | Out-Null
+          Copy-Item "dist/RouletteBridge/web/soop/admin/*" (Join-Path $patchRoot "web/soop/admin") -Recurse -Force
 
           $patchReadme = @"
           RouletteBridge v0.1.13 patch for v0.1.12

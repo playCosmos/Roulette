@@ -60,7 +60,7 @@ jobs:
         shell: pwsh
         run: ./package-windows.ps1 -Version 0.1.13 -SkipBuild
 
-      - name: Verify packaged executable
+      - name: Verify packaged executable and grouped web paths
         working-directory: bridge
         shell: pwsh
         run: |
@@ -68,13 +68,16 @@ jobs:
           $exe = Join-Path $root "RouletteBridge.exe"
           $config = Join-Path $root "config.json"
           $runtime = Join-Path $root "runtime/bin/server/jvm.dll"
+
           if (-not (Test-Path $exe)) { throw "RouletteBridge.exe missing" }
           if (-not (Test-Path $config)) { throw "config.json missing" }
           if (-not (Test-Path $runtime)) { throw "bundled Java runtime missing" }
           if (-not (Test-Path (Join-Path $root "restart-bridge.ps1"))) { throw "restart-bridge.ps1 missing from package" }
+
           $configJson = Get-Content $config -Raw | ConvertFrom-Json
           if (-not [string]::IsNullOrWhiteSpace([string]$configJson.streamerId)) { throw "distribution streamerId must be empty" }
           if ([string]$configJson.ticket.issuanceMode -ne "single_donation") { throw "distribution issuanceMode must default to single_donation" }
+
           @(
             "web/soop-admin.html",
             "web/soop/admin/soop-admin.js",
@@ -82,13 +85,26 @@ jobs:
             "web/soop-channel.html",
             "web/soop/channel/soop-channel.js",
             "web/soop/channel/soop-channel.css",
+            "web/soop-overlay.html",
             "web/soop/overlay/soop-overlay-connection.js",
             "web/soop/overlay/soop-overlay.js",
-            "web/soop/overlay/soop-overlay-archive.js"
+            "web/soop/overlay/soop-overlay-archive.js",
+            "web/soop/overlay/soop-overlay.css"
           ) | ForEach-Object {
             if (-not (Test-Path (Join-Path $root $_))) { throw "required packaged asset missing: $_" }
           }
+
           $adminHtml = Join-Path $root "web/soop-admin.html"
+          $channelHtml = Join-Path $root "web/soop-channel.html"
+          $overlayHtml = Join-Path $root "web/soop-overlay.html"
+
+          if (-not (Select-String -Path $adminHtml -SimpleMatch './soop/admin/soop-admin.css' -Quiet)) { throw "admin CSS grouped path missing" }
+          if (-not (Select-String -Path $adminHtml -SimpleMatch './soop/admin/soop-admin.js' -Quiet)) { throw "admin JS grouped path missing" }
+          if (-not (Select-String -Path $channelHtml -SimpleMatch './soop/channel/soop-channel.css' -Quiet)) { throw "channel CSS grouped path missing" }
+          if (-not (Select-String -Path $channelHtml -SimpleMatch './soop/channel/soop-channel.js' -Quiet)) { throw "channel JS grouped path missing" }
+          if (-not (Select-String -Path $overlayHtml -SimpleMatch './soop/overlay/soop-overlay.css' -Quiet)) { throw "overlay CSS grouped path missing" }
+          if (-not (Select-String -Path $overlayHtml -SimpleMatch './soop/overlay/soop-overlay.js' -Quiet)) { throw "overlay JS grouped path missing" }
+
           if (-not (Select-String -Path $adminHtml -Pattern "ticketDonorGroups" -Quiet)) { throw "ticket lookup UI missing from packaged admin page" }
           if (-not (Select-String -Path $adminHtml -Pattern "ticket-group-toggle" -Quiet)) { throw "donor ticket collapse control missing from packaged admin page" }
           if (Test-Path (Join-Path $root "logs")) { throw "logs directory must not be pre-created in distribution" }
@@ -127,9 +143,9 @@ jobs:
 
           이 패치에는 config.json, data/, tickets/, backups/, runtime/가 포함되지 않습니다.
           기존 스트리머 설정과 운영 데이터는 그대로 유지됩니다.
+          관리자 페이지 자산은 web/soop/admin/ 경로를 사용합니다.
           v0.1.13에서는 관리자 페이지에 발급 티켓 조회 및 후원자별 전체복사/개별복사 기능이 추가됩니다.
-          발급 티켓 조회의 각 후원자 그룹은 개별적으로 접기/펼치기 할 수 있습니다.
-          index.html은 변경하지 않습니다.
+          발급 티켓 조회의 각 후원자 그룹은 개별적으로 접기/펼치기 할 수 있으며 기본값은 접힘입니다.
           "@
           Set-Content -Path (Join-Path $patchRoot "PATCH_README.txt") -Value $patchReadme -Encoding UTF8
 

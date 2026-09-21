@@ -8,16 +8,9 @@ on:
       - "bridge/**"
       - "assets/**"
       - "soop-overlay.html"
-      - "soop-overlay.css"
-      - "soop-overlay-connection.js"
-      - "soop-overlay.js"
-      - "soop-overlay-archive.js"
       - "soop-admin.html"
-      - "soop-admin.css"
-      - "soop-admin.js"
       - "soop-channel.html"
-      - "soop-channel.css"
-      - "soop-channel.js"
+      - "soop/**"
       - ".github/workflows/windows-package.yml"
 
 permissions:
@@ -40,15 +33,15 @@ jobs:
       - name: Check browser JavaScript
         shell: pwsh
         run: |
-          node --check soop-admin.js
+          node --check soop/admin/soop-admin.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --check soop-channel.js
+          node --check soop/channel/soop-channel.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --check soop-overlay-connection.js
+          node --check soop/overlay/soop-overlay-connection.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --check soop-overlay.js
+          node --check soop/overlay/soop-overlay.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --check soop-overlay-archive.js
+          node --check soop/overlay/soop-overlay-archive.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build bridge
@@ -90,14 +83,14 @@ jobs:
           if ([string]$configJson.ticket.issuanceMode -ne "single_donation") { throw "distribution issuanceMode must default to single_donation" }
           @(
             "web/soop-admin.html",
-            "web/soop-admin.js",
-            "web/soop-admin.css",
+            "web/soop/admin/soop-admin.js",
+            "web/soop/admin/soop-admin.css",
             "web/soop-channel.html",
-            "web/soop-channel.js",
-            "web/soop-channel.css",
-            "web/soop-overlay-connection.js",
-            "web/soop-overlay.js",
-            "web/soop-overlay-archive.js"
+            "web/soop/channel/soop-channel.js",
+            "web/soop/channel/soop-channel.css",
+            "web/soop/overlay/soop-overlay-connection.js",
+            "web/soop/overlay/soop-overlay.js",
+            "web/soop/overlay/soop-overlay-archive.js"
           ) | ForEach-Object {
             if (-not (Test-Path (Join-Path $root $_))) { throw "required packaged asset missing: $_" }
           }

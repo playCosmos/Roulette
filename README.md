@@ -1,17 +1,18 @@
-# 먀로또
+# 먀 게임즈
 
-`assets/Frame3.png`를 메인 프레임으로 사용하는 웹 룰렛/티켓 발급기입니다. 기존 GitHub Pages 수동 추첨 기능과 별도로, Windows용 `RouletteBridge`를 통해 SOOP 별풍선 후원을 감지하고 후원자별 누적에 따라 자동으로 룰렛을 실행한 뒤 티켓을 발급·저장할 수 있습니다.
+SOOP 방송 연동 게임을 한 저장소에서 제공하는 게임 허브 프로젝트입니다. GitHub Pages 루트는 게임 선택 랜딩 페이지로 사용하고, 각 게임은 `games/` 아래 독립 페이지로 분리합니다. 현재 첫 게임은 기존 웹 룰렛/티켓 발급기인 **먀로또**이며, Windows용 `RouletteBridge`를 통해 SOOP 별풍선 후원 기반 자동 발급도 지원합니다.
 
 ## 주요 구성
 
-현재 프로젝트는 두 실행 경로를 제공합니다.
+현재 프로젝트는 게임 허브, 개별 게임 페이지, Windows Bridge로 구성됩니다.
 
-### 1. GitHub Pages / 브라우저 룰렛
+### 1. GitHub Pages 게임 허브
 
-- 기존 `index.html` 기반 수동·자동 번호 발급
-- 실시간 추첨기
+- 루트 `index.html`: 게임 선택 랜딩 페이지
+- `games/lotto/index.html`: 기존 먀로또 수동·자동 번호 발급 및 실시간 추첨
 - 참가자 번호 등록 및 일치 결과 계산
 - 브라우저 Canvas 기반 티켓 PNG 출력
+- 향후 `games/board/` 등 추가 게임을 같은 구조로 확장
 - 별도 빌드 없이 GitHub Pages에서 실행 가능
 
 ### 2. SOOP 자동발급 / Windows Bridge
@@ -34,7 +35,7 @@
 
 ## Windows 배포본
 
-Windows에서는 GitHub Releases의 `RouletteBridge-Windows-x64-v0.1.6.zip`을 받아 압축을 푼 뒤 `RouletteBridge.exe`를 실행합니다.
+Windows에서는 GitHub Releases의 최신 `RouletteBridge-Windows-x64-v0.1.13.zip`을 받아 압축을 푼 뒤 `RouletteBridge.exe`를 실행합니다.
 
 별도 Java 설치는 필요하지 않습니다. Java 25 기반 런타임이 배포본에 포함됩니다.
 

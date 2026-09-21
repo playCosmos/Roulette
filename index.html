@@ -3,260 +3,47 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#170a06" />
+  <meta name="theme-color" content="#0d0908" />
   <meta name="color-scheme" content="dark" />
-  <title>먀로또 추첨기</title>
-  <link rel="preload" as="image" href="./assets/image0.png" />
-  <link rel="preload" as="image" href="./assets/image1.png" />
-  <link rel="preload" as="image" href="./assets/image2.png" />
-  <link rel="preload" as="image" href="./assets/image3.png" />
-  <link rel="preload" as="image" href="./assets/Frame3.png" />
-  <link rel="preload" as="image" href="./assets/mask.png" />
-  <link rel="stylesheet" href="./styles.css?v=20260912-3" />
-  <link rel="stylesheet" href="./draw-modes.css?v=20260912-3" />
-  <link rel="stylesheet" href="./ticket-renderer.css?v=20260912-5" />
-  <link rel="stylesheet" href="./live-draw.css?v=20260912-2" />
-  <link rel="stylesheet" href="./stage-transition.css?v=20260912-6" />
-  <link rel="stylesheet" href="./history.css?v=20260912-2" />
+  <meta name="description" content="먀 게임즈 - 방송 연동 게임 허브" />
+  <title>먀 게임즈</title>
+  <link rel="stylesheet" href="./hub.css?v=20260921-1" />
 </head>
 <body>
-  <main class="app-shell">
-    <section class="stage-card" aria-label="먀로또 추첨 화면">
-      <div
-        class="character-stage"
-        id="characterStage"
-        role="button"
-        tabindex="0"
-        aria-label="회전 시작 또는 정지"
-      >
-        <div class="teeth-roulette" id="teethRoulette" aria-label="회전하는 이빨 릴">
-          <canvas id="teethCanvas" aria-hidden="true"></canvas>
+  <main class="hub-shell">
+    <header class="hub-header">
+      <p class="eyebrow">MYA GAMES / STREAM INTERACTIVE</p>
+      <h1>먀 게임즈</h1>
+      <p class="lead">방송과 함께 사용하는 게임들을 한곳에서 선택합니다. 기존 먀로또는 독립 게임 페이지로 분리했으며, 이후 보드게임과 추가 게임을 같은 구조로 확장합니다.</p>
+    </header>
+
+    <section class="game-grid" aria-label="게임 목록">
+      <a class="game-card available" href="./games/lotto/" aria-label="먀로또 열기">
+        <div class="game-meta">
+          <span class="badge">PLAYABLE</span>
+          <span class="game-number">GAME 01</span>
         </div>
+        <div class="game-content">
+          <h2>먀로또</h2>
+          <p>자동 번호 발급, 수동 발급, 실시간 추첨과 참가자 판정을 제공하는 기존 추첨 게임입니다.</p>
+          <span class="game-action">게임 열기</span>
+        </div>
+      </a>
 
-        <img
-          class="character-image character-image-final"
-          id="characterImage"
-          src="./assets/Frame3.png"
-          alt="먀로또 룰렛 프레임"
-          loading="eager"
-          decoding="async"
-          draggable="false"
-        />
-
-        <img
-          class="character-image stage-transition-frame"
-          data-mouth-frame="0"
-          src="./assets/image0.png"
-          alt=""
-          aria-hidden="true"
-          loading="eager"
-          decoding="async"
-          fetchpriority="high"
-          draggable="false"
-        />
-        <img
-          class="character-image stage-transition-frame"
-          data-mouth-frame="1"
-          src="./assets/image1.png"
-          alt=""
-          aria-hidden="true"
-          loading="eager"
-          decoding="async"
-          draggable="false"
-        />
-        <img
-          class="character-image stage-transition-frame"
-          data-mouth-frame="2"
-          src="./assets/image2.png"
-          alt=""
-          aria-hidden="true"
-          loading="eager"
-          decoding="async"
-          draggable="false"
-        />
-        <img
-          class="character-image stage-transition-frame"
-          data-mouth-frame="3"
-          src="./assets/image3.png"
-          alt=""
-          aria-hidden="true"
-          loading="eager"
-          decoding="async"
-          draggable="false"
-        />
-
-        <div class="stage-status" id="stageStatus" aria-live="polite">이미지 클릭 또는 Space 키로 시작</div>
-      </div>
+      <article class="game-card coming-soon" aria-label="보드게임 준비 중">
+        <div class="game-meta">
+          <span class="badge">COMING SOON</span>
+          <span class="game-number">GAME 02</span>
+        </div>
+        <div class="game-content">
+          <h2>보드게임</h2>
+          <p>별풍선 시스템과 주사위, 턴 기반 멀티플레이를 연동하는 모노폴리형 보드게임을 준비합니다.</p>
+          <span class="game-action">준비 중</span>
+        </div>
+      </article>
     </section>
 
-    <aside class="control-card">
-      <header class="control-header">
-        <h1>먀로또</h1>
-      </header>
-
-      <div class="tab-control" role="tablist" aria-label="기능 선택">
-        <button class="tab-button active" id="drawTab" type="button" role="tab" aria-selected="true" aria-controls="drawPanel" data-tab="draw">자동 번호 발급</button>
-        <button class="tab-button" id="checkTab" type="button" role="tab" aria-selected="false" aria-controls="checkPanel" data-tab="check">추첨기</button>
-      </div>
-
-      <div class="tab-content">
-        <section class="tab-panel active" id="drawPanel" role="tabpanel" aria-labelledby="drawTab">
-          <section class="settings-row" aria-label="자동 번호 발급 설정">
-            <label>
-              <span>번호 범위</span>
-              <div class="range-input">
-                <strong>1</strong><span>~</span>
-                <input id="maxNumber" type="number" min="1" max="999" value="45" inputmode="numeric" />
-              </div>
-            </label>
-
-            <label>
-              <span>발급 개수</span>
-              <div class="range-input count-input">
-                <input id="drawCount" type="number" min="1" max="7" value="7" inputmode="numeric" />
-                <span>개</span>
-              </div>
-            </label>
-          </section>
-
-          <section class="ticket-output-settings" aria-label="티켓 이미지 출력 설정">
-            <label class="ticket-output-toggle" for="ticketOutputEnabled">
-              <input id="ticketOutputEnabled" type="checkbox" />
-              <span>이미지 출력</span>
-            </label>
-
-            <label class="ticket-nickname-field">
-              <span>닉네임</span>
-              <input id="ticketNickname" type="text" maxlength="24" autocomplete="off" placeholder="미입력 시 익명" />
-            </label>
-
-            <span id="ticketOutputHint" hidden></span>
-          </section>
-
-          <section class="draw-mode-settings" aria-labelledby="drawModeTitle">
-            <div class="draw-mode-heading">
-              <span id="drawModeTitle">발급 방식</span>
-              <div class="auto-repeat-setting" id="autoRepeatSetting" hidden>
-                <span>연속 횟수</span>
-                <input id="autoDrawCount" type="number" min="1" max="100" value="5" inputmode="numeric" />
-                <span>회</span>
-              </div>
-            </div>
-
-            <div class="draw-mode-selector" role="radiogroup" aria-label="발급 방식">
-              <label>
-                <input type="radio" name="drawMode" value="normal" checked />
-                <span>기본</span>
-              </label>
-              <label>
-                <input type="radio" name="drawMode" value="continuous" />
-                <span>연속 자동</span>
-              </label>
-              <label>
-                <input type="radio" name="drawMode" value="manual" />
-                <span>수동</span>
-              </label>
-            </div>
-
-            <div class="manual-number-setting" id="manualNumberSetting" hidden>
-              <span>사용자 지정 번호</span>
-              <div class="manual-number-entry">
-                <textarea id="manualNumbers" rows="3" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="사용자 지정 번호" placeholder="한 줄에 한 조합씩 입력&#10;1 5 9 13 18 24 28&#10;2 6 10 14 19 25 27"></textarea>
-                <button class="manual-issue-button" id="manualIssueButton" type="button" onclick="window.MyaLotto?.draw?.toggleDraw?.()">발급</button>
-              </div>
-              <small>여러 조합은 줄을 바꿔 입력하면 한 번에 발급·출력합니다.</small>
-            </div>
-
-            <p class="mode-description" id="modeDescription">1회 시작 후 다시 눌러 자동 발급 번호를 왼쪽부터 순차 확정합니다.</p>
-          </section>
-
-          <section class="result-panel" aria-labelledby="resultTitle">
-            <div class="section-heading">
-              <h2 id="resultTitle">이번 발급</h2>
-              <button class="ghost-button" id="copyCurrentButton" type="button" disabled>복사</button>
-            </div>
-            <div class="result-numbers" id="resultNumbers" aria-live="polite"></div>
-          </section>
-
-          <section class="history-panel" aria-labelledby="historyTitle">
-            <div class="section-heading">
-              <h2 id="historyTitle">발급 기록</h2>
-              <div class="history-actions">
-                <button class="ghost-button" id="copyAllButton" type="button">전체 복사</button>
-                <button class="ghost-button danger" id="clearHistoryButton" type="button">초기화</button>
-              </div>
-            </div>
-            <ol class="history-list" id="historyList"></ol>
-            <p class="empty-history" id="emptyHistory">아직 기록이 없습니다.</p>
-          </section>
-
-          <p class="keyboard-hint">이미지 클릭 또는 <kbd>Space</kbd> : 발급 시작 / 정지</p>
-        </section>
-
-        <section class="tab-panel live-panel" id="checkPanel" role="tabpanel" aria-labelledby="checkTab" hidden>
-          <section class="settings-row live-settings" aria-label="실시간 추첨 설정">
-            <label>
-              <span>번호 범위</span>
-              <div class="range-input">
-                <strong>1</strong><span>~</span>
-                <input id="liveMaxNumber" type="number" min="1" max="999" value="45" inputmode="numeric" />
-              </div>
-            </label>
-
-            <label>
-              <span>추첨 개수</span>
-              <div class="range-input count-input">
-                <input id="liveDrawCount" type="number" min="1" max="7" value="7" inputmode="numeric" />
-                <span>개</span>
-              </div>
-            </label>
-          </section>
-
-          <section class="result-panel live-result-panel" aria-labelledby="liveResultTitle">
-            <div class="section-heading">
-              <h2 id="liveResultTitle">추첨 결과</h2>
-              <span class="live-progress" id="liveProgress">대기 중</span>
-            </div>
-            <div class="result-numbers" id="liveResultNumbers" aria-live="polite"></div>
-          </section>
-
-          <section class="participant-ranking-section" id="participantRankingSection" aria-labelledby="participantRankingTitle" hidden>
-            <div class="section-heading">
-              <h2 id="participantRankingTitle">참가자 추첨 결과</h2>
-              <span class="ranking-badge">최고 일치순</span>
-            </div>
-            <div class="participant-ranking-list" id="participantRankingList" aria-live="polite"></div>
-            <p class="empty-history participant-ranking-empty" id="emptyParticipantRanking" hidden>판정할 참가자 번호가 없습니다.</p>
-          </section>
-
-          <section class="participant-section" id="participantSection" aria-labelledby="participantTitle">
-            <div class="section-heading participant-heading">
-              <div>
-                <h2 id="participantTitle">참가자 번호</h2>
-                <span class="participant-count" id="participantCount">0명</span>
-              </div>
-              <div class="participant-heading-actions">
-                <button class="ghost-button participant-toggle-button" id="participantToggleButton" type="button" aria-expanded="true">접기</button>
-                <button class="check-action participant-add-button" id="addParticipantButton" type="button">사람 추가</button>
-              </div>
-            </div>
-            <div class="participant-list" id="participantList"></div>
-            <p class="empty-history participant-empty" id="emptyParticipants">사람 추가 버튼으로 참가자를 등록하세요.</p>
-          </section>
-
-          <p class="keyboard-hint">이미지 클릭 또는 <kbd>Space</kbd> : 전체 회전 시작 / 다음 번호 실시간 추첨</p>
-        </section>
-      </div>
-    </aside>
+    <footer class="hub-footer">각 게임은 독립 페이지로 운영하며 공통 SOOP/브리지 기능은 단계적으로 공유 구조로 정리합니다.</footer>
   </main>
-
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="./roulette-core.js?v=20260912-6" defer></script>
-  <script src="./roulette-draw.js?v=20260912-7" defer></script>
-  <script src="./ticket-renderer.js?v=20260912-12" defer></script>
-  <script src="./ticket-hook.js?v=20260912-5" defer></script>
-  <script src="./live-draw.js?v=20260912-5" defer></script>
-  <script src="./stage-transition.js?v=20260912-12" defer></script>
-  <script src="./roulette-ui.js?v=20260912-5" defer></script>
 </body>
 </html>

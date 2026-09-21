@@ -1,0 +1,50 @@
+.history-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.history-index {
+  flex: 0 0 auto;
+}
+
+.history-values {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.history-copy,
+.history-delete {
+  flex: 0 0 auto;
+  min-height: 27px;
+  padding: 4px 7px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.history-delete {
+  border-color: rgba(255, 118, 108, .22);
+  background: rgba(255, 94, 84, .055);
+  color: #ff988f;
+}
+
+.history-delete:hover:not(:disabled) {
+  border-color: rgba(255, 118, 108, .48);
+  background: rgba(255, 94, 84, .12);
+}
+
+@media (max-width: 520px) {
+  .history-item {
+    gap: 4px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .history-copy,
+  .history-delete {
+    min-height: 25px;
+    padding: 3px 5px;
+    font-size: 9px;
+  }
+}

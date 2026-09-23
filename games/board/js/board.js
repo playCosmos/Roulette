@@ -5,6 +5,7 @@
   const BOARD_ROWS = 6;
   const CELL_COUNT = 24;
   const STEP_DELAY_MS = 220;
+  const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
 
   const state = {
     totalLaps: 0,
@@ -23,30 +24,17 @@
   };
 
   const refs = {
+    boardStage: document.getElementById("boardStage"),
     boardGrid: document.getElementById("boardGrid"),
-    phaseLabel: document.getElementById("phaseLabel"),
-    phaseDescription: document.getElementById("phaseDescription"),
-    totalLapCount: document.getElementById("totalLapCount"),
-    playerCount: document.getElementById("playerCount"),
-    eventMessage: document.getElementById("eventMessage"),
-    playerStrip: document.getElementById("playerStrip"),
-    playerSelect: document.getElementById("playerSelect"),
-    rollButton: document.getElementById("rollButton"),
-    diceResult: document.getElementById("diceResult")
+    eventMessage: document.getElementById("eventMessage")
   };
 
   const cellElements = new Map();
 
   function perimeterPosition(index) {
-    if (index < 8) {
-      return { row: 1, column: index + 1 };
-    }
-    if (index < 12) {
-      return { row: index - 6, column: 8 };
-    }
-    if (index < 20) {
-      return { row: 6, column: 20 - index };
-    }
+    if (index < 8) return { row: 1, column: index + 1 };
+    if (index < 12) return { row: index - 6, column: 8 };
+    if (index < 20) return { row: 6, column: 20 - index };
     return { row: 25 - index, column: 1 };
   }
 
@@ -70,7 +58,20 @@
     };
   }
 
+  function setEventMessage(message) {
+    if (refs.eventMessage) refs.eventMessage.textContent = message;
+  }
+
+  function renderGlobalState() {
+    if (!refs.boardStage) return;
+    refs.boardStage.dataset.phase = state.currentPhaseId;
+    refs.boardStage.dataset.totalLaps = String(state.totalLaps);
+    refs.boardStage.dataset.playerCount = String(state.players.size);
+  }
+
   function buildBoard() {
+    if (!refs.boardGrid) return;
+
     refs.boardGrid.innerHTML = "";
     cellElements.clear();
 
@@ -91,7 +92,7 @@
 
       const label = document.createElement("span");
       label.className = "cell-label";
-      label.textContent = definition.command ? definition.command : definition.label;
+      label.textContent = definition.command || definition.label;
 
       const tokens = document.createElement("div");
       tokens.className = "token-stack";
@@ -105,59 +106,26 @@
     renderPlayers();
   }
 
-  function renderGlobalState() {
-    const phase = currentPhase();
-    refs.phaseLabel.textContent = phase?.label || "PHASE";
-    refs.phaseDescription.textContent = phase?.description || "";
-    refs.totalLapCount.textContent = String(state.totalLaps);
-    refs.playerCount.textContent = String(state.players.size);
-  }
-
   function renderPlayers() {
     cellElements.forEach((cell) => {
       const stack = cell.querySelector(".token-stack");
       if (stack) stack.innerHTML = "";
     });
 
-    refs.playerStrip.innerHTML = "";
-    refs.playerSelect.innerHTML = "";
-
     for (const player of state.players.values()) {
       const cell = cellElements.get(player.position);
       const stack = cell?.querySelector(".token-stack");
-      if (stack) {
-        const token = document.createElement("span");
-        token.className = "player-token";
-        token.title = player.name;
-        token.textContent = player.shortLabel;
-        stack.append(token);
-      }
+      if (!stack) continue;
 
-      const card = document.createElement("article");
-      card.className = "player-card";
-      card.innerHTML = `<strong>${escapeHtml(player.name)}</strong><span>${player.position + 1}번 칸 · ${player.laps}바퀴 · 대기 ${player.pendingRolls}회</span>`;
-      refs.playerStrip.append(card);
-
-      const option = document.createElement("option");
-      option.value = player.id;
-      option.textContent = player.name;
-      refs.playerSelect.append(option);
+      const token = document.createElement("span");
+      token.className = "player-token";
+      token.dataset.playerId = player.id;
+      token.title = player.name;
+      token.textContent = player.shortLabel;
+      stack.append(token);
     }
 
     renderGlobalState();
-  }
-
-  function escapeHtml(value) {
-    return String(value)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
-
-  function setEventMessage(message) {
-    refs.eventMessage.textContent = message;
   }
 
   function registerPlayer(input) {
@@ -251,7 +219,6 @@
       if (previous === CELL_COUNT - 1 && player.position === 0) {
         player.laps += 1;
         state.totalLaps += 1;
-        renderGlobalState();
         evaluatePhase();
       }
 
@@ -311,10 +278,6 @@
     return nextQueue;
   }
 
-  function delay(ms) {
-    return new Promise((resolve) => window.setTimeout(resolve, ms));
-  }
-
   function getSnapshot() {
     return {
       dimensions: {
@@ -328,26 +291,28 @@
     };
   }
 
-  function seedPrototypePlayers() {
+  function delay(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  function seedDemoPlayers() {
     registerPlayer({ id: "player-a", name: "참가자 A", shortLabel: "A", position: 0 });
     registerPlayer({ id: "player-b", name: "참가자 B", shortLabel: "B", position: 5 });
     registerPlayer({ id: "player-c", name: "참가자 C", shortLabel: "C", position: 14 });
   }
 
-  refs.rollButton.addEventListener("click", async () => {
-    const playerId = refs.playerSelect.value;
-    if (!playerId) return;
+  function startDemo() {
+    seedDemoPlayers();
+    setEventMessage("오버레이 이동 데모 실행 중");
 
-    const dice = 1 + Math.floor(Math.random() * 6);
-    refs.diceResult.textContent = `${state.players.get(playerId)?.name || playerId}: ${dice}`;
-
-    refs.rollButton.disabled = true;
-    try {
-      await enqueueRoll(playerId, dice, { source: "로컬 테스트" });
-    } finally {
-      refs.rollButton.disabled = false;
-    }
-  });
+    window.setInterval(() => {
+      const players = Array.from(state.players.values());
+      if (!players.length) return;
+      const player = players[Math.floor(Math.random() * players.length)];
+      const dice = 1 + Math.floor(Math.random() * 6);
+      enqueueRoll(player.id, dice, { source: "데모" }).catch(() => undefined);
+    }, 2200);
+  }
 
   window.RamyaniBoard = Object.freeze({
     BOARD_COLUMNS,
@@ -361,6 +326,11 @@
   });
 
   buildBoard();
-  seedPrototypePlayers();
-  setEventMessage("24칸 루프 보드 준비 완료");
+  renderGlobalState();
+
+  if (DEMO_MODE) {
+    startDemo();
+  } else {
+    setEventMessage("24칸 방송 오버레이 준비 완료");
+  }
 })();

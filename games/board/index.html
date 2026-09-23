@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0c10" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="description" content="라먀니 게임즈 보드게임 프로토타입" />
+  <title>보드게임 · 라먀니 게임즈</title>
+  <link rel="stylesheet" href="./css/board.css?v=20260923-1" />
+</head>
+<body>
+  <main class="board-page">
+    <header class="board-header">
+      <div>
+        <p class="eyebrow">RAMYANI GAMES / BOARD</p>
+        <h1>보드게임</h1>
+      </div>
+      <div class="header-status">
+        <span class="status-pill">PROTOTYPE</span>
+        <a href="../../">게임 허브</a>
+      </div>
+    </header>
+
+    <section class="board-stage-wrap" aria-label="16대9 보드게임 화면">
+      <div class="board-stage" id="boardStage">
+        <div class="board-grid" id="boardGrid" aria-label="24칸 루프 보드"></div>
+
+        <section class="board-center" aria-label="게임 상태">
+          <div class="center-copy">
+            <p class="phase-kicker">GLOBAL BOARD PHASE</p>
+            <strong id="phaseLabel">PHASE 1</strong>
+            <span id="phaseDescription">기본 보드</span>
+          </div>
+
+          <div class="global-stats">
+            <article>
+              <span>전체 누적 바퀴</span>
+              <strong id="totalLapCount">0</strong>
+            </article>
+            <article>
+              <span>참가자</span>
+              <strong id="playerCount">0</strong>
+            </article>
+            <article>
+              <span>보드 칸</span>
+              <strong>24</strong>
+            </article>
+          </div>
+
+          <div class="event-panel">
+            <span>최근 이벤트</span>
+            <strong id="eventMessage">게임 대기 중</strong>
+          </div>
+
+          <div class="prototype-controls" aria-label="프로토타입 테스트 도구">
+            <p>프로토타입 이동 테스트</p>
+            <div class="control-row">
+              <select id="playerSelect" aria-label="테스트 참가자 선택"></select>
+              <button type="button" id="rollButton">주사위 굴리기</button>
+            </div>
+            <p class="dice-result" id="diceResult">SOOP 후원 연동 전 로컬 테스트용</p>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="player-strip" id="playerStrip" aria-label="참가자 현재 위치"></section>
+  </main>
+
+  <script src="./js/board.js?v=20260923-1" defer></script>
+</body>
+</html>

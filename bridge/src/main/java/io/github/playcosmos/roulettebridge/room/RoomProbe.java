@@ -4,6 +4,7 @@ import com.google.gson.JsonParser;
 import io.github.playcosmos.roulettebridge.db.BridgeDatabase;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -233,6 +234,47 @@ public final class RoomProbe {
             require("READY".equals(ready.status()), "commit must change room to READY");
             require(ready.committedBoard() != null, "committed board must be persisted");
 
+            boolean earlyExtensionBlocked = false;
+            try {
+                rooms.extendLifetime(created.roomId(), 60);
+            } catch (IllegalStateException expected) {
+                earlyExtensionBlocked = true;
+            }
+            require(
+                earlyExtensionBlocked,
+                "room extension must be blocked when more than 60 minutes remain"
+            );
+
+            setRoomNearExpiry(database, created.roomId(), 480, 30);
+
+            boolean oversizedExtensionBlocked = false;
+            try {
+                rooms.extendLifetime(created.roomId(), 121);
+            } catch (IllegalArgumentException expected) {
+                oversizedExtensionBlocked = true;
+            }
+            require(
+                oversizedExtensionBlocked,
+                "single extension above 120 minutes must be rejected"
+            );
+
+            var extended = rooms.extendLifetime(created.roomId(), 120);
+            require(
+                extended.lifecycle().retentionMinutes() == 600,
+                "manual extension must be allowed to exceed the 480-minute creation limit"
+            );
+
+            boolean immediateReextensionBlocked = false;
+            try {
+                rooms.extendLifetime(created.roomId(), 1);
+            } catch (IllegalStateException expected) {
+                immediateReextensionBlocked = true;
+            }
+            require(
+                immediateReextensionBlocked,
+                "another extension must wait until remaining time is within 60 minutes again"
+            );
+
             var secondRoom = rooms.create(request);
             require("DRAFT".equals(secondRoom.status()), "second room may exist only as DRAFT");
 
@@ -291,6 +333,29 @@ public final class RoomProbe {
                     // best effort probe cleanup
                 }
             }
+        }
+    }
+
+    private static void setRoomNearExpiry(
+        BridgeDatabase database,
+        String roomId,
+        int retentionMinutes,
+        int remainingMinutes
+    ) throws Exception {
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 UPDATE board_room
+                 SET retention_minutes = ?,
+                     expires_at = ?
+                 WHERE room_id = ?
+                 """)) {
+            statement.setInt(1, retentionMinutes);
+            statement.setString(
+                2,
+                OffsetDateTime.now().plusMinutes(remainingMinutes).toString()
+            );
+            statement.setString(3, roomId);
+            statement.executeUpdate();
         }
     }
 

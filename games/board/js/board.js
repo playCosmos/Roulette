@@ -125,8 +125,8 @@
 
     const playerCount = playerPositions.length;
     const intensity = clamp(1 / Math.sqrt(Math.max(1, playerCount) * 0.72), 0.42, 1);
-    const restScale = 0.78 + ((1 - intensity) * 0.12);
-    const peakRange = 0.72 * intensity;
+    const restScale = 0.66 + ((1 - intensity) * 0.16);
+    const peakRange = 0.82 * intensity;
     const proximityProfile = [1, 0.58, 0.30];
 
     return Array.from({ length: CELL_COUNT }, (_, cellIndex) => {
@@ -149,30 +149,141 @@
     });
   }
 
-  function layoutLinear(indices, sizes, availableStart, availableEnd, minGap) {
-    const available = Math.max(1, availableEnd - availableStart);
-    const desired = indices.map((index) => Math.max(1, sizes.get(index) || 1));
-    const minimumGapTotal = minGap * Math.max(0, indices.length - 1);
-    const maxSizeTotal = Math.max(1, available - minimumGapTotal);
-    const desiredTotal = desired.reduce((sum, value) => sum + value, 0);
-    const compression = desiredTotal > maxSizeTotal ? maxSizeTotal / desiredTotal : 1;
-    const fitted = desired.map((value) => value * compression);
-    const fittedTotal = fitted.reduce((sum, value) => sum + value, 0);
-    const gap = indices.length > 1
-      ? Math.max(minGap, (available - fittedTotal) / (indices.length - 1))
-      : 0;
+  function createRoundedPerimeter(width, height, inset, maxHalfWidth, maxHalfHeight) {
+    const left = inset + maxHalfWidth;
+    const right = width - inset - maxHalfWidth;
+    const top = inset + maxHalfHeight;
+    const bottom = height - inset - maxHalfHeight;
 
-    let cursor = availableStart;
-    const centers = new Map();
+    const usableWidth = Math.max(80, right - left);
+    const usableHeight = Math.max(80, bottom - top);
+    const radius = clamp(
+      Math.min(usableWidth, usableHeight) * 0.085,
+      18,
+      Math.min(usableWidth, usableHeight) * 0.18
+    );
 
-    indices.forEach((index, order) => {
-      const size = fitted[order];
-      const center = cursor + (size / 2);
-      centers.set(index, { center, size });
-      cursor += size + gap;
-    });
+    const horizontal = Math.max(1, usableWidth - (radius * 2));
+    const vertical = Math.max(1, usableHeight - (radius * 2));
+    const quarterArc = Math.PI * radius * 0.5;
+    const perimeter = (horizontal * 2) + (vertical * 2) + (quarterArc * 4);
 
-    return centers;
+    return {
+      left,
+      right,
+      top,
+      bottom,
+      radius,
+      horizontal,
+      vertical,
+      quarterArc,
+      perimeter
+    };
+  }
+
+  function roundedPerimeterPoint(path, distance) {
+    const {
+      left,
+      right,
+      top,
+      bottom,
+      radius,
+      horizontal,
+      vertical,
+      quarterArc,
+      perimeter
+    } = path;
+
+    let s = ((distance % perimeter) + perimeter) % perimeter;
+
+    if (s < horizontal) {
+      return {
+        x: left + radius + s,
+        y: top,
+        angle: 0,
+        cornerBlend: 0
+      };
+    }
+    s -= horizontal;
+
+    if (s < quarterArc) {
+      const progress = s / quarterArc;
+      const angle = (-Math.PI / 2) + (progress * Math.PI / 2);
+      return {
+        x: right - radius + (Math.cos(angle) * radius),
+        y: top + radius + (Math.sin(angle) * radius),
+        angle: progress * Math.PI / 2,
+        cornerBlend: Math.sin(progress * Math.PI)
+      };
+    }
+    s -= quarterArc;
+
+    if (s < vertical) {
+      return {
+        x: right,
+        y: top + radius + s,
+        angle: Math.PI / 2,
+        cornerBlend: 0
+      };
+    }
+    s -= vertical;
+
+    if (s < quarterArc) {
+      const progress = s / quarterArc;
+      const angle = progress * Math.PI / 2;
+      return {
+        x: right - radius + (Math.cos(angle) * radius),
+        y: bottom - radius + (Math.sin(angle) * radius),
+        angle: (Math.PI / 2) + (progress * Math.PI / 2),
+        cornerBlend: Math.sin(progress * Math.PI)
+      };
+    }
+    s -= quarterArc;
+
+    if (s < horizontal) {
+      return {
+        x: right - radius - s,
+        y: bottom,
+        angle: Math.PI,
+        cornerBlend: 0
+      };
+    }
+    s -= horizontal;
+
+    if (s < quarterArc) {
+      const progress = s / quarterArc;
+      const angle = (Math.PI / 2) + (progress * Math.PI / 2);
+      return {
+        x: left + radius + (Math.cos(angle) * radius),
+        y: bottom - radius + (Math.sin(angle) * radius),
+        angle: Math.PI + (progress * Math.PI / 2),
+        cornerBlend: Math.sin(progress * Math.PI)
+      };
+    }
+    s -= quarterArc;
+
+    if (s < vertical) {
+      return {
+        x: left,
+        y: bottom - radius - s,
+        angle: Math.PI * 1.5,
+        cornerBlend: 0
+      };
+    }
+    s -= vertical;
+
+    const progress = clamp(s / quarterArc, 0, 1);
+    const angle = Math.PI + (progress * Math.PI / 2);
+    return {
+      x: left + radius + (Math.cos(angle) * radius),
+      y: top + radius + (Math.sin(angle) * radius),
+      angle: (Math.PI * 1.5) + (progress * Math.PI / 2),
+      cornerBlend: Math.sin(progress * Math.PI)
+    };
+  }
+
+  function projectedTangentSize(width, height, angle) {
+    return (Math.abs(Math.cos(angle)) * width) + (Math.abs(Math.sin(angle)) * height);
   }
 
   function layoutBoardCells() {
@@ -184,71 +295,92 @@
     if (width <= 0 || height <= 0) return;
 
     const inset = clamp(width * 0.0105, 10, 22);
-    const minGap = clamp(width * 0.0048, 6, 12);
-    const baseWidth = Math.max(1, (width - (inset * 2) - (minGap * 7)) / BOARD_COLUMNS);
-    const baseHeight = Math.max(1, (height - (inset * 2) - (minGap * 5)) / BOARD_ROWS);
+    const minGap = clamp(width * 0.0045, 6, 12);
+    const baseWidth = Math.max(1, (width - (inset * 2)) / BOARD_COLUMNS);
+    const baseHeight = Math.max(1, (height - (inset * 2)) / BOARD_ROWS);
     const scales = dockScales();
     const occupancy = occupancyByCell();
 
-    const widths = new Map();
-    const heights = new Map();
+    const desiredWidths = scales.map((scale) => baseWidth * scale);
+    const desiredHeights = scales.map((scale) => baseHeight * scale);
+    const maxHalfWidth = Math.max(...desiredWidths) * 0.5;
+    const maxHalfHeight = Math.max(...desiredHeights) * 0.5;
+    const path = createRoundedPerimeter(width, height, inset, maxHalfWidth, maxHalfHeight);
 
-    for (let index = 0; index < CELL_COUNT; index += 1) {
-      const scale = scales[index];
-      widths.set(index, baseWidth * scale);
-      heights.set(index, baseHeight * scale);
+    let positions = Array.from(
+      { length: CELL_COUNT },
+      (_, index) => (index / CELL_COUNT) * path.perimeter
+    );
+
+    let fittedWidths = desiredWidths.slice();
+    let fittedHeights = desiredHeights.slice();
+
+    for (let iteration = 0; iteration < 6; iteration += 1) {
+      const points = positions.map((position) => roundedPerimeterPoint(path, position));
+      const projected = points.map((point, index) =>
+        projectedTangentSize(fittedWidths[index], fittedHeights[index], point.angle)
+      );
+
+      const projectedTotal = projected.reduce((sum, size) => sum + size, 0);
+      const availableForCells = Math.max(1, path.perimeter - (minGap * CELL_COUNT));
+      const compression = Math.min(1, availableForCells / Math.max(1, projectedTotal));
+
+      fittedWidths = desiredWidths.map((value) => value * compression);
+      fittedHeights = desiredHeights.map((value) => value * compression);
+
+      const refreshedProjected = points.map((point, index) =>
+        projectedTangentSize(fittedWidths[index], fittedHeights[index], point.angle)
+      );
+
+      const requiredGaps = refreshedProjected.map((size, index) => {
+        const next = refreshedProjected[(index + 1) % CELL_COUNT];
+        return ((size + next) * 0.5) + minGap;
+      });
+
+      const requiredTotal = requiredGaps.reduce((sum, value) => sum + value, 0);
+      const extra = Math.max(0, path.perimeter - requiredTotal);
+
+      const weights = requiredGaps.map((_, index) => {
+        const nextIndex = (index + 1) % CELL_COUNT;
+        const localScale = Math.max(scales[index], scales[nextIndex]);
+        const occupiedBoost = occupancy.has(index) || occupancy.has(nextIndex) ? 1.15 : 0;
+        return 0.12 + Math.pow(localScale, 2.35) + occupiedBoost;
+      });
+      const weightTotal = weights.reduce((sum, value) => sum + value, 0);
+
+      const nextPositions = new Array(CELL_COUNT);
+      nextPositions[0] = 0;
+
+      for (let index = 1; index < CELL_COUNT; index += 1) {
+        const previousGapIndex = index - 1;
+        const slack = extra * (weights[previousGapIndex] / Math.max(1, weightTotal));
+        nextPositions[index] = nextPositions[index - 1] + requiredGaps[previousGapIndex] + slack;
+      }
+
+      positions = nextPositions;
     }
 
-    const top = [0, 1, 2, 3, 4, 5, 6, 7];
-    const right = [8, 9, 10, 11];
-    const bottom = [19, 18, 17, 16, 15, 14, 13, 12];
-    const left = [23, 22, 21, 20];
-
-    const topX = layoutLinear(top, widths, inset, width - inset, minGap);
-    const bottomX = layoutLinear(bottom, widths, inset, width - inset, minGap);
-
-    const maxTopHeight = Math.max(...top.map((index) => heights.get(index)));
-    const maxBottomHeight = Math.max(...bottom.map((index) => heights.get(index)));
-    const sideStart = inset + maxTopHeight + minGap;
-    const sideEnd = height - inset - maxBottomHeight - minGap;
-
-    const rightY = layoutLinear(right, heights, sideStart, sideEnd, minGap);
-    const leftY = layoutLinear(left, heights, sideStart, sideEnd, minGap);
-
-    function apply(index, x, y, fittedWidth, fittedHeight) {
+    for (let index = 0; index < CELL_COUNT; index += 1) {
       const cell = cellElements.get(index);
-      if (!cell) return;
+      if (!cell) continue;
 
+      const point = roundedPerimeterPoint(path, positions[index]);
+      const cornerCorrection = 1 - (point.cornerBlend * 0.085);
+      const cellWidth = fittedWidths[index] * cornerCorrection;
+      const cellHeight = fittedHeights[index] * cornerCorrection;
       const scale = scales[index];
       const isOccupied = occupancy.has(index);
-      cell.style.left = `${x}px`;
-      cell.style.top = `${y}px`;
-      cell.style.width = `${Math.max(1, fittedWidth)}px`;
-      cell.style.height = `${Math.max(1, fittedHeight)}px`;
-      cell.style.setProperty("--dock-scale", scale.toFixed(3));
+
+      cell.style.left = `${point.x}px`;
+      cell.style.top = `${point.y}px`;
+      cell.style.width = `${Math.max(1, cellWidth)}px`;
+      cell.style.height = `${Math.max(1, cellHeight)}px`;
+      cell.style.setProperty("--dock-scale", (scale * cornerCorrection).toFixed(3));
       cell.style.zIndex = String(Math.round(scale * 100) + (isOccupied ? 200 : 0));
       cell.dataset.occupied = String(isOccupied);
       cell.dataset.dockScale = scale.toFixed(3);
-    }
-
-    for (const index of top) {
-      const item = topX.get(index);
-      apply(index, item.center, inset + (heights.get(index) / 2), item.size, heights.get(index));
-    }
-
-    for (const index of bottom) {
-      const item = bottomX.get(index);
-      apply(index, item.center, height - inset - (heights.get(index) / 2), item.size, heights.get(index));
-    }
-
-    for (const index of right) {
-      const item = rightY.get(index);
-      apply(index, width - inset - (widths.get(index) / 2), item.center, widths.get(index), item.size);
-    }
-
-    for (const index of left) {
-      const item = leftY.get(index);
-      apply(index, inset + (widths.get(index) / 2), item.center, widths.get(index), item.size);
+      cell.dataset.cornerBlend = point.cornerBlend.toFixed(3);
+      cell.dataset.pathAngle = point.angle.toFixed(3);
     }
   }
 

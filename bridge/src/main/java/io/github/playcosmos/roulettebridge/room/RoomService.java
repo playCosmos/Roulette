@@ -504,9 +504,9 @@ public final class RoomService {
             ? "inheritRatioInstructions"
             : normalizeText(input.mode(), "inheritRatioInstructions");
 
-        boolean allowSame = input == null
-            || input.allowSameInstruction() == null
-            || input.allowSameInstruction();
+        Boolean allowSame = input == null
+            ? null
+            : input.allowSameInstruction();
 
         var entries = new ArrayList<RandomPoolEntry>();
 

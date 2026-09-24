@@ -23,6 +23,11 @@
   const rerollButton = $("boardRoomRerollButton");
   const commitButton = $("boardRoomCommitButton");
   const createButton = $("boardRoomCreateButton");
+  const overlayRow = $("boardRoomOverlayRow");
+  const overlayUrl = $("boardRoomOverlayUrl");
+  const copyOverlayButton = $("boardRoomCopyOverlayButton");
+  const openOverlayButton = $("boardRoomOpenOverlayButton");
+  const bridgeOverlayUrl = $("overlayUrlInput");
 
   let currentRoom = null;
   let instructionSequence = 0;
@@ -394,6 +399,30 @@
     });
   }
 
+  function currentWebSocketUrl() {
+    const raw = bridgeOverlayUrl?.value?.trim();
+    if (raw) {
+      try {
+        const parsed = new URL(raw, window.location.href);
+        const configured = parsed.searchParams.get("ws");
+        if (configured) return configured;
+      } catch (_) {
+        // Fall back to the default bridge websocket address below.
+      }
+    }
+    return "ws://" + window.location.hostname + ":17821";
+  }
+
+  function roomOverlayUrl(snapshot) {
+    const style = snapshot?.config?.board?.layoutStyle || "rounded";
+    const page = style === "rect" ? "./games/board/rect.html" : "./games/board/index.html";
+    const url = new URL(page, window.location.href);
+    url.searchParams.set("roomId", snapshot.roomId);
+    url.searchParams.set("board", "committed");
+    url.searchParams.set("ws", currentWebSocketUrl());
+    return url.toString();
+  }
+
   function previewUrl(snapshot) {
     const style = snapshot?.config?.board?.layoutStyle || "rounded";
     const page = style === "rect" ? "./games/board/rect.html" : "./games/board/index.html";
@@ -422,6 +451,11 @@
     rerollButton.disabled = ready;
     commitButton.disabled = ready;
     commitButton.textContent = ready ? "배치 확정됨" : "이 배치로 확정";
+
+    if (overlayRow && overlayUrl) {
+      overlayRow.hidden = !ready;
+      overlayUrl.value = ready ? roomOverlayUrl(snapshot) : "";
+    }
   }
 
   async function createRoom(event) {
@@ -509,6 +543,23 @@
   form.addEventListener("submit", createRoom);
   rerollButton.addEventListener("click", rerollPreview);
   commitButton.addEventListener("click", commitPreview);
+
+  copyOverlayButton?.addEventListener("click", async () => {
+    if (!overlayUrl?.value) return;
+    try {
+      await navigator.clipboard.writeText(overlayUrl.value);
+      showResult("보드게임 OBS 주소를 복사했습니다.", "success");
+    } catch (_) {
+      overlayUrl.select();
+      document.execCommand("copy");
+      showResult("보드게임 OBS 주소를 복사했습니다.", "success");
+    }
+  });
+
+  openOverlayButton?.addEventListener("click", () => {
+    if (!overlayUrl?.value) return;
+    window.open(overlayUrl.value, "_blank", "noopener,noreferrer");
+  });
 
   renderPlayers();
   syncBoardSizing();

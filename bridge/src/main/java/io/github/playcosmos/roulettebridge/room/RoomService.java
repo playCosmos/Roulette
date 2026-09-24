@@ -408,19 +408,62 @@ public final class RoomService {
 
     public int terminateExpiredRooms() throws SQLException {
         String now = OffsetDateTime.now().toString();
-        try (var connection = database.open();
-             var statement = connection.prepareStatement("""
-                 UPDATE board_room
-                 SET lifecycle_state = 'TERMINATED',
-                     terminated_at = COALESCE(terminated_at, ?),
-                     updated_at = ?
-                 WHERE lifecycle_state <> 'TERMINATED'
-                   AND expires_at IS NOT NULL
-                   AND datetime(expires_at) <= datetime('now')
-                 """)) {
-            statement.setString(1, now);
-            statement.setString(2, now);
-            return statement.executeUpdate();
+        try (var connection = database.open()) {
+            connection.setAutoCommit(false);
+            try {
+                var expiredRoomIds = new ArrayList<String>();
+                try (var select = connection.prepareStatement("""
+                    SELECT room_id
+                    FROM board_room
+                    WHERE lifecycle_state <> 'TERMINATED'
+                      AND expires_at IS NOT NULL
+                      AND datetime(expires_at) <= datetime('now')
+                    """);
+                     var rows = select.executeQuery()) {
+                    while (rows.next()) expiredRoomIds.add(rows.getString(1));
+                }
+
+                if (expiredRoomIds.isEmpty()) {
+                    connection.commit();
+                    return 0;
+                }
+
+                int terminated;
+                try (var statement = connection.prepareStatement("""
+                    UPDATE board_room
+                    SET lifecycle_state = 'TERMINATED',
+                        terminated_at = COALESCE(terminated_at, ?),
+                        updated_at = ?
+                    WHERE lifecycle_state <> 'TERMINATED'
+                      AND expires_at IS NOT NULL
+                      AND datetime(expires_at) <= datetime('now')
+                    """)) {
+                    statement.setString(1, now);
+                    statement.setString(2, now);
+                    terminated = statement.executeUpdate();
+                }
+
+                try (var statement = connection.prepareStatement("""
+                    UPDATE board_game_deferred_donation
+                    SET state = 'IGNORED'
+                    WHERE state = 'QUEUED'
+                      AND room_id = ?
+                    """)) {
+                    for (String roomId : expiredRoomIds) {
+                        statement.setString(1, roomId);
+                        statement.addBatch();
+                    }
+                    statement.executeBatch();
+                }
+
+                connection.commit();
+                return terminated;
+            } catch (SQLException error) {
+                connection.rollback();
+                throw error;
+            } finally {
+                connection.setAutoCommit(true);
+            }
         }
     }
 

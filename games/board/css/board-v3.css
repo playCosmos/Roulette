@@ -63,10 +63,9 @@ body {
     top 220ms cubic-bezier(.22,1,.36,1),
     width 220ms cubic-bezier(.22,1,.36,1),
     height 220ms cubic-bezier(.22,1,.36,1),
-    transform 220ms cubic-bezier(.22,1,.36,1),
     border-color 180ms ease,
     box-shadow 180ms ease;
-  will-change: left, top, width, height, transform;
+  will-change: left, top, width, height;
 }
 
 .board-cell[data-kind="start"] {

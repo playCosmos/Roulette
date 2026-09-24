@@ -13,7 +13,7 @@
   const DEMO_MODE = params.get("demo") === "1";
   const DEMO_PLAYER_COUNT = Math.min(
     6,
-    Math.max(1, Number.parseInt(params.get("players") || "3", 10) || 3)
+    Math.max(1, Number.parseInt(params.get("players") || "4", 10) || 4)
   );
 
   function clamp(value, min, max) {
@@ -212,27 +212,22 @@
       return Array.from({ length: board.cellCount }, () => 1);
     }
 
-    // 최대 6명 기준: 참가자 수에 따른 전역 감쇠 없이
-    // 가장 가까운 참가자의 국소 영향만 사용한다.
-    const restScale = 0.82;
-    const peakScale = 1.55;
-    const sigma = 1.15;
-    const influenceRadius = 3;
+    // 주 사용 인원 3~4명에 맞춘 고정 Dock 프로파일.
+    // 멀리 있는 셀을 과도하게 줄이지 않고, 참가자 주변 2~3칸만
+    // 완만하게 따라오도록 해서 여러 봉우리가 동시에 있어도 자연스럽게 보인다.
+    const scaleByDistance = [1.42, 1.20, 1.04, 0.94];
+    const restScale = 0.90;
 
     return Array.from({ length: board.cellCount }, (_, cellIndex) => {
-      let influence = 0;
+      let scale = restScale;
 
       for (const position of positions) {
         const distance = circularDistance(cellIndex, position);
-        if (distance > influenceRadius) continue;
-
-        influence = Math.max(
-          influence,
-          Math.exp(-0.5 * Math.pow(distance / sigma, 2))
-        );
+        if (distance >= scaleByDistance.length) continue;
+        scale = Math.max(scale, scaleByDistance[distance]);
       }
 
-      return restScale + ((peakScale - restScale) * influence);
+      return scale;
     });
   }
 

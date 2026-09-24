@@ -552,29 +552,117 @@
     };
   }
 
+  function validatePlacements(placements, gap) {
+    const tolerance = Math.max(0.35, gap * 0.04);
+    let minimumDistance = Infinity;
+    let collisionPair = null;
+
+    for (let a = 0; a < placements.length; a += 1) {
+      for (let b = a + 1; b < placements.length; b += 1) {
+        const distance = polygonDistance(
+          placements[a].corners,
+          placements[b].corners
+        );
+
+        minimumDistance = Math.min(minimumDistance, distance);
+
+        if (distance < gap - tolerance) {
+          collisionPair = [a, b];
+          return {
+            valid: false,
+            minimumDistance,
+            collisionPair
+          };
+        }
+      }
+    }
+
+    return {
+      valid: true,
+      minimumDistance,
+      collisionPair
+    };
+  }
+
   function solveLoop(path, aspect, weights, gap) {
     const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
-    let baseWidth = Math.max(
+    const estimate = Math.max(
       1,
       (path.perimeter - (gap * board.cellCount)) / Math.max(1, weightTotal)
     );
 
-    // 실제 직사각형 외곽 간 gap을 기준으로 한 바퀴가 정확히 닫히도록
-    // baseWidth 하나만 보정한다. 모든 비강조 칸은 이 값으로 동일하다.
-    for (let iteration = 0; iteration < 5; iteration += 1) {
-      const trial = placeLoop(path, baseWidth, aspect, weights, gap);
-      const correction = clamp(
-        path.perimeter / Math.max(1, trial.requiredPerimeter),
-        0.80,
-        1.20
-      );
-      baseWidth *= correction;
+    // requiredPerimeter가 실제 loop perimeter와 정확히 일치하도록
+    // baseWidth를 이분 탐색한다. 기존 반복 비율 보정처럼 한 바퀴를
+    // 초과해서 마지막 셀이 시작점 쪽으로 wrap되는 상태를 허용하지 않는다.
+    let low = Math.max(0.5, estimate * 0.35);
+    let high = Math.max(1, estimate * 1.35);
+
+    let lowTrial = placeLoop(path, low, aspect, weights, gap);
+    let highTrial = placeLoop(path, high, aspect, weights, gap);
+
+    for (let guard = 0; guard < 8 && lowTrial.requiredPerimeter > path.perimeter; guard += 1) {
+      high = low;
+      highTrial = lowTrial;
+      low *= 0.70;
+      lowTrial = placeLoop(path, low, aspect, weights, gap);
     }
 
+    for (let guard = 0; guard < 8 && highTrial.requiredPerimeter < path.perimeter; guard += 1) {
+      low = high;
+      lowTrial = highTrial;
+      high *= 1.25;
+      highTrial = placeLoop(path, high, aspect, weights, gap);
+    }
+
+    for (let iteration = 0; iteration < 26; iteration += 1) {
+      const middle = (low + high) * 0.5;
+      const trial = placeLoop(path, middle, aspect, weights, gap);
+
+      if (trial.requiredPerimeter > path.perimeter) {
+        high = middle;
+        highTrial = trial;
+      } else {
+        low = middle;
+        lowTrial = trial;
+      }
+    }
+
+    // low는 한 바퀴를 절대 초과하지 않는 쪽이므로 seam 중첩을 만들지 않는다.
     return {
-      baseWidth,
-      ...placeLoop(path, baseWidth, aspect, weights, gap)
+      baseWidth: low,
+      ...lowTrial
     };
+  }
+
+  function solveCollisionFreeLoop(path, aspect, weights, initialGap, nominalCell) {
+    let gap = initialGap;
+    const maxGap = Math.max(initialGap, nominalCell * 0.24);
+    let best = null;
+
+    // P0 우선: 강조 배율은 유지하고, 충돌이 있으면 모든 칸에 동일한
+    // gap을 늘린다. 그러면 남은 둘레 공간이 줄어 모든 셀의 base size가
+    // 함께 작아지면서도 강조/비강조 비율은 그대로 유지된다.
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const solved = solveLoop(path, aspect, weights, gap);
+      const validation = validatePlacements(solved.placements, gap);
+
+      best = {
+        ...solved,
+        gap,
+        validation
+      };
+
+      if (validation.valid) return best;
+
+      gap = Math.min(
+        maxGap,
+        Math.max(gap + 0.75, gap * 1.12)
+      );
+
+      if (gap >= maxGap - 0.001) break;
+    }
+
+    return best;
   }
 
   function applyCellGeometry(index, geometry, weight, occupied) {
@@ -632,7 +720,13 @@
     );
 
     const path = createRoundedLoop(width, height, margin, cornerRadius);
-    const solved = solveLoop(path, aspect, weights, gap);
+    const solved = solveCollisionFreeLoop(
+      path,
+      aspect,
+      weights,
+      gap,
+      nominalCell
+    );
 
     for (let index = 0; index < board.cellCount; index += 1) {
       applyCellGeometry(
@@ -645,7 +739,10 @@
 
     refs.boardGrid.dataset.pathPerimeter = path.perimeter.toFixed(3);
     refs.boardGrid.dataset.requiredPerimeter = solved.requiredPerimeter.toFixed(3);
-    refs.boardGrid.dataset.cellGap = gap.toFixed(3);
+    refs.boardGrid.dataset.cellGap = solved.gap.toFixed(3);
+    refs.boardGrid.dataset.minimumCellDistance =
+      solved.validation.minimumDistance.toFixed(3);
+    refs.boardGrid.dataset.collisionFree = String(solved.validation.valid);
     refs.boardGrid.dataset.cellAspect = aspect.toFixed(6);
     refs.boardGrid.dataset.baseCellWidth = solved.baseWidth.toFixed(3);
     refs.boardGrid.dataset.baseCellHeight = (

@@ -595,10 +595,24 @@
       const snappedWidth = Math.round(renderedWidth * 8) / 8;
       const snappedHeight = Math.round(renderedHeight * 8) / 8;
 
+      // 글자/말 크기는 원래 dock scale이 아니라 최종 렌더링된 칸 크기에서 계산한다.
+      // 따라서 여유 공간 흡수나 코너 보정 결과가 달라도 실제 칸 크기가 같으면
+      // 내부 텍스트와 말의 표시 크기도 항상 같아진다.
+      const typographyBasis = Math.sqrt(snappedWidth * snappedHeight);
+      const tokenBasis = Math.min(snappedWidth, snappedHeight);
+      const indexFontSize = clamp(typographyBasis * 0.135, 8, 16);
+      const labelFontSize = clamp(typographyBasis * 0.105, 7, 14);
+      const tokenSize = clamp(tokenBasis * 0.42, 18, 58);
+      const tokenFontSize = clamp(tokenSize * 0.34, 8, 15);
+
       cell.style.left = `${snappedLeft}px`;
       cell.style.top = `${snappedTop}px`;
       cell.style.width = `${snappedWidth}px`;
       cell.style.height = `${snappedHeight}px`;
+      cell.style.setProperty("--cell-index-font", `${indexFontSize.toFixed(3)}px`);
+      cell.style.setProperty("--cell-label-font", `${labelFontSize.toFixed(3)}px`);
+      cell.style.setProperty("--cell-token-size", `${tokenSize.toFixed(3)}px`);
+      cell.style.setProperty("--cell-token-font", `${tokenFontSize.toFixed(3)}px`);
       cell.style.setProperty("--dock-scale", (scale * cornerCorrection).toFixed(3));
       cell.style.zIndex = String(Math.round(scale * 100) + (isOccupied ? 200 : 0));
       cell.dataset.occupied = String(isOccupied);

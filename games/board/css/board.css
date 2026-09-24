@@ -67,16 +67,16 @@ body {
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.018),
     0 7px 22px rgba(0,0,0,.12);
-  --cell-position-duration: 300ms;
-  --cell-size-duration: 320ms;
+  --cell-position-duration: 450ms;
+  --cell-size-duration: 480ms;
   transition:
     left var(--cell-position-duration) cubic-bezier(.16,1,.3,1),
     top var(--cell-position-duration) cubic-bezier(.16,1,.3,1),
     width var(--cell-size-duration) cubic-bezier(.16,1,.3,1),
     height var(--cell-size-duration) cubic-bezier(.16,1,.3,1),
     border-radius var(--cell-position-duration) cubic-bezier(.16,1,.3,1),
-    border-color 220ms ease,
-    box-shadow 240ms ease;
+    border-color 330ms ease,
+    box-shadow 360ms ease;
 }
 
 .board-cell[data-kind="start"] {
@@ -85,13 +85,13 @@ body {
 }
 
 .board-cell[data-motion="approach"] {
-  --cell-position-duration: 240ms;
-  --cell-size-duration: 260ms;
+  --cell-position-duration: 360ms;
+  --cell-size-duration: 390ms;
 }
 
 .board-cell[data-motion="release"] {
-  --cell-position-duration: 370ms;
-  --cell-size-duration: 400ms;
+  --cell-position-duration: 555ms;
+  --cell-size-duration: 600ms;
 }
 
 .board-cell[data-compact="true"] {
@@ -196,11 +196,11 @@ body {
     scale(1);
   transform-origin: center center;
   transition:
-    transform 285ms cubic-bezier(.16,1,.3,1),
-    width 260ms cubic-bezier(.16,1,.3,1),
-    height 260ms cubic-bezier(.16,1,.3,1),
-    font-size 240ms cubic-bezier(.16,1,.3,1),
-    box-shadow 220ms ease;
+    transform 428ms cubic-bezier(.16,1,.3,1),
+    width 390ms cubic-bezier(.16,1,.3,1),
+    height 390ms cubic-bezier(.16,1,.3,1),
+    font-size 360ms cubic-bezier(.16,1,.3,1),
+    box-shadow 330ms ease;
   will-change: transform;
 }
 

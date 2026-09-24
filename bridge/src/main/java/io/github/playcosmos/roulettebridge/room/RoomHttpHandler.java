@@ -110,7 +110,8 @@ public final class RoomHttpHandler implements HttpHandler {
             if (route.endsWith("/terminate")) {
                 if (!requireMethod(exchange, "POST")) return;
                 String roomId = route.substring(0, route.length() - "/terminate".length());
-                sendJson(exchange, 200, rooms.terminate(roomId));
+                runtime.terminateRoom(roomId);
+                sendJson(exchange, 200, rooms.find(roomId));
                 return;
             }
 

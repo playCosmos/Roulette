@@ -69,6 +69,10 @@ jobs:
         working-directory: bridge
         run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --room-probe
 
+      - name: Verify board game runtime
+        working-directory: bridge
+        run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --board-runtime-probe
+
       - name: Probe configured SOOP streamer
         id: soop_probe
         if: ${{ vars.SOOP_PROBE_STREAMER_ID != '' }}

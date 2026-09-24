@@ -68,6 +68,7 @@ Ramyani Games(라먀니 게임즈)는 SOOP 방송 연동 게임을 한 저장소
 - 참가자별 이동 큐를 별도로 처리
 - 강조 칸 크기를 먼저 예약하고 남은 루프 공간을 일반 칸에 균등 분배하는 reserve-first 레이아웃을 사용
 - 셀/말 이동은 `left/top/width/height` transition 대신 `requestAnimationFrame` 기반 critically-damped spring과 `translate3d + scale` 합성으로 처리
+- 셀 최종 배치는 START를 고정 앵커로 두고 진행/역방향으로 나누어 배치한 뒤 반대편에서 폐합한다. 한쪽 방향으로 전체 칸 위치 오차가 누적되는 현상을 줄이면서 동일 gap P0를 유지한다.
 - 화면 크기와 칸 수가 같을 때 neutral 보드 해는 캐시하여 플레이어 이동 중 반복 계산량을 줄인다
 - v1은 `legacy.html` + `board-legacy.js/css`로만 보존하고 기본 `index.html` + `board.js/css`는 현재 보드 구현을 사용
 - 시작 칸 통과 시 개인/전체 누적 바퀴 수 증가
@@ -599,4 +600,4 @@ java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar
 
 또는 배포본에서는 `RouletteBridge.exe`를 직접 실행합니다. 배포본은 콘솔 창 대신 Windows 시스템 트레이에서 동작합니다.
 
-- Dock 영향 범위: 플레이어 칸 2.00×, ±1칸 1.42×, ±2칸 1.14×까지만 적용하며 ±3칸부터는 1.00× 일반 크기
+- Dock 영향 범위: 플레이어 칸 2.00×, ±1칸 1.36×, ±2칸 1.10×까지만 적용하며 ±3칸부터는 1.00× 일반 크기

@@ -21,8 +21,7 @@
 
   function normalizeDimension(value, fallback, min, max) {
     const parsed = Number.parseInt(value, 10);
-    if (!Number.isFinite(parsed)) return fallback;
-    return clamp(parsed, min, max);
+    return Number.isFinite(parsed) ? clamp(parsed, min, max) : fallback;
   }
 
   function perimeterCellCount(columns, rows) {
@@ -65,7 +64,10 @@
   };
 
   const cellElements = new Map();
+  const edgeElements = new Map();
+
   let layoutFrame = 0;
+  let typographyFrame = 0;
 
   function normalizeCell(index) {
     const numeric = Number.parseInt(index, 10);
@@ -80,12 +82,10 @@
 
   function topology() {
     const top = range(0, board.columns);
-    const rightStart = board.columns;
-    const right = range(rightStart, board.rows - 2);
-    const bottomStart = rightStart + right.length;
+    const right = range(board.columns, board.rows - 2);
+    const bottomStart = board.columns + right.length;
     const bottom = range(bottomStart, board.columns);
-    const leftStart = bottomStart + bottom.length;
-    const left = range(leftStart, board.rows - 2);
+    const left = range(bottomStart + bottom.length, board.rows - 2);
 
     return {
       top,
@@ -106,6 +106,7 @@
   function cellDefinition(index) {
     const phase = currentPhase();
     const configured = phase && phase.cells ? (phase.cells[index] || {}) : {};
+
     return {
       label: configured.label || (index === 0 ? "START / LAP" : "칸 " + (index + 1)),
       command: configured.command || null,
@@ -120,7 +121,7 @@
   function renderGlobalState() {
     if (!refs.boardStage) return;
 
-    refs.boardStage.dataset.layoutEngine = "edge-solver-v2";
+    refs.boardStage.dataset.layoutEngine = "flex-edge-v2";
     refs.boardStage.dataset.phase = state.currentPhaseId;
     refs.boardStage.dataset.totalLaps = String(state.totalLaps);
     refs.boardStage.dataset.playerCount = String(state.players.size);
@@ -136,36 +137,58 @@
     }
   }
 
+  function createCell(index, edgeName) {
+    const definition = cellDefinition(index);
+    const cell = document.createElement("article");
+
+    cell.className = "board-cell";
+    cell.dataset.cellIndex = String(index);
+    cell.dataset.edge = edgeName;
+    cell.dataset.kind = definition.kind;
+    cell.dataset.occupied = "false";
+
+    const number = document.createElement("span");
+    number.className = "cell-index";
+    number.textContent = String(index + 1).padStart(2, "0");
+
+    const label = document.createElement("span");
+    label.className = "cell-label";
+    label.textContent = definition.command || definition.label;
+
+    const tokens = document.createElement("div");
+    tokens.className = "token-stack";
+    tokens.dataset.tokensFor = String(index);
+
+    cell.append(number, label, tokens);
+    cellElements.set(index, cell);
+    return cell;
+  }
+
+  function createEdge(name, indices) {
+    const edge = document.createElement("div");
+    edge.className = "board-edge board-edge-" + name;
+    edge.dataset.edge = name;
+
+    for (const index of indices) {
+      edge.append(createCell(index, name));
+    }
+
+    refs.boardGrid.append(edge);
+    edgeElements.set(name, edge);
+  }
+
   function buildBoard() {
     if (!refs.boardGrid) return;
 
     refs.boardGrid.innerHTML = "";
     cellElements.clear();
+    edgeElements.clear();
 
-    for (let index = 0; index < board.cellCount; index += 1) {
-      const definition = cellDefinition(index);
-      const cell = document.createElement("article");
-      cell.className = "board-cell";
-      cell.dataset.cellIndex = String(index);
-      cell.dataset.kind = definition.kind;
-      cell.dataset.occupied = "false";
-
-      const number = document.createElement("span");
-      number.className = "cell-index";
-      number.textContent = String(index + 1).padStart(2, "0");
-
-      const label = document.createElement("span");
-      label.className = "cell-label";
-      label.textContent = definition.command || definition.label;
-
-      const tokens = document.createElement("div");
-      tokens.className = "token-stack";
-      tokens.dataset.tokensFor = String(index);
-
-      cell.append(number, label, tokens);
-      refs.boardGrid.append(cell);
-      cellElements.set(index, cell);
-    }
+    const topo = topology();
+    createEdge("top", topo.topSpatial);
+    createEdge("right", topo.rightSpatial);
+    createEdge("bottom", topo.bottomSpatial);
+    createEdge("left", topo.leftSpatial);
 
     renderPlayers();
   }
@@ -192,7 +215,7 @@
     const restScale = clamp(0.88 - ((density - 1) * 0.11), 0.62, 0.88);
     const peakScale = clamp(1.55 + ((density - 1) * 0.42), 1.55, 2.20);
     const sigma = clamp(1.05 + ((density - 1) * 0.22), 1.05, 1.75);
-    const radius = Math.ceil(sigma * 3);
+    const influenceRadius = Math.ceil(sigma * 3);
 
     return Array.from({ length: board.cellCount }, (_, cellIndex) => {
       let influence = 0;
@@ -201,7 +224,7 @@
       for (const position of positions) {
         const distance = circularDistance(cellIndex, position);
         if (distance === 0) exactOccupancy += 1;
-        if (distance > radius) continue;
+        if (distance > influenceRadius) continue;
 
         const local = Math.exp(-0.5 * Math.pow(distance / sigma, 2));
         influence = Math.max(influence, local);
@@ -219,83 +242,65 @@
     });
   }
 
-  function fitLine(indices, desiredSizes, availableLength, gap) {
-    if (!indices.length) return new Map();
-
-    const gapTotal = gap * Math.max(0, indices.length - 1);
-    const capacity = Math.max(indices.length, availableLength - gapTotal);
-    const desiredTotal = indices.reduce(
-      (sum, index) => sum + Math.max(1, desiredSizes[index] || 1),
-      0
-    );
-    const factor = capacity / Math.max(1, desiredTotal);
-
-    const result = new Map();
-    for (const index of indices) {
-      result.set(index, Math.max(1, (desiredSizes[index] || 1) * factor));
-    }
-    return result;
-  }
-
-  function horizontalPositions(indices, fittedSizes, left, gap) {
-    const result = new Map();
-    let cursor = left;
-
-    for (const index of indices) {
-      const size = fittedSizes.get(index) || 1;
-      result.set(index, cursor);
-      cursor += size + gap;
-    }
-
-    return result;
-  }
-
-  function verticalPositions(indices, fittedSizes, top, gap) {
-    const result = new Map();
-    let cursor = top;
-
-    for (const index of indices) {
-      const size = fittedSizes.get(index) || 1;
-      result.set(index, cursor);
-      cursor += size + gap;
-    }
-
-    return result;
-  }
-
-  function applyCellGeometry(index, left, top, width, height, scale, occupied) {
+  function setCellLayout(index, scale, normalSize, occupied) {
     const cell = cellElements.get(index);
     if (!cell) return;
 
-    const snappedLeft = Math.round(left * 8) / 8;
-    const snappedTop = Math.round(top * 8) / 8;
-    const snappedWidth = Math.round(Math.max(1, width) * 8) / 8;
-    const snappedHeight = Math.round(Math.max(1, height) * 8) / 8;
-
-    const typographyBasis = Math.sqrt(snappedWidth * snappedHeight);
-    const tokenBasis = Math.min(snappedWidth, snappedHeight);
-    const indexFontSize = clamp(typographyBasis * 0.135, 8, 16);
-    const labelFontSize = clamp(typographyBasis * 0.105, 7, 14);
-    const tokenSize = clamp(tokenBasis * 0.42, 18, 58);
-    const tokenFontSize = clamp(tokenSize * 0.34, 8, 15);
-
-    cell.style.left = snappedLeft + "px";
-    cell.style.top = snappedTop + "px";
-    cell.style.width = snappedWidth + "px";
-    cell.style.height = snappedHeight + "px";
-    cell.style.setProperty("--cell-index-font", indexFontSize.toFixed(3) + "px");
-    cell.style.setProperty("--cell-label-font", labelFontSize.toFixed(3) + "px");
-    cell.style.setProperty("--cell-token-size", tokenSize.toFixed(3) + "px");
-    cell.style.setProperty("--cell-token-font", tokenFontSize.toFixed(3) + "px");
+    const weight = Math.pow(scale, 1.18);
+    cell.style.flexGrow = weight.toFixed(4);
     cell.style.setProperty("--dock-scale", scale.toFixed(3));
     cell.style.zIndex = String(Math.round(scale * 100) + (occupied ? 200 : 0));
     cell.dataset.occupied = String(occupied);
     cell.dataset.dockScale = scale.toFixed(3);
+
+    if (cell.dataset.edge === "top" || cell.dataset.edge === "bottom") {
+      cell.style.height = normalSize.toFixed(3) + "px";
+      cell.style.width = "";
+    } else {
+      cell.style.width = normalSize.toFixed(3) + "px";
+      cell.style.height = "";
+    }
+  }
+
+  function updateTypography() {
+    typographyFrame = 0;
+    const measurements = [];
+
+    cellElements.forEach((cell, index) => {
+      const rect = cell.getBoundingClientRect();
+      measurements.push({
+        index,
+        width: rect.width,
+        height: rect.height
+      });
+    });
+
+    for (const item of measurements) {
+      const cell = cellElements.get(item.index);
+      if (!cell || item.width <= 0 || item.height <= 0) continue;
+
+      const typographyBasis = Math.sqrt(item.width * item.height);
+      const tokenBasis = Math.min(item.width, item.height);
+      const indexFontSize = clamp(typographyBasis * 0.135, 8, 16);
+      const labelFontSize = clamp(typographyBasis * 0.105, 7, 14);
+      const tokenSize = clamp(tokenBasis * 0.42, 18, 58);
+      const tokenFontSize = clamp(tokenSize * 0.34, 8, 15);
+
+      cell.style.setProperty("--cell-index-font", indexFontSize.toFixed(3) + "px");
+      cell.style.setProperty("--cell-label-font", labelFontSize.toFixed(3) + "px");
+      cell.style.setProperty("--cell-token-size", tokenSize.toFixed(3) + "px");
+      cell.style.setProperty("--cell-token-font", tokenFontSize.toFixed(3) + "px");
+    }
+  }
+
+  function scheduleTypography() {
+    if (typographyFrame) return;
+    typographyFrame = window.requestAnimationFrame(updateTypography);
   }
 
   function layoutNow() {
     layoutFrame = 0;
-    if (!refs.boardStage || !cellElements.size) return;
+    if (!refs.boardStage || !refs.boardGrid || !cellElements.size) return;
 
     const rect = refs.boardStage.getBoundingClientRect();
     const width = rect.width;
@@ -312,109 +317,40 @@
     const nominalCell = Math.min(nominalWidth, nominalHeight);
     const gap = clamp(nominalCell * 0.075, 2, 12);
 
-    const horizontalCapacity = Math.max(
-      board.columns,
-      width - (inset * 2) - (gap * (board.columns - 1))
+    const horizontalBase = Math.max(
+      1,
+      (height - (inset * 2) - (gap * (board.rows - 1))) / board.rows
     );
-    const verticalCapacity = Math.max(
-      board.rows,
-      height - (inset * 2) - (gap * (board.rows - 1))
+    const verticalBase = Math.max(
+      1,
+      (width - (inset * 2) - (gap * (board.columns - 1))) / board.columns
     );
 
-    const baseWidth = horizontalCapacity / board.columns;
-    const baseHeight = verticalCapacity / board.rows;
-
-    const desiredWidths = new Array(board.cellCount);
-    const desiredHeights = new Array(board.cellCount);
-
-    const horizontalSet = new Set(topo.top.concat(topo.bottom));
+    const normalSizes = new Array(board.cellCount);
+    const horizontalIndices = topo.top.concat(topo.bottom);
+    const horizontalSet = new Set(horizontalIndices);
 
     for (let index = 0; index < board.cellCount; index += 1) {
       const scale = scales[index];
-      const normalScale = 1 + ((scale - 1) * 0.55);
-
-      if (horizontalSet.has(index)) {
-        desiredWidths[index] = baseWidth * scale;
-        desiredHeights[index] = baseHeight * normalScale;
-      } else {
-        desiredWidths[index] = baseWidth * normalScale;
-        desiredHeights[index] = baseHeight * scale;
-      }
+      const normalScale = clamp(1 + ((scale - 1) * 0.38), 0.82, 1.34);
+      const normalSize = (horizontalSet.has(index) ? horizontalBase : verticalBase) * normalScale;
+      normalSizes[index] = normalSize;
+      setCellLayout(index, scale, normalSize, occupancy.has(index));
     }
 
-    const topWidths = fitLine(topo.topSpatial, desiredWidths, width - (inset * 2), gap);
-    const bottomWidths = fitLine(topo.bottomSpatial, desiredWidths, width - (inset * 2), gap);
-    const topLefts = horizontalPositions(topo.topSpatial, topWidths, inset, gap);
-    const bottomLefts = horizontalPositions(topo.bottomSpatial, bottomWidths, inset, gap);
+    const topBand = Math.max(...topo.top.map((index) => normalSizes[index]));
+    const bottomBand = Math.max(...topo.bottom.map((index) => normalSizes[index]));
+    const rightBand = Math.max(...topo.right.map((index) => normalSizes[index]));
+    const leftBand = Math.max(...topo.left.map((index) => normalSizes[index]));
 
-    const renderedHeights = new Array(board.cellCount);
-    for (const index of topo.top) renderedHeights[index] = desiredHeights[index];
-    for (const index of topo.bottom) renderedHeights[index] = desiredHeights[index];
+    refs.boardGrid.style.setProperty("--board-inset", inset.toFixed(3) + "px");
+    refs.boardGrid.style.setProperty("--board-gap", gap.toFixed(3) + "px");
+    refs.boardGrid.style.setProperty("--top-band", topBand.toFixed(3) + "px");
+    refs.boardGrid.style.setProperty("--bottom-band", bottomBand.toFixed(3) + "px");
+    refs.boardGrid.style.setProperty("--right-band", rightBand.toFixed(3) + "px");
+    refs.boardGrid.style.setProperty("--left-band", leftBand.toFixed(3) + "px");
 
-    const topBand = Math.max(...topo.top.map((index) => renderedHeights[index] || 1));
-    const bottomBand = Math.max(...topo.bottom.map((index) => renderedHeights[index] || 1));
-    const sideTop = inset + topBand + gap;
-    const sideBottom = height - inset - bottomBand - gap;
-    const sideLength = Math.max(
-      topo.rightSpatial.length,
-      sideBottom - sideTop
-    );
-
-    const rightHeights = fitLine(topo.rightSpatial, desiredHeights, sideLength, gap);
-    const leftHeights = fitLine(topo.leftSpatial, desiredHeights, sideLength, gap);
-    const rightTops = verticalPositions(topo.rightSpatial, rightHeights, sideTop, gap);
-    const leftTops = verticalPositions(topo.leftSpatial, leftHeights, sideTop, gap);
-
-    for (const index of topo.topSpatial) {
-      applyCellGeometry(
-        index,
-        topLefts.get(index),
-        inset,
-        topWidths.get(index),
-        renderedHeights[index],
-        scales[index],
-        occupancy.has(index)
-      );
-    }
-
-    for (const index of topo.bottomSpatial) {
-      const cellHeight = renderedHeights[index];
-      applyCellGeometry(
-        index,
-        bottomLefts.get(index),
-        height - inset - cellHeight,
-        bottomWidths.get(index),
-        cellHeight,
-        scales[index],
-        occupancy.has(index)
-      );
-    }
-
-    for (const index of topo.rightSpatial) {
-      const cellWidth = desiredWidths[index];
-      applyCellGeometry(
-        index,
-        width - inset - cellWidth,
-        rightTops.get(index),
-        cellWidth,
-        rightHeights.get(index),
-        scales[index],
-        occupancy.has(index)
-      );
-    }
-
-    for (const index of topo.leftSpatial) {
-      const cellWidth = desiredWidths[index];
-      applyCellGeometry(
-        index,
-        inset,
-        leftTops.get(index),
-        cellWidth,
-        leftHeights.get(index),
-        scales[index],
-        occupancy.has(index)
-      );
-    }
+    scheduleTypography();
   }
 
   function scheduleLayout() {
@@ -501,6 +437,14 @@
     renderPlayers();
   }
 
+  function getBoardDimensions() {
+    return {
+      columns: board.columns,
+      rows: board.rows,
+      cells: board.cellCount
+    };
+  }
+
   function setBoardDimensions(columns, rows) {
     const nextColumns = normalizeDimension(columns, board.columns, MIN_COLUMNS, MAX_COLUMNS);
     const nextRows = normalizeDimension(rows, board.rows, MIN_ROWS, MAX_ROWS);
@@ -537,14 +481,6 @@
     }));
 
     return getBoardDimensions();
-  }
-
-  function getBoardDimensions() {
-    return {
-      columns: board.columns,
-      rows: board.rows,
-      cells: board.cellCount
-    };
   }
 
   function setPhasePlan(plan) {
@@ -699,7 +635,7 @@
   function startDemo() {
     seedDemoPlayers(DEMO_PLAYER_COUNT);
     setEventMessage(
-      "Edge Solver v2 데모 · " +
+      "Flex Edge v2 데모 · " +
       board.columns + "×" + board.rows +
       " · 외곽 " + board.cellCount +
       "칸 · 참가자 " + DEMO_PLAYER_COUNT + "명"

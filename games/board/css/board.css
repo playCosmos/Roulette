@@ -85,7 +85,7 @@ body {
   top: clamp(5px, .5vw, 9px);
   left: clamp(6px, .58vw, 11px);
   color: rgba(255,255,255,.34);
-  font-size: clamp(9px, .76vw, 14px);
+  font-size: var(--cell-index-font, clamp(9px, .76vw, 14px));
   font-weight: 850;
   letter-spacing: .02em;
   pointer-events: none;
@@ -98,7 +98,7 @@ body {
   bottom: clamp(5px, .5vw, 9px);
   overflow: hidden;
   color: var(--muted);
-  font-size: clamp(8px, .68vw, 12px);
+  font-size: var(--cell-label-font, clamp(8px, .68vw, 12px));
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -124,7 +124,7 @@ body {
 }
 
 .player-token {
-  width: clamp(22px, calc(2.5vw * var(--dock-scale, 1)), 58px);
+  width: var(--cell-token-size, clamp(22px, calc(2.5vw * var(--dock-scale, 1)), 58px));
   aspect-ratio: 1;
   border-radius: 50%;
   display: grid;
@@ -137,7 +137,7 @@ body {
   box-shadow:
     0 8px 22px rgba(0,0,0,.46),
     0 0 0 2px rgba(0,0,0,.14);
-  font-size: clamp(9px, calc(.72vw * var(--dock-scale, 1)), 14px);
+  font-size: var(--cell-token-font, clamp(9px, calc(.72vw * var(--dock-scale, 1)), 14px));
   font-weight: 900;
   line-height: 1;
   transition:

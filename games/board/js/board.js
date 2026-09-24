@@ -16,7 +16,7 @@
   // 4) inactive cells all receive the same remaining-space base size.
   // 3~4명 중심의 강한 대비 프로파일.
   // 강조 칸이 둘레 공간을 더 가져가고 나머지 칸의 공통 base size가 줄어든다.
-  const PLAYER_SCALE_PROFILE = [2.00, 1.42, 1.14];
+  const PLAYER_SCALE_PROFILE = [2.00, 1.36, 1.10];
   const STACKED_PLAYER_BOOST = 0.34;
   const MAX_STACKED_SCALE = 3.40;
 
@@ -518,7 +518,7 @@
       candidate = cellGeometry(path, high, width, height);
     }
 
-    for (let iteration = 0; iteration < 15; iteration += 1) {
+    for (let iteration = 0; iteration < 24; iteration += 1) {
       const middle = (low + high) * 0.5;
       const middleGeometry = cellGeometry(path, middle, width, height);
       const distance = polygonDistance(previous.corners, middleGeometry.corners);
@@ -540,7 +540,7 @@
   function placeLoopWithWidths(path, widths, aspect, gap) {
     const heights = widths.map((width) => width / Math.max(0.01, aspect));
 
-    // START/END seam은 상단 직선 중앙에 둔다.
+    // Neutral baseline 전용: 상단 직선 중앙에서 한 방향으로 폐합한다.
     const startOffset = path.horizontal * 0.5;
     const placements = new Array(board.cellCount);
     let currentDistance = startOffset;
@@ -580,6 +580,129 @@
       placements,
       startOffset,
       requiredPerimeter: closure.distance - startOffset
+    };
+  }
+
+  function findPreviousGeometry(path, next, nextDistance, width, height, gap) {
+    const step = Math.max(
+      gap,
+      width,
+      height,
+      next.width,
+      next.height
+    ) * 0.75 + gap;
+
+    let high = nextDistance;
+    let low = nextDistance - step;
+    let candidate = cellGeometry(path, low, width, height);
+
+    for (let guard = 0; guard < 12; guard += 1) {
+      if (polygonDistance(candidate.corners, next.corners) >= gap) break;
+      low -= step;
+      candidate = cellGeometry(path, low, width, height);
+    }
+
+    for (let iteration = 0; iteration < 24; iteration += 1) {
+      const middle = (low + high) * 0.5;
+      const middleGeometry = cellGeometry(path, middle, width, height);
+      const distance = polygonDistance(middleGeometry.corners, next.corners);
+
+      if (distance >= gap) {
+        low = middle;
+        candidate = middleGeometry;
+      } else {
+        high = middle;
+      }
+    }
+
+    return {
+      distance: low,
+      geometry: candidate
+    };
+  }
+
+  function placeLoopBidirectionalWithWidths(
+    path,
+    widths,
+    aspect,
+    gap,
+    anchorDistance
+  ) {
+    const heights = widths.map((width) => width / Math.max(0.01, aspect));
+    const placements = new Array(board.cellCount);
+    const forwardEnd = Math.floor(board.cellCount * 0.5);
+    const backwardEnd = forwardEnd + 1;
+
+    placements[0] = cellGeometry(
+      path,
+      anchorDistance,
+      widths[0],
+      heights[0]
+    );
+
+    let current = placements[0];
+    let currentDistance = anchorDistance;
+
+    // START에서 진행 방향으로 절반만 누적 배치한다.
+    for (let index = 1; index <= forwardEnd; index += 1) {
+      const next = findNextGeometry(
+        path,
+        current,
+        currentDistance,
+        widths[index],
+        heights[index],
+        gap
+      );
+      currentDistance = next.distance;
+      current = next.geometry;
+      placements[index] = current;
+    }
+
+    current = placements[0];
+    currentDistance = anchorDistance;
+
+    // END부터 역방향으로 나머지 절반을 배치한다.
+    // 따라서 END→START gap도 직접 계산되어 항상 동일 gap 대상이다.
+    for (let index = board.cellCount - 1; index >= backwardEnd; index -= 1) {
+      const previous = findPreviousGeometry(
+        path,
+        current,
+        currentDistance,
+        widths[index],
+        heights[index],
+        gap
+      );
+      currentDistance = previous.distance;
+      current = previous.geometry;
+      placements[index] = current;
+    }
+
+    const forwardFront = placements[forwardEnd];
+    const backwardFront = placements[backwardEnd];
+    const closureGap = polygonDistance(
+      forwardFront.corners,
+      backwardFront.corners
+    );
+
+    // 역방향 front는 anchor보다 음의 방향에 있으므로 한 바퀴를 더해
+    // 두 front가 아직 순서상 교차하지 않았는지 확인한다.
+    const forwardDistance = forwardFront.distance;
+    const backwardDistance = backwardFront.distance + path.perimeter;
+    const frontierArc = backwardDistance - forwardDistance;
+    const frontierCrossed = frontierArc <= 0;
+
+    return {
+      placements,
+      startOffset: anchorDistance,
+      anchorDistance,
+      closureGap,
+      frontierArc,
+      frontierCrossed,
+      forwardEnd,
+      backwardEnd,
+      // 기존 진단 필드와 호환. 실제 승인 여부는 closureGap/validation으로 결정한다.
+      requiredPerimeter:
+        path.perimeter + (frontierCrossed ? gap : (gap - closureGap))
     };
   }
 
@@ -735,33 +858,43 @@
     weights,
     gap,
     neutralWidth,
-    emphasisFactor
+    emphasisFactor,
+    anchorDistance
   ) {
     const normalIndices = [];
     for (let index = 0; index < weights.length; index += 1) {
       if (weights[index] <= 1.0001) normalIndices.push(index);
     }
 
-    // 모든 칸이 강조 상태라면 일반 칸 분배가 없으므로
-    // 강조 크기 자체로 폐합 가능한지만 검사한다.
-    if (!normalIndices.length) {
+    const trialFor = (normalWidth) => {
       const widths = buildReservedWidths(
         neutralWidth,
-        neutralWidth,
+        normalWidth,
         weights,
         emphasisFactor
       );
-      const trial = placeLoopWithWidths(path, widths, aspect, gap);
+      return {
+        widths,
+        ...placeLoopBidirectionalWithWidths(
+          path,
+          widths,
+          aspect,
+          gap,
+          anchorDistance
+        )
+      };
+    };
+
+    if (!normalIndices.length) {
+      const trial = trialFor(neutralWidth);
       return {
         normalWidth: neutralWidth,
-        widths,
         ...trial
       };
     }
 
-    // 사용자가 제안한 계산의 직접적인 초기값:
-    // 전체 루프 - 모든 gap - 먼저 예약한 강조 칸 점유량,
-    // 그 나머지를 일반 칸 수로 균등 분배한다.
+    // reserve-first의 초기 추정은 유지하되, 최종 크기는
+    // START 양방향 front가 반대편에서 정확히 동일 gap으로 만나는 값으로 푼다.
     const reservedWidths = weights
       .filter((weight) => weight > 1.0001)
       .map((weight) =>
@@ -781,29 +914,18 @@
 
     let low = 0.5;
     let high = Math.max(neutralWidth, estimatedNormalWidth * 1.5);
-
-    const trialFor = (normalWidth) => {
-      const widths = buildReservedWidths(
-        neutralWidth,
-        normalWidth,
-        weights,
-        emphasisFactor
-      );
-      return {
-        widths,
-        ...placeLoopWithWidths(path, widths, aspect, gap)
-      };
-    };
-
     let lowTrial = trialFor(low);
-    if (lowTrial.requiredPerimeter > path.perimeter) {
+
+    if (lowTrial.frontierCrossed || lowTrial.closureGap < gap) {
       return null;
     }
 
     let highTrial = trialFor(high);
     for (
       let guard = 0;
-      guard < 14 && highTrial.requiredPerimeter < path.perimeter;
+      guard < 14 &&
+      !highTrial.frontierCrossed &&
+      highTrial.closureGap > gap;
       guard += 1
     ) {
       low = high;
@@ -815,8 +937,11 @@
     for (let iteration = 0; iteration < 42; iteration += 1) {
       const middle = (low + high) * 0.5;
       const trial = trialFor(middle);
+      const tooLarge =
+        trial.frontierCrossed ||
+        trial.closureGap < gap;
 
-      if (trial.requiredPerimeter > path.perimeter) {
+      if (tooLarge) {
         high = middle;
       } else {
         low = middle;
@@ -830,7 +955,7 @@
     };
   }
 
-  function solveReserveFirstLoop(path, aspect, weights, gap) {
+  function solveReserveFirstLoop(path, aspect, weights, gap, anchorDistance) {
     const neutralKey = [
       board.cellCount,
       path.horizontal.toFixed(3),
@@ -862,7 +987,8 @@
         weights,
         gap,
         neutral.width,
-        emphasisFactor
+        emphasisFactor,
+        anchorDistance
       );
 
       if (!solved) {
@@ -914,48 +1040,36 @@
   }
 
   function solveTopLeftStartLoop(path, aspect, logicalWeights, gap) {
-    // 논리 START의 물리 슬롯은 셀 크기/플레이어 가중치와 무관하게 고정한다.
-    // 플레이어가 이동해 강조 크기가 달라져도 칸 번호 순서는 절대 재매핑하지 않는다.
+    // START 중심은 항상 좌상단 코너 곡선의 중앙에 고정한다.
+    // 이후 칸은 START에서 시계/반시계 양방향으로 절반씩 배치하므로
+    // 확대 변화가 한 방향으로 전체 루프에 누적되는 현상을 줄인다.
     const targetDistance =
       path.perimeter - (path.quarterArc * 0.5);
-    const relativeTarget =
-      ((targetDistance - (path.horizontal * 0.5)) % path.perimeter +
-        path.perimeter) % path.perimeter;
-
-    const startSlot = normalizeCell(
-      Math.round((relativeTarget / path.perimeter) * board.cellCount)
-    );
-
-    const physicalOrder = buildPhysicalOrder(startSlot);
-    const physicalWeights = physicalOrder.map(
-      (logicalIndex) => logicalWeights[logicalIndex]
-    );
 
     const solved = solveReserveFirstLoop(
       path,
       aspect,
-      physicalWeights,
-      gap
-    );
-
-    const logicalPlacements = remapPlacementsToLogical(
-      solved.placements,
-      physicalOrder
+      logicalWeights,
+      gap,
+      targetDistance
     );
 
     return {
       ...solved,
-      placements: logicalPlacements,
+      placements: solved.placements,
       physicalPlacements: solved.placements,
-      physicalOrder,
-      startPhysicalSlot: startSlot,
+      physicalOrder: Array.from(
+        { length: board.cellCount },
+        (_, index) => index
+      ),
+      startPhysicalSlot: 0,
       startTargetDistance: targetDistance
     };
   }
 
   function motionSmoothTime(mode) {
     if (mode === "approach") return 0.16;
-    if (mode === "release") return 0.28;
+    if (mode === "release") return 0.25;
     if (mode === "token") return 0.20;
     return 0.20;
   }
@@ -1270,6 +1384,8 @@
     refs.boardGrid.dataset.baseCellHeight = (
       solved.normalWidth / Math.max(0.01, aspect)
     ).toFixed(3);
+    refs.boardGrid.dataset.closureGap = solved.closureGap.toFixed(3);
+    refs.boardGrid.dataset.layoutAnchor = "start-bidirectional";
 
     // 첫 배치는 transition 없이 확정한다.
     // 모든 셀이 최종 좌표를 받은 뒤에만 이후 이동 애니메이션을 허용한다.

@@ -2025,10 +2025,23 @@
         });
 
         try {
-          const [movedPlayer] = await Promise.all([
-            movement,
-            presentation.finished
-          ]);
+          // 추가 던지기 여부와 관계없이 현재 결과의 이동을 먼저 끝낸다.
+          // 같은 플레이어의 다음 throw event는 이 Promise가 끝난 뒤에만 시작된다.
+          const movedPlayer = await movement;
+
+          window.dispatchEvent(new CustomEvent("ramyani-board:movementcompleted", {
+            detail: {
+              event,
+              playerId: id,
+              position: movedPlayer.position,
+              bonusThrow: Boolean(event.bonusThrow),
+              source: meta.source || null
+            }
+          }));
+
+          // 중앙 결과 연출이 아직 남아 있다면 마무리까지 기다린다.
+          // 단, 다음 추가 던지기는 반드시 이동 완료 이후에만 진행된다.
+          await presentation.finished;
           return movedPlayer;
         } finally {
           await delay(180);

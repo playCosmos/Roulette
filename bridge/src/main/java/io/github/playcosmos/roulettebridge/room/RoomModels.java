@@ -12,6 +12,7 @@ public final class RoomModels {
         List<PlayerInput> players,
         BoardInput board,
         MovementInput movement,
+        RulesInput rules,
         List<InstructionInput> instructions,
         RandomPoolInput randomPool
     ) {}
@@ -37,6 +38,12 @@ public final class RoomModels {
         Boolean extraThrowOnDouble,
         Boolean extraThrowOnYut,
         Boolean extraThrowOnMo
+    ) {}
+
+    public record RulesInput(
+        String landingInstructionMode,
+        Boolean resolveLandingBeforeBonusThrow,
+        Boolean skipNextThrowConsumesBonus
     ) {}
 
     public record InstructionInput(
@@ -68,6 +75,7 @@ public final class RoomModels {
         List<PlayerInput> players,
         BoardConfig board,
         MovementConfig movement,
+        RulesConfig rules,
         List<InstructionInput> instructions,
         RandomPoolConfig randomPool
     ) {}
@@ -86,6 +94,12 @@ public final class RoomModels {
         boolean extraThrowOnDouble,
         boolean extraThrowOnYut,
         boolean extraThrowOnMo
+    ) {}
+
+    public record RulesConfig(
+        String landingInstructionMode,
+        boolean resolveLandingBeforeBonusThrow,
+        boolean skipNextThrowConsumesBonus
     ) {}
 
     public record RandomPoolConfig(

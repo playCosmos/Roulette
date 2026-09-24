@@ -3,6 +3,7 @@ package io.github.playcosmos.roulettebridge.room;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import io.github.playcosmos.roulettebridge.db.BridgeDatabase;
 import io.github.playcosmos.roulettebridge.soop.SoopDonation;
 import java.nio.charset.StandardCharsets;
@@ -757,6 +758,11 @@ public final class BoardGameRuntimeEngine {
     }
 
     private static String fingerprint(SoopDonation donation) throws SQLException {
+        String explicitEventId = extractSoopEventId(donation.rawPayload());
+        if (explicitEventId != null) {
+            return "event:" + explicitEventId;
+        }
+
         try {
             String material = String.valueOf(donation.streamerId()) + "\u0000"
                 + donation.donorId() + "\u0000"
@@ -766,10 +772,52 @@ public final class BoardGameRuntimeEngine {
                 + donation.receivedAtEpochMs();
             byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(material.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
+            return "fingerprint:" + HexFormat.of().formatHex(digest);
         } catch (Exception error) {
             throw new SQLException("failed to calculate board donation fingerprint", error);
         }
+    }
+
+    private static String extractSoopEventId(String rawPayload) {
+        if (rawPayload == null || rawPayload.isBlank()) return null;
+
+        try {
+            JsonElement parsed = JsonParser.parseString(rawPayload);
+            if (!parsed.isJsonObject()) return null;
+
+            JsonObject root = parsed.getAsJsonObject();
+            var objects = new ArrayList<JsonObject>();
+            objects.add(root);
+
+            for (String container : List.of("data", "payload", "body", "event", "message")) {
+                JsonElement nested = root.get(container);
+                if (nested != null && nested.isJsonObject()) {
+                    objects.add(nested.getAsJsonObject());
+                }
+            }
+
+            for (JsonObject object : objects) {
+                for (String key : List.of(
+                    "event_id",
+                    "eventId",
+                    "message_id",
+                    "messageId",
+                    "msg_id",
+                    "msgId",
+                    "transaction_id",
+                    "transactionId"
+                )) {
+                    JsonElement value = object.get(key);
+                    if (value == null || value.isJsonNull() || !value.isJsonPrimitive()) continue;
+                    String text = value.getAsString();
+                    if (text != null && !text.isBlank()) return text.trim();
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // The SOOP library does not guarantee JSON raw payloads.
+        }
+
+        return null;
     }
 
     private static void validateDonation(SoopDonation donation) {

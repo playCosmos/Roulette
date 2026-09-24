@@ -15,6 +15,8 @@ import io.github.playcosmos.roulettebridge.operations.SoopUserLookupService;
 import io.github.playcosmos.roulettebridge.operations.WindowsConsoleEncoding;
 import io.github.playcosmos.roulettebridge.recovery.PhaseFProbe;
 import io.github.playcosmos.roulettebridge.recovery.TicketRecoveryService;
+import io.github.playcosmos.roulettebridge.room.RoomHttpHandler;
+import io.github.playcosmos.roulettebridge.room.RoomService;
 import io.github.playcosmos.roulettebridge.server.BridgeHttpServer;
 import io.github.playcosmos.roulettebridge.server.OverlayWebSocketServer;
 import io.github.playcosmos.roulettebridge.soop.ChannelEventMonitor;
@@ -178,6 +180,9 @@ public final class Main {
             new SoopUserLookupService()
         );
 
+        var roomService = new RoomService(database);
+        var roomHttp = new RoomHttpHandler(roomService);
+
         var http = new BridgeHttpServer(
             config,
             workingDirectory,
@@ -188,7 +193,8 @@ public final class Main {
             archive,
             recovery,
             admin,
-            channelEvents
+            channelEvents,
+            roomHttp
         );
         http.start();
         soop.start();

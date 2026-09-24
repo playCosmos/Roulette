@@ -2389,9 +2389,15 @@
 
       await enqueueThrowEvent(event, { source: "server" });
 
-      const actionMoveSteps = Number(resolution.landing?.actionMoveSteps);
-      if (Number.isInteger(actionMoveSteps) && actionMoveSteps !== 0) {
-        await movePlayerBy(playerId, actionMoveSteps, { source: "cell-action" });
+      const landings = Array.isArray(resolution.landingChain) && resolution.landingChain.length
+        ? resolution.landingChain
+        : (resolution.landing ? [resolution.landing] : []);
+
+      for (const landing of landings) {
+        const actionMoveSteps = Number(landing?.actionMoveSteps);
+        if (Number.isInteger(actionMoveSteps) && actionMoveSteps !== 0) {
+          await movePlayerBy(playerId, actionMoveSteps, { source: "cell-action" });
+        }
       }
 
       for (const update of resolution.cellUpdates || []) {

@@ -4,6 +4,7 @@ import com.google.gson.JsonParser;
 import io.github.playcosmos.roulettebridge.db.BridgeDatabase;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
@@ -34,6 +35,45 @@ public final class RoomProbe {
                 ))
                 .toList());
 
+            var cycleValidator = new FixedInstructionCycleValidator();
+            require(
+                cycleValidator.findCycle(fixedCycleBoard(false)).isPresent(),
+                "fixed move cycle must be detected"
+            );
+            require(
+                cycleValidator.findCycle(fixedCycleBoard(true)).isEmpty(),
+                "cycle through a random cell must be ignored"
+            );
+
+            var invalidRandomRatio = new CreateRoomRequest(
+                "Invalid Random Ratio",
+                List.of(new PlayerInput("random-user", "Random", null, 10)),
+                new BoardInput("dimensions", 8, 6, null, "rounded"),
+                new MovementInput("dice", 1, true, true, true),
+                new RulesInput("destinationOnly", true, true),
+                List.of(new InstructionInput(
+                    "RANDOM_MOVE",
+                    "랜덤 전진",
+                    new AllocationInput("ratio", 20),
+                    true,
+                    JsonParser.parseString("""
+                        {
+                          "type":"move",
+                          "direction":"forward",
+                          "steps":{"mode":"fixed","value":1}
+                        }
+                        """)
+                )),
+                new RandomPoolInput("custom", List.of(
+                    new RandomPoolEntry("RANDOM_MOVE", 1)
+                ), null)
+            );
+            require(
+                rooms.validate(invalidRandomRatio).errors().stream()
+                    .anyMatch(error -> error.field().endsWith(".allocation.mode")),
+                "random cells must reject ratio allocation"
+            );
+
             var request = new CreateRoomRequest(
                 "Room Probe",
                 List.of(
@@ -50,7 +90,7 @@ public final class RoomProbe {
                         "MOVE_FORWARD",
                         "전진",
                         new AllocationInput("ratio", 20),
-                        true,
+                        false,
                         JsonParser.parseString("""
                             {
                               "type":"move",
@@ -204,6 +244,60 @@ public final class RoomProbe {
                 }
             }
         }
+    }
+
+    private static BoardPreview fixedCycleBoard(boolean randomSecondCell) {
+        var cells = new ArrayList<CellState>();
+        for (int i = 0; i < 10; i++) {
+            cells.add(new CellState(
+                i,
+                i == 0 ? "START" : "NORMAL",
+                "NORMAL",
+                i == 0 ? "START" : "",
+                null,
+                false,
+                i == 0
+            ));
+        }
+
+        cells.set(2, new CellState(
+            2,
+            "INSTRUCTION",
+            "MOVE_A",
+            "+2",
+            JsonParser.parseString("""
+                {
+                  "type":"move",
+                  "direction":"forward",
+                  "steps":{"mode":"fixed","value":2}
+                }
+                """),
+            false,
+            false
+        ));
+        cells.set(4, new CellState(
+            4,
+            "INSTRUCTION",
+            "MOVE_B",
+            "-2",
+            JsonParser.parseString("""
+                {
+                  "type":"move",
+                  "direction":"backward",
+                  "steps":{"mode":"fixed","value":2}
+                }
+                """),
+            randomSecondCell,
+            false
+        ));
+
+        return new BoardPreview(
+            1L,
+            10,
+            "rounded",
+            List.copyOf(cells),
+            List.of()
+        );
     }
 
     private static void require(boolean condition, String message) {

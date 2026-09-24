@@ -182,11 +182,11 @@
       return;
     }
 
+    // 윷은 DOM을 반복 교체하지 않는다.
+    // 한 번 생성한 4개를 CSS transform만으로 회전시켜
+    // animation restart로 인한 떨림을 방지한다.
     const names = ["BACK_DO", "DO", "GAE", "GEOL", "YUT", "MO"];
     renderYut(names[Math.floor(Math.random() * names.length)]);
-    rollerTimer = window.setInterval(() => {
-      renderYut(names[Math.floor(Math.random() * names.length)]);
-    }, 105);
   }
 
   function hide(runId) {

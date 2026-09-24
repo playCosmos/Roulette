@@ -87,6 +87,32 @@ public final class RoomHttpHandler implements HttpHandler {
                 return;
             }
 
+            if (route.endsWith("/pause")) {
+                if (!requireMethod(exchange, "POST")) return;
+                String roomId = route.substring(0, route.length() - "/pause".length());
+                var request = readOptionalPauseRequest(exchange);
+                sendJson(exchange, 200, rooms.pause(
+                    roomId,
+                    request == null ? null : request.donationMode()
+                ));
+                return;
+            }
+
+            if (route.endsWith("/resume")) {
+                if (!requireMethod(exchange, "POST")) return;
+                String roomId = route.substring(0, route.length() - "/resume".length());
+                runtime.resumeRoom(roomId);
+                sendJson(exchange, 200, rooms.find(roomId));
+                return;
+            }
+
+            if (route.endsWith("/terminate")) {
+                if (!requireMethod(exchange, "POST")) return;
+                String roomId = route.substring(0, route.length() - "/terminate".length());
+                sendJson(exchange, 200, rooms.terminate(roomId));
+                return;
+            }
+
             if (route.contains("/")) {
                 sendJson(exchange, 404, error("Not Found"));
                 return;
@@ -108,6 +134,23 @@ public final class RoomHttpHandler implements HttpHandler {
         } catch (SQLException error) {
             error.printStackTrace(System.err);
             sendJson(exchange, 500, error("database operation failed"));
+        }
+    }
+
+    private PauseRequest readOptionalPauseRequest(HttpExchange exchange) throws IOException {
+        byte[] bytes = exchange.getRequestBody().readNBytes(16 * 1024 + 1);
+        if (bytes.length > 16 * 1024) {
+            throw new IllegalArgumentException("pause request exceeds 16 KiB");
+        }
+        if (bytes.length == 0) return null;
+
+        String text = new String(bytes, StandardCharsets.UTF_8).trim();
+        if (text.isEmpty()) return null;
+
+        try {
+            return GSON.fromJson(text, PauseRequest.class);
+        } catch (JsonParseException error) {
+            throw new IllegalArgumentException("invalid JSON body");
         }
     }
 
@@ -147,6 +190,8 @@ public final class RoomHttpHandler implements HttpHandler {
         String value = error.getMessage();
         return value == null || value.isBlank() ? error.getClass().getSimpleName() : value;
     }
+
+    private record PauseRequest(String donationMode) {}
 
     private static void sendJson(HttpExchange exchange, int status, Object payload) throws IOException {
         byte[] body = GSON.toJson(payload).getBytes(StandardCharsets.UTF_8);

@@ -1,13 +1,41 @@
 (() => {
   "use strict";
 
-  const BOARD_COLUMNS = 8;
-  const BOARD_ROWS = 6;
-  const CELL_COUNT = 24;
+  const MIN_COLUMNS = 8;
+  const MIN_ROWS = 6;
+  const MAX_COLUMNS = 64;
+  const MAX_ROWS = 48;
   const STEP_DELAY_MS = 220;
+
   const params = new URLSearchParams(window.location.search);
   const DEMO_MODE = params.get("demo") === "1";
-  const DEMO_PLAYER_COUNT = Math.min(12, Math.max(1, Number.parseInt(params.get("players") || "3", 10) || 3));
+  const DEMO_PLAYER_COUNT = Math.min(
+    12,
+    Math.max(1, Number.parseInt(params.get("players") || "3", 10) || 3)
+  );
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function normalizeDimension(value, fallback, min, max) {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed)) return fallback;
+    return clamp(parsed, min, max);
+  }
+
+  function perimeterCellCount(columns, rows) {
+    return (columns * 2) + ((rows - 2) * 2);
+  }
+
+  const defaultColumns = DEMO_MODE ? 16 : 8;
+  const defaultRows = DEMO_MODE ? 12 : 6;
+
+  const board = {
+    columns: normalizeDimension(params.get("cols"), defaultColumns, MIN_COLUMNS, MAX_COLUMNS),
+    rows: normalizeDimension(params.get("rows"), defaultRows, MIN_ROWS, MAX_ROWS)
+  };
+  board.cellCount = perimeterCellCount(board.columns, board.rows);
 
   const state = {
     totalLaps: 0,
@@ -33,19 +61,15 @@
 
   const cellElements = new Map();
 
-  function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-  }
-
   function normalizeCell(index) {
     const numeric = Number.parseInt(index, 10);
     if (!Number.isFinite(numeric)) return 0;
-    return ((numeric % CELL_COUNT) + CELL_COUNT) % CELL_COUNT;
+    return ((numeric % board.cellCount) + board.cellCount) % board.cellCount;
   }
 
   function circularDistance(a, b) {
     const direct = Math.abs(a - b);
-    return Math.min(direct, CELL_COUNT - direct);
+    return Math.min(direct, board.cellCount - direct);
   }
 
   function currentPhase() {
@@ -71,6 +95,15 @@
     refs.boardStage.dataset.phase = state.currentPhaseId;
     refs.boardStage.dataset.totalLaps = String(state.totalLaps);
     refs.boardStage.dataset.playerCount = String(state.players.size);
+    refs.boardStage.dataset.columns = String(board.columns);
+    refs.boardStage.dataset.rows = String(board.rows);
+    refs.boardStage.dataset.cellCount = String(board.cellCount);
+    if (refs.boardGrid) {
+      refs.boardGrid.setAttribute(
+        "aria-label",
+        `${board.columns}×${board.rows} 외곽 ${board.cellCount}칸 루프 보드`
+      );
+    }
   }
 
   function buildBoard() {
@@ -79,7 +112,7 @@
     refs.boardGrid.innerHTML = "";
     cellElements.clear();
 
-    for (let index = 0; index < CELL_COUNT; index += 1) {
+    for (let index = 0; index < board.cellCount; index += 1) {
       const definition = cellDefinition(index);
 
       const cell = document.createElement("article");
@@ -120,16 +153,25 @@
     const playerPositions = Array.from(state.players.values(), (player) => player.position);
 
     if (!playerPositions.length) {
-      return Array.from({ length: CELL_COUNT }, () => 1);
+      return Array.from({ length: board.cellCount }, () => 1);
     }
 
     const playerCount = playerPositions.length;
-    const intensity = clamp(1 / Math.sqrt(Math.max(1, playerCount) * 0.72), 0.42, 1);
-    const restScale = 0.66 + ((1 - intensity) * 0.16);
-    const peakRange = 0.82 * intensity;
-    const proximityProfile = [1, 0.58, 0.30];
+    const density = Math.sqrt(board.cellCount / 24);
+    const intensity = clamp(1 / Math.sqrt(Math.max(1, playerCount) * 0.68), 0.52, 1);
 
-    return Array.from({ length: CELL_COUNT }, (_, cellIndex) => {
+    // 칸이 많아질수록 비활성 칸은 더 작게, 현재 칸은 더 크게 잡아서
+    // 16:9 방송 화면에서도 플레이어가 위치한 칸을 충분히 읽을 수 있게 한다.
+    const restScale = clamp(
+      0.70 - ((density - 1) * 0.20) + ((1 - intensity) * 0.08),
+      0.46,
+      0.76
+    );
+    const peakRange = (0.84 + ((density - 1) * 1.12)) * intensity;
+    const maxScale = clamp(1.60 + ((density - 1) * 1.45), 1.60, 2.75);
+    const proximityProfile = [1, 0.60, 0.32, density > 1.35 ? 0.12 : 0];
+
+    return Array.from({ length: board.cellCount }, (_, cellIndex) => {
       let remaining = 1;
       let exactOccupancy = 0;
 
@@ -142,10 +184,14 @@
 
       const combinedInfluence = 1 - remaining;
       const occupancyBoost = exactOccupancy > 1
-        ? Math.min(0.10, Math.log2(exactOccupancy) * 0.035 * intensity)
+        ? Math.min(0.16, Math.log2(exactOccupancy) * 0.045 * density * intensity)
         : 0;
 
-      return clamp(restScale + (peakRange * combinedInfluence) + occupancyBoost, 0.72, 1.56);
+      return clamp(
+        restScale + (peakRange * combinedInfluence) + occupancyBoost,
+        restScale,
+        maxScale
+      );
     });
   }
 
@@ -197,12 +243,7 @@
     let s = ((distance % perimeter) + perimeter) % perimeter;
 
     if (s < horizontal) {
-      return {
-        x: left + radius + s,
-        y: top,
-        angle: 0,
-        cornerBlend: 0
-      };
+      return { x: left + radius + s, y: top, angle: 0, cornerBlend: 0 };
     }
     s -= horizontal;
 
@@ -219,12 +260,7 @@
     s -= quarterArc;
 
     if (s < vertical) {
-      return {
-        x: right,
-        y: top + radius + s,
-        angle: Math.PI / 2,
-        cornerBlend: 0
-      };
+      return { x: right, y: top + radius + s, angle: Math.PI / 2, cornerBlend: 0 };
     }
     s -= vertical;
 
@@ -241,12 +277,7 @@
     s -= quarterArc;
 
     if (s < horizontal) {
-      return {
-        x: right - radius - s,
-        y: bottom,
-        angle: Math.PI,
-        cornerBlend: 0
-      };
+      return { x: right - radius - s, y: bottom, angle: Math.PI, cornerBlend: 0 };
     }
     s -= horizontal;
 
@@ -263,12 +294,7 @@
     s -= quarterArc;
 
     if (s < vertical) {
-      return {
-        x: left,
-        y: bottom - radius - s,
-        angle: Math.PI * 1.5,
-        cornerBlend: 0
-      };
+      return { x: left, y: bottom - radius - s, angle: Math.PI * 1.5, cornerBlend: 0 };
     }
     s -= vertical;
 
@@ -294,10 +320,11 @@
     const height = rect.height;
     if (width <= 0 || height <= 0) return;
 
+    const density = Math.sqrt(board.cellCount / 24);
     const inset = clamp(width * 0.0105, 10, 22);
-    const minGap = clamp(width * 0.0045, 6, 12);
-    const baseWidth = Math.max(1, (width - (inset * 2)) / BOARD_COLUMNS);
-    const baseHeight = Math.max(1, (height - (inset * 2)) / BOARD_ROWS);
+    const minGap = clamp((width * 0.0045) / Math.pow(density, 0.38), 4, 12);
+    const baseWidth = Math.max(1, (width - (inset * 2)) / board.columns);
+    const baseHeight = Math.max(1, (height - (inset * 2)) / board.rows);
     const scales = dockScales();
     const occupancy = occupancyByCell();
 
@@ -308,21 +335,21 @@
     const path = createRoundedPerimeter(width, height, inset, maxHalfWidth, maxHalfHeight);
 
     let positions = Array.from(
-      { length: CELL_COUNT },
-      (_, index) => (index / CELL_COUNT) * path.perimeter
+      { length: board.cellCount },
+      (_, index) => (index / board.cellCount) * path.perimeter
     );
 
     let fittedWidths = desiredWidths.slice();
     let fittedHeights = desiredHeights.slice();
 
-    for (let iteration = 0; iteration < 6; iteration += 1) {
+    for (let iteration = 0; iteration < 7; iteration += 1) {
       const points = positions.map((position) => roundedPerimeterPoint(path, position));
       const projected = points.map((point, index) =>
         projectedTangentSize(fittedWidths[index], fittedHeights[index], point.angle)
       );
 
       const projectedTotal = projected.reduce((sum, size) => sum + size, 0);
-      const availableForCells = Math.max(1, path.perimeter - (minGap * CELL_COUNT));
+      const availableForCells = Math.max(1, path.perimeter - (minGap * board.cellCount));
       const compression = Math.min(1, availableForCells / Math.max(1, projectedTotal));
 
       fittedWidths = desiredWidths.map((value) => value * compression);
@@ -333,7 +360,7 @@
       );
 
       const requiredGaps = refreshedProjected.map((size, index) => {
-        const next = refreshedProjected[(index + 1) % CELL_COUNT];
+        const next = refreshedProjected[(index + 1) % board.cellCount];
         return ((size + next) * 0.5) + minGap;
       });
 
@@ -341,17 +368,17 @@
       const extra = Math.max(0, path.perimeter - requiredTotal);
 
       const weights = requiredGaps.map((_, index) => {
-        const nextIndex = (index + 1) % CELL_COUNT;
+        const nextIndex = (index + 1) % board.cellCount;
         const localScale = Math.max(scales[index], scales[nextIndex]);
-        const occupiedBoost = occupancy.has(index) || occupancy.has(nextIndex) ? 1.15 : 0;
-        return 0.12 + Math.pow(localScale, 2.35) + occupiedBoost;
+        const occupiedBoost = occupancy.has(index) || occupancy.has(nextIndex) ? 1.45 * density : 0;
+        return 0.08 + Math.pow(localScale, 2.55) + occupiedBoost;
       });
       const weightTotal = weights.reduce((sum, value) => sum + value, 0);
 
-      const nextPositions = new Array(CELL_COUNT);
+      const nextPositions = new Array(board.cellCount);
       nextPositions[0] = 0;
 
-      for (let index = 1; index < CELL_COUNT; index += 1) {
+      for (let index = 1; index < board.cellCount; index += 1) {
         const previousGapIndex = index - 1;
         const slack = extra * (weights[previousGapIndex] / Math.max(1, weightTotal));
         nextPositions[index] = nextPositions[index - 1] + requiredGaps[previousGapIndex] + slack;
@@ -360,12 +387,12 @@
       positions = nextPositions;
     }
 
-    for (let index = 0; index < CELL_COUNT; index += 1) {
+    for (let index = 0; index < board.cellCount; index += 1) {
       const cell = cellElements.get(index);
       if (!cell) continue;
 
       const point = roundedPerimeterPoint(path, positions[index]);
-      const cornerCorrection = 1 - (point.cornerBlend * 0.085);
+      const cornerCorrection = 1 - (point.cornerBlend * 0.075);
       const cellWidth = fittedWidths[index] * cornerCorrection;
       const cellHeight = fittedHeights[index] * cornerCorrection;
       const scale = scales[index];
@@ -434,6 +461,52 @@
     renderPlayers();
   }
 
+  function setBoardDimensions(columns, rows) {
+    const nextColumns = normalizeDimension(columns, board.columns, MIN_COLUMNS, MAX_COLUMNS);
+    const nextRows = normalizeDimension(rows, board.rows, MIN_ROWS, MAX_ROWS);
+    const previousCellCount = board.cellCount;
+    const nextCellCount = perimeterCellCount(nextColumns, nextRows);
+
+    if (
+      nextColumns === board.columns &&
+      nextRows === board.rows &&
+      nextCellCount === board.cellCount
+    ) {
+      return getBoardDimensions();
+    }
+
+    for (const player of state.players.values()) {
+      const progress = previousCellCount > 0 ? player.position / previousCellCount : 0;
+      player.position = Math.min(
+        nextCellCount - 1,
+        Math.max(0, Math.round(progress * nextCellCount))
+      );
+    }
+
+    board.columns = nextColumns;
+    board.rows = nextRows;
+    board.cellCount = nextCellCount;
+
+    buildBoard();
+    setEventMessage(
+      `보드 크기 변경 · ${board.columns}×${board.rows} · 외곽 ${board.cellCount}칸`
+    );
+
+    window.dispatchEvent(new CustomEvent("ramyani-board:dimensionschange", {
+      detail: getBoardDimensions()
+    }));
+
+    return getBoardDimensions();
+  }
+
+  function getBoardDimensions() {
+    return {
+      columns: board.columns,
+      rows: board.rows,
+      cells: board.cellCount
+    };
+  }
+
   function setPhasePlan(plan) {
     if (!Array.isArray(plan) || !plan.length) {
       throw new Error("phase plan must contain at least one phase");
@@ -494,7 +567,7 @@
       const previous = player.position;
       player.position = normalizeCell(player.position + 1);
 
-      if (previous === CELL_COUNT - 1 && player.position === 0) {
+      if (previous === board.cellCount - 1 && player.position === 0) {
         player.laps += 1;
         state.totalLaps += 1;
         evaluatePhase();
@@ -558,11 +631,7 @@
 
   function getSnapshot() {
     return {
-      dimensions: {
-        columns: BOARD_COLUMNS,
-        rows: BOARD_ROWS,
-        cells: CELL_COUNT
-      },
+      dimensions: getBoardDimensions(),
       totalLaps: state.totalLaps,
       currentPhaseId: state.currentPhaseId,
       players: Array.from(state.players.values()).map((player) => ({ ...player }))
@@ -580,14 +649,16 @@
         id: `player-${index + 1}`,
         name: `참가자 ${suffix}`,
         shortLabel: suffix,
-        position: Math.floor((index * CELL_COUNT) / count)
+        position: Math.floor((index * board.cellCount) / count)
       });
     }
   }
 
   function startDemo() {
     seedDemoPlayers(DEMO_PLAYER_COUNT);
-    setEventMessage(`Dock 강조 데모 · 참가자 ${DEMO_PLAYER_COUNT}명`);
+    setEventMessage(
+      `Dock 강조 데모 · ${board.columns}×${board.rows} · 외곽 ${board.cellCount}칸 · 참가자 ${DEMO_PLAYER_COUNT}명`
+    );
 
     window.setInterval(() => {
       const players = Array.from(state.players.values());
@@ -599,17 +670,28 @@
     }, 2100);
   }
 
-  window.RamyaniBoard = Object.freeze({
-    BOARD_COLUMNS,
-    BOARD_ROWS,
-    CELL_COUNT,
+  const api = {
+    MIN_COLUMNS,
+    MIN_ROWS,
+    MAX_COLUMNS,
+    MAX_ROWS,
     registerPlayer,
     removePlayer,
     enqueueRoll,
+    setBoardDimensions,
+    getBoardDimensions,
     setPhasePlan,
     getSnapshot,
     layoutBoardCells
+  };
+
+  Object.defineProperties(api, {
+    BOARD_COLUMNS: { enumerable: true, get: () => board.columns },
+    BOARD_ROWS: { enumerable: true, get: () => board.rows },
+    CELL_COUNT: { enumerable: true, get: () => board.cellCount }
   });
+
+  window.RamyaniBoard = Object.freeze(api);
 
   buildBoard();
   renderGlobalState();
@@ -623,6 +705,8 @@
   if (DEMO_MODE) {
     startDemo();
   } else {
-    setEventMessage("24칸 방송 오버레이 준비 완료");
+    setEventMessage(
+      `${board.columns}×${board.rows} · 외곽 ${board.cellCount}칸 방송 오버레이 준비 완료`
+    );
   }
 })();

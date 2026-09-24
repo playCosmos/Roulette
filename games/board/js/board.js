@@ -630,7 +630,7 @@
   ) {
     const heights = widths.map((width) => width / Math.max(0.01, aspect));
     const placements = new Array(board.cellCount);
-    const forwardEnd = Math.floor((board.cellCount - 1) * 0.5);
+    const forwardEnd = Math.floor(board.cellCount * 0.5);
     const backwardEnd = forwardEnd + 1;
 
     placements[0] = cellGeometry(
@@ -1384,6 +1384,8 @@
     refs.boardGrid.dataset.baseCellHeight = (
       solved.normalWidth / Math.max(0.01, aspect)
     ).toFixed(3);
+    refs.boardGrid.dataset.closureGap = solved.closureGap.toFixed(3);
+    refs.boardGrid.dataset.layoutAnchor = "start-bidirectional";
 
     // 첫 배치는 transition 없이 확정한다.
     // 모든 셀이 최종 좌표를 받은 뒤에만 이후 이동 애니메이션을 허용한다.

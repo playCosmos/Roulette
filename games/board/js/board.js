@@ -1908,6 +1908,7 @@
       }
 
       const total = values.reduce((sum, value) => sum + value, 0);
+      const resolvedSteps = Number.parseInt(event.resolvedSteps, 10);
       return {
         eventId: String(event.eventId || "local-" + Date.now()),
         playerId,
@@ -1917,7 +1918,8 @@
           total,
           isDouble: values.length === 2 && values[0] === values[1]
         },
-        steps: total,
+        steps: Number.isFinite(resolvedSteps) ? resolvedSteps : total,
+        appliedMultiplier: Math.max(1, Number.parseInt(event.appliedMultiplier, 10) || 1),
         bonusThrow:
           values.length === 2 &&
           values[0] === values[1] &&
@@ -1939,6 +1941,7 @@
         throw new Error("unknown yut result: " + name);
       }
 
+      const resolvedSteps = Number.parseInt(event.resolvedSteps, 10);
       return {
         eventId: String(event.eventId || "local-" + Date.now()),
         playerId,
@@ -1953,7 +1956,8 @@
               }))
             : null
         },
-        steps: stepByName[name],
+        steps: Number.isFinite(resolvedSteps) ? resolvedSteps : stepByName[name],
+        appliedMultiplier: Math.max(1, Number.parseInt(event.appliedMultiplier, 10) || 1),
         bonusThrow:
           (name === "YUT" || name === "MO") &&
           event.bonusThrow !== false
@@ -2380,6 +2384,8 @@
         eventId: turn.eventId + "-" + resolution.index,
         playerId,
         generator: resolution.generator,
+        resolvedSteps: Number(resolution.steps),
+        appliedMultiplier: Number(resolution.appliedMultiplier) || 1,
         bonusThrow: Boolean(resolution.nextThrowScheduled)
       };
 

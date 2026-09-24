@@ -43,6 +43,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --check soop/overlay/soop-overlay-archive.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check soop/admin/board-room-admin.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check games/board/js/throw-presentation.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check games/board/js/board.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check games/board/js/board-rect.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build bridge
         working-directory: bridge
@@ -92,7 +100,14 @@ jobs:
             "web/soop/channel/soop-channel.css",
             "web/soop/overlay/soop-overlay-connection.js",
             "web/soop/overlay/soop-overlay.js",
-            "web/soop/overlay/soop-overlay-archive.js"
+            "web/soop/overlay/soop-overlay-archive.js",
+            "web/soop/admin/board-room-admin.js",
+            "web/soop/admin/board-room-admin.css",
+            "web/games/board/index.html",
+            "web/games/board/rect.html",
+            "web/games/board/js/board.js",
+            "web/games/board/js/board-rect.js",
+            "web/games/board/js/throw-presentation.js"
           ) | ForEach-Object {
             if (-not (Test-Path (Join-Path $root $_))) { throw "required packaged asset missing: $_" }
           }

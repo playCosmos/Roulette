@@ -808,7 +808,6 @@
   function solveReserveFirstLoop(path, aspect, weights, gap) {
     const neutral = solveUniformWidth(path, aspect, gap);
     let emphasisFactor = 1;
-    let best = null;
 
     // 일반 상황에서는 강조 크기를 100% 예약한다.
     // P0 충돌이 실제로 발생하는 경우에만 강조 초과분을 조금씩 낮춘다.
@@ -828,7 +827,7 @@
       }
 
       const validation = validatePlacements(solved.placements, gap);
-      best = {
+      const result = {
         neutralWidth: neutral.width,
         emphasisFactor,
         gap,
@@ -836,7 +835,7 @@
         ...solved
       };
 
-      if (validation.valid) return best;
+      if (validation.valid) return result;
 
       emphasisFactor *= 0.94;
     }
@@ -844,6 +843,102 @@
     throw new Error(
       "P0 layout failure: reserve-first layout could not avoid overlap"
     );
+  }
+
+  function circularPathDistance(a, b, perimeter) {
+    const direct = Math.abs(a - b);
+    return Math.min(direct, perimeter - direct);
+  }
+
+  function buildPhysicalOrder(startSlot) {
+    return Array.from(
+      { length: board.cellCount },
+      (_, physicalIndex) =>
+        normalizeCell(physicalIndex - startSlot)
+    );
+  }
+
+  function remapPlacementsToLogical(physicalPlacements, physicalOrder) {
+    const logicalPlacements = new Array(board.cellCount);
+
+    for (let physicalIndex = 0; physicalIndex < physicalOrder.length; physicalIndex += 1) {
+      const logicalIndex = physicalOrder[physicalIndex];
+      logicalPlacements[logicalIndex] = physicalPlacements[physicalIndex];
+    }
+
+    return logicalPlacements;
+  }
+
+  function solveTopLeftStartLoop(path, aspect, logicalWeights, gap) {
+    // 좌상단 코너 곡선의 중앙을 START의 시각적 목표점으로 사용한다.
+    // 기하 seam은 상단 중앙에 남겨 P0 END↔START 간격 안정성을 유지한다.
+    const targetDistance =
+      path.perimeter - (path.quarterArc * 0.5);
+    const relativeTarget =
+      ((targetDistance - (path.horizontal * 0.5)) % path.perimeter +
+        path.perimeter) % path.perimeter;
+
+    let startSlot = normalizeCell(
+      Math.round((relativeTarget / path.perimeter) * board.cellCount)
+    );
+    let solved = null;
+    let physicalOrder = null;
+
+    // 강조칸 크기에 따라 실제 중심 위치가 약간 달라질 수 있으므로
+    // START에 가장 가까운 물리 슬롯을 다시 선택해 최대 4회 수렴시킨다.
+    for (let iteration = 0; iteration < 4; iteration += 1) {
+      physicalOrder = buildPhysicalOrder(startSlot);
+      const physicalWeights = physicalOrder.map(
+        (logicalIndex) => logicalWeights[logicalIndex]
+      );
+
+      solved = solveReserveFirstLoop(
+        path,
+        aspect,
+        physicalWeights,
+        gap
+      );
+
+      let nearestSlot = startSlot;
+      let nearestDistance = Infinity;
+
+      for (
+        let physicalIndex = 0;
+        physicalIndex < solved.placements.length;
+        physicalIndex += 1
+      ) {
+        const placementDistance =
+          ((solved.placements[physicalIndex].distance % path.perimeter) +
+            path.perimeter) % path.perimeter;
+        const distance = circularPathDistance(
+          placementDistance,
+          targetDistance,
+          path.perimeter
+        );
+
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestSlot = physicalIndex;
+        }
+      }
+
+      if (nearestSlot === startSlot) break;
+      startSlot = nearestSlot;
+    }
+
+    const logicalPlacements = remapPlacementsToLogical(
+      solved.placements,
+      physicalOrder
+    );
+
+    return {
+      ...solved,
+      placements: logicalPlacements,
+      physicalPlacements: solved.placements,
+      physicalOrder,
+      startPhysicalSlot: startSlot,
+      startTargetDistance: targetDistance
+    };
   }
 
   function applyCellGeometry(index, geometry, weight, occupied) {
@@ -910,7 +1005,7 @@
     );
 
     const path = createRoundedLoop(width, height, margin, cornerRadius);
-    const solved = solveReserveFirstLoop(
+    const solved = solveTopLeftStartLoop(
       path,
       aspect,
       weights,
@@ -945,6 +1040,7 @@
     refs.boardGrid.dataset.neutralCellWidth = solved.neutralWidth.toFixed(3);
     refs.boardGrid.dataset.normalCellWidth = solved.normalWidth.toFixed(3);
     refs.boardGrid.dataset.emphasisFactor = solved.emphasisFactor.toFixed(4);
+    refs.boardGrid.dataset.startPhysicalSlot = String(solved.startPhysicalSlot);
     refs.boardGrid.dataset.baseCellHeight = (
       solved.normalWidth / Math.max(0.01, aspect)
     ).toFixed(3);

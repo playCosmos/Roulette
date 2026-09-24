@@ -139,6 +139,42 @@ POST /api/admin/test-ticket
 
 관리 API는 loopback 접근만 허용한다.
 
+## 보드게임 룸 서버 기초
+
+보드게임 룸 설정은 전역 `config.json`과 분리하여 SQLite에 저장한다. DB schema v4부터 `board_room`, `board_room_player`를 사용한다.
+
+현재 구현된 룸 API:
+
+```text
+POST /api/board/rooms
+GET  /api/board/rooms/{roomId}
+POST /api/board/rooms/{roomId}/preview/reroll
+POST /api/board/rooms/{roomId}/preview/commit
+```
+
+룸 API는 loopback 접근만 허용한다.
+
+룸 생성 시 서버가 검증·정규화하는 항목:
+
+- 참가자 1~6명
+- 참가자별 SOOP ID와 정확 일치 별풍선 trigger
+- 보드 sizing: `dimensions` 또는 `cellCount`
+- 보드 외곽 형상: `rounded` 또는 `rect`
+- 이동값 생성 방식: `dice` 또는 `yut`
+- 주사위는 D6 고정, 1~2개
+- 더블 추가 던지기, 윷/모 추가 던지기 설정
+- 지시문 배치: 고정 수량(`count`) 또는 비율(`ratio`)
+- 비율 지시문은 기본 랜덤 변경 후보 풀에 자동 포함되며 원래 비율을 weight로 상속
+- 사용자 지정 랜덤 풀 지원
+- `N칸 전진/후진`의 range형 steps는 프리뷰 생성 시 현재 값을 확정
+- START는 항상 `NORMAL`, locked, reroll 불가
+- 프리뷰 `reroll`은 새 seed로 위치와 가변 값을 다시 생성
+- 프리뷰 `commit` 이후 룸은 `READY`가 되며 전체 재배치를 차단
+
+현재 룰 기본값은 이동 중 경유 칸 지시문을 실행하지 않는 `destinationOnly`이다. 최종 도착 칸 지시문을 먼저 모두 처리한 뒤 보너스 던지기를 진행하며, `다음 던지기 스킵`은 아직 실행하지 않은 가장 가까운 던지기 1회를 소비하므로 더블/윷/모로 생긴 즉시 보너스 던지기도 취소할 수 있다.
+
+현재 단계는 **룸 생성·프리뷰·영속화 기반**까지 구현된 상태다. SOOP 후원 이벤트를 룸별 정확 trigger와 연결해 실제 throw/move 상태를 진행시키는 런타임 엔진은 다음 단계다.
+
 ## OBS 오버레이
 
 기본 Browser Source 주소:
@@ -225,6 +261,7 @@ java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-d-probe
 java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-e-probe
 java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-f-probe
 java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --encoding-probe
+java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --room-probe
 ```
 
 SOOP 연결 probe:
@@ -240,7 +277,7 @@ java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --probe <streamerId>
 ```text
 Admin/Overlay JavaScript syntax check
 → Maven build
-→ Phase D/E/F + encoding self-test
+→ Phase D/E/F + encoding + board room self-test
 → jpackage GUI/tray app-image 생성
 → RouletteBridge.exe/config.json/bundled runtime 확인
 → restart-bridge.ps1 포함 확인

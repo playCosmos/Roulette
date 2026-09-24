@@ -25,6 +25,7 @@
   const ROOM_ID = String(params.get("roomId") || "").trim();
   const ROOM_PREVIEW_MODE = params.get("preview") === "1";
   const ROOM_BOARD_SOURCE = params.get("board") === "committed" ? "committed" : "preview";
+  const ROOM_WS_URL = String(params.get("ws") || "").trim();
   const DEMO_PLAYER_COUNT = Math.min(
     MAX_PLAYERS,
     Math.max(1, Number.parseInt(params.get("players") || "4", 10) || 4)
@@ -2239,9 +2240,27 @@
       return null;
     }
 
-    const source = ROOM_BOARD_SOURCE === "committed"
-      ? (snapshot.committedBoard || snapshot.preview)
-      : snapshot.preview;
+    let runtime = null;
+    if (!ROOM_PREVIEW_MODE && snapshot.status === "READY") {
+      try {
+        const runtimeResponse = await fetch(
+          "/api/board/rooms/" + encodeURIComponent(roomId) + "/runtime",
+          {
+            cache: "no-store",
+            headers: { "Accept": "application/json" }
+          }
+        );
+        if (runtimeResponse.ok) runtime = await runtimeResponse.json();
+      } catch (_) {
+        runtime = null;
+      }
+    }
+
+    const source = runtime?.board || (
+      ROOM_BOARD_SOURCE === "committed"
+        ? (snapshot.committedBoard || snapshot.preview)
+        : snapshot.preview
+    );
 
     if (!source) throw new Error("room board preview is missing");
 
@@ -2278,15 +2297,18 @@
     buildBoard();
     renderGlobalState();
 
-    if (ROOM_PREVIEW_MODE) {
-      for (const [index, player] of (snapshot.config?.players || []).entries()) {
-        registerPlayer({
-          id: player.soopId || ("preview-player-" + index),
-          name: player.displayName || player.soopId || ("참가자 " + (index + 1)),
-          shortLabel: String(player.displayName || player.soopId || (index + 1)).slice(0, 1),
-          position: 0
-        });
-      }
+    const runtimePlayers = new Map(
+      (runtime?.players || []).map((player) => [String(player.soopId), player])
+    );
+
+    for (const [index, player] of (snapshot.config?.players || []).entries()) {
+      const runtimePlayer = runtimePlayers.get(String(player.soopId));
+      registerPlayer({
+        id: player.soopId || ("preview-player-" + index),
+        name: player.displayName || player.soopId || ("참가자 " + (index + 1)),
+        shortLabel: String(player.displayName || player.soopId || (index + 1)).slice(0, 1),
+        position: ROOM_PREVIEW_MODE ? 0 : (runtimePlayer?.position ?? 0)
+      });
     }
 
     setEventMessage(
@@ -2297,11 +2319,155 @@
     return snapshot;
   }
 
+  function cellFromRuntimeState(cell) {
+    return {
+      label: roomCellLabel(cell),
+      command: roomCellLabel(cell),
+      kind: cell?.index === 0
+        ? "start"
+        : (cell?.type === "NORMAL" ? "normal" : "instruction")
+    };
+  }
+
+  function applyCellUpdate(update) {
+    const cell = update?.current;
+    const index = Number(update?.cellIndex);
+    if (!cell || !Number.isInteger(index) || index < 0 || index >= board.cellCount) return;
+
+    const phase = currentPhase();
+    if (!phase.cells) phase.cells = {};
+    phase.cells[index] = cellFromRuntimeState(cell);
+
+    const element = cellElements.get(index);
+    if (!element) return;
+    const definition = cellDefinition(index);
+    element.dataset.kind = definition.kind;
+    const label = element.querySelector(".cell-label");
+    if (label) label.textContent = definition.command || definition.label;
+  }
+
+  async function playResolvedTurn(turn) {
+    if (!turn || turn.type !== "board.turn" || String(turn.roomId) !== ROOM_ID) return;
+
+    const playerId = String(turn.playerId || "");
+    const player = state.players.get(playerId);
+    if (!player) return;
+
+    if (turn.openingThrowSkipped) {
+      setEventMessage((turn.playerName || player.name) + " · 다음 던지기 스킵");
+      return;
+    }
+
+    for (const resolution of turn.throwResolutions || []) {
+      const event = {
+        eventId: turn.eventId + "-" + resolution.index,
+        playerId,
+        generator: resolution.generator,
+        bonusThrow: Boolean(resolution.nextThrowScheduled)
+      };
+
+      if (resolution.generator === "dice") {
+        event.dice = {
+          values: resolution.dice?.values || [],
+          total: resolution.dice?.total,
+          isDouble: Boolean(resolution.dice?.isDouble)
+        };
+      } else {
+        event.yut = {
+          name: resolution.yut?.name,
+          steps: resolution.yut?.steps,
+          faces: resolution.yut?.faces || []
+        };
+      }
+
+      await enqueueThrowEvent(event, { source: "server" });
+
+      const actionMoveSteps = Number(resolution.landing?.actionMoveSteps);
+      if (Number.isInteger(actionMoveSteps) && actionMoveSteps !== 0) {
+        await movePlayerBy(playerId, actionMoveSteps, { source: "cell-action" });
+      }
+
+      for (const update of resolution.cellUpdates || []) {
+        applyCellUpdate(update);
+      }
+    }
+
+    if (player.position !== Number(turn.endPosition)) {
+      player.position = normalizeCell(turn.endPosition);
+      renderPlayers();
+    }
+  }
+
+  function connectRoomWebSocket() {
+    if (!ROOM_ID || !ROOM_WS_URL || ROOM_PREVIEW_MODE) return;
+
+    let socket;
+    let retryTimer = 0;
+    let retryAttempt = 0;
+    let closed = false;
+    let lastSequence = 0;
+
+    const connect = () => {
+      if (closed) return;
+      try {
+        socket = new WebSocket(ROOM_WS_URL);
+      } catch (_) {
+        schedule();
+        return;
+      }
+
+      socket.addEventListener("open", () => {
+        retryAttempt = 0;
+      });
+
+      socket.addEventListener("message", (message) => {
+        let payload;
+        try {
+          payload = JSON.parse(message.data);
+        } catch (_) {
+          return;
+        }
+        if (payload?.type !== "board.turn") return;
+        if (String(payload.roomId) !== ROOM_ID) return;
+
+        const sequence = Number(payload.sequence) || 0;
+        if (sequence && sequence <= lastSequence) return;
+        if (sequence) lastSequence = sequence;
+
+        playResolvedTurn(payload).catch((error) => {
+          console.error("[board-room] turn playback failed", error);
+        });
+      });
+
+      socket.addEventListener("close", schedule);
+      socket.addEventListener("error", () => {});
+    };
+
+    const schedule = () => {
+      if (closed || retryTimer) return;
+      const delayMs = Math.min(5000, 600 * (2 ** Math.min(retryAttempt, 4)));
+      retryAttempt += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = 0;
+        connect();
+      }, delayMs);
+    };
+
+    window.addEventListener("beforeunload", () => {
+      closed = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+      if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
+    }, { once: true });
+
+    connect();
+  }
+
   async function initialize() {
     if (ROOM_ID) {
       try {
         const loaded = await loadRoomBoard(ROOM_ID);
         if (!loaded) return;
+        connectRoomWebSocket();
       } catch (error) {
         buildBoard();
         renderGlobalState();

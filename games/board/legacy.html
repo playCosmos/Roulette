@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="description" content="라먀니 게임즈 보드게임 방송 오버레이" />
+  <title>보드게임 오버레이 Legacy · 라먀니 게임즈</title>
+  <link rel="stylesheet" href="./css/board-legacy.css?v=20260924-1" />
+</head>
+<body>
+  <main class="overlay-root">
+    <section class="board-stage-wrap" aria-label="16대9 보드게임 오버레이">
+      <div class="board-stage" id="boardStage">
+        <div class="board-grid" id="boardGrid" aria-label="가변 외곽 루프 보드"></div>
+        <div class="board-center" aria-hidden="true"></div>
+        <div class="sr-only" id="eventMessage" aria-live="polite">보드 준비 중</div>
+      </div>
+    </section>
+  </main>
+
+  <script src="./js/board-legacy.js?v=20260924-1" defer></script>
+</body>
+</html>

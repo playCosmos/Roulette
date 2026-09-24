@@ -172,12 +172,24 @@
     const influenceSigma = clamp(1.02 + ((density - 1) * 0.34), 1.02, 1.62);
     const influenceRadius = Math.ceil(influenceSigma * 3.0);
 
+    const openStretchTarget = Math.max(
+      influenceRadius + 1,
+      board.cellCount / (2 * Math.max(1, playerCount))
+    );
+    const openStretchLift = clamp(
+      0.07 + ((density - 1) * 0.15),
+      0.07,
+      0.24
+    );
+
     return Array.from({ length: board.cellCount }, (_, cellIndex) => {
       let remaining = 1;
       let exactOccupancy = 0;
+      let nearestPlayerDistance = board.cellCount;
 
       for (const position of playerPositions) {
         const distance = circularDistance(cellIndex, position);
+        nearestPlayerDistance = Math.min(nearestPlayerDistance, distance);
         if (distance === 0) exactOccupancy += 1;
         const localInfluence = distance <= influenceRadius
           ? Math.exp(-0.5 * Math.pow(distance / influenceSigma, 2))
@@ -190,8 +202,17 @@
         ? Math.min(0.16, Math.log2(exactOccupancy) * 0.045 * density * intensity)
         : 0;
 
+      // 플레이어가 없는 긴 구간은 최저 크기로 계속 유지하지 않는다.
+      // 영향권을 벗어난 뒤부터 반대편 빈 구간으로 갈수록 조금씩 다시 커져
+      // 외곽 경로에 큰 공백이 생기는 것을 막는다.
+      const openRatio = smoothstep01(
+        (nearestPlayerDistance - influenceRadius) /
+        Math.max(1, openStretchTarget - influenceRadius)
+      );
+      const openLift = openStretchLift * openRatio;
+
       return clamp(
-        restScale + (peakRange * combinedInfluence) + occupancyBoost,
+        restScale + (peakRange * combinedInfluence) + occupancyBoost + openLift,
         restScale,
         maxScale
       );
@@ -356,6 +377,88 @@
     };
   }
 
+  function growCellsIntoSpareSpace(
+    widths,
+    heights,
+    desiredWidths,
+    desiredHeights,
+    points,
+    scales,
+    occupancy,
+    spare,
+    density
+  ) {
+    if (spare <= 0.5) {
+      return { widths, heights, consumed: 0 };
+    }
+
+    const nextWidths = widths.slice();
+    const nextHeights = heights.slice();
+    const fillCap = clamp(1.18 + ((density - 1) * 0.10), 1.18, 1.34);
+    let remaining = spare * 0.92;
+    let consumedTotal = 0;
+
+    for (let round = 0; round < 4 && remaining > 0.5; round += 1) {
+      const capacities = [];
+      let weightTotal = 0;
+
+      for (let index = 0; index < board.cellCount; index += 1) {
+        const point = points[index];
+        const projected = projectedTangentSize(
+          nextWidths[index],
+          nextHeights[index],
+          point.angle
+        );
+        const maxWidth = desiredWidths[index] * fillCap;
+        const maxHeight = desiredHeights[index] * fillCap;
+        const roomFactor = Math.min(
+          maxWidth / Math.max(1, nextWidths[index]),
+          maxHeight / Math.max(1, nextHeights[index])
+        );
+        const projectedCapacity = Math.max(0, projected * (roomFactor - 1));
+
+        if (projectedCapacity <= 0.01) {
+          capacities.push({ projected, projectedCapacity: 0, weight: 0 });
+          continue;
+        }
+
+        const occupiedWeight = occupancy.has(index) ? 0.08 : 1;
+        const sizeWeight = 1 / Math.pow(Math.max(0.42, scales[index]), 1.55);
+        const weight = projectedCapacity * occupiedWeight * sizeWeight;
+        capacities.push({ projected, projectedCapacity, weight });
+        weightTotal += weight;
+      }
+
+      if (weightTotal <= 0.0001) break;
+
+      let consumedRound = 0;
+
+      for (let index = 0; index < board.cellCount; index += 1) {
+        const item = capacities[index];
+        if (item.weight <= 0 || item.projectedCapacity <= 0) continue;
+
+        const requested = remaining * (item.weight / weightTotal);
+        const increase = Math.min(requested, item.projectedCapacity);
+        if (increase <= 0) continue;
+
+        const factor = 1 + (increase / Math.max(1, item.projected));
+        nextWidths[index] *= factor;
+        nextHeights[index] *= factor;
+        consumedRound += increase;
+      }
+
+      if (consumedRound <= 0.01) break;
+      remaining -= consumedRound;
+      consumedTotal += consumedRound;
+    }
+
+    return {
+      widths: nextWidths,
+      heights: nextHeights,
+      consumed: consumedTotal
+    };
+  }
+
   function layoutBoardCells() {
     if (!refs.boardStage || !cellElements.size) return;
 
@@ -397,36 +500,61 @@
     let fittedWidths = desiredWidths.slice();
     let fittedHeights = desiredHeights.slice();
 
-    for (let iteration = 0; iteration < 7; iteration += 1) {
-      const points = positions.map((position) => roundedPerimeterPoint(path, position));
-      const projected = points.map((point, index) =>
+    for (let iteration = 0; iteration < 8; iteration += 1) {
+      let points = positions.map((position) => roundedPerimeterPoint(path, position));
+      let projected = points.map((point, index) =>
         projectedTangentSize(fittedWidths[index], fittedHeights[index], point.angle)
       );
 
-      const projectedTotal = projected.reduce((sum, size) => sum + size, 0);
       const availableForCells = Math.max(1, path.perimeter - (minGap * board.cellCount));
+      const projectedTotal = projected.reduce((sum, size) => sum + size, 0);
       const compression = Math.min(1, availableForCells / Math.max(1, projectedTotal));
 
-      fittedWidths = desiredWidths.map((value) => value * compression);
-      fittedHeights = desiredHeights.map((value) => value * compression);
+      if (compression < 0.9999) {
+        fittedWidths = fittedWidths.map((value) => value * compression);
+        fittedHeights = fittedHeights.map((value) => value * compression);
+        projected = points.map((point, index) =>
+          projectedTangentSize(fittedWidths[index], fittedHeights[index], point.angle)
+        );
+      }
 
-      const refreshedProjected = points.map((point, index) =>
-        projectedTangentSize(fittedWidths[index], fittedHeights[index], point.angle)
-      );
-
-      const requiredGaps = refreshedProjected.map((size, index) => {
-        const next = refreshedProjected[(index + 1) % board.cellCount];
+      let requiredGaps = projected.map((size, index) => {
+        const next = projected[(index + 1) % board.cellCount];
         return ((size + next) * 0.5) + minGap;
       });
+      let requiredTotal = requiredGaps.reduce((sum, value) => sum + value, 0);
+      let extra = Math.max(0, path.perimeter - requiredTotal);
 
-      const requiredTotal = requiredGaps.reduce((sum, value) => sum + value, 0);
-      const extra = Math.max(0, path.perimeter - requiredTotal);
+      // 남는 공간을 간격으로 벌리기 전에 비활성/작은 칸에 조금씩 되돌려 준다.
+      // 특히 플레이어 반대편 긴 빈 구간이 과도하게 벌어지는 것을 줄인다.
+      if (extra > 0.5) {
+        const grown = growCellsIntoSpareSpace(
+          fittedWidths,
+          fittedHeights,
+          desiredWidths,
+          desiredHeights,
+          points,
+          scales,
+          occupancy,
+          extra,
+          density
+        );
+        fittedWidths = grown.widths;
+        fittedHeights = grown.heights;
 
-      // 확대된 칸은 자기 크기만 더 차지한다.
-      // 주변 여백까지 같이 커지지 않도록 남는 경로 길이는 모든 간격에 동일하게 분배한다.
-      // 결과적으로 인접 칸의 edge-to-edge 간격은 가능한 한 일정하게 유지된다.
+        projected = points.map((point, index) =>
+          projectedTangentSize(fittedWidths[index], fittedHeights[index], point.angle)
+        );
+        requiredGaps = projected.map((size, index) => {
+          const next = projected[(index + 1) % board.cellCount];
+          return ((size + next) * 0.5) + minGap;
+        });
+        requiredTotal = requiredGaps.reduce((sum, value) => sum + value, 0);
+        extra = Math.max(0, path.perimeter - requiredTotal);
+      }
+
+      // 셀 크기로 흡수하고도 남는 극소량만 전체 간격에 균등 분배한다.
       const uniformSlack = extra / board.cellCount;
-
       const nextPositions = new Array(board.cellCount);
       nextPositions[0] = 0;
 

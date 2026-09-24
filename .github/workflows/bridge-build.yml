@@ -57,6 +57,10 @@ jobs:
         working-directory: bridge
         run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-f-probe
 
+      - name: Verify board room persistence
+        working-directory: bridge
+        run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --room-probe
+
       - name: Probe configured SOOP streamer
         id: soop_probe
         if: ${{ vars.SOOP_PROBE_STREAMER_ID != '' }}

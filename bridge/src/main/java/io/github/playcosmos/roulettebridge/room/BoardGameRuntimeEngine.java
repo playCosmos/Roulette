@@ -178,7 +178,7 @@ public final class BoardGameRuntimeEngine {
                         boolean naturalBonus = outcome.bonusThrow();
                         if (naturalBonus) pendingBonusThrows += 1;
 
-                        CellState landingCell = board.get(player.position);
+                        CellState landingCell = board.cells().get(player.position);
                         JsonElement landingAction = landingCell.action() == null
                             ? null
                             : landingCell.action().deepCopy();

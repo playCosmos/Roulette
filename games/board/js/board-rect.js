@@ -1471,8 +1471,23 @@
         if (!token) return;
 
         const offset = offsets[index] || { x: 0, y: 0 };
-        const centerX = geometry.centerX + offset.x;
-        const centerY = geometry.centerY + offset.y;
+
+        // 지시문/라벨을 가리지 않도록 말 기준점을 셀 중심이 아니라
+        // 보드 안쪽 면으로 이동한다. 셀 자체는 회전하지 않지만
+        // path tangent에서 구한 inward normal은 모든 변/코너에서 일관된다.
+        const inwardX = -Math.sin(geometry.point.angle);
+        const inwardY = Math.cos(geometry.point.angle);
+        const inwardOffset =
+          Math.min(geometry.width, geometry.height) * 0.20;
+
+        const centerX =
+          geometry.centerX +
+          (inwardX * inwardOffset) +
+          offset.x;
+        const centerY =
+          geometry.centerY +
+          (inwardY * inwardOffset) +
+          offset.y;
 
         token.dataset.cellIndex = String(cellIndex);
         token.dataset.stacked = String(visiblePlayers.length > 1);

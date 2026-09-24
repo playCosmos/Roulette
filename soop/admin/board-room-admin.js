@@ -381,6 +381,7 @@
       name: form.elements.namedItem("roomName").value.trim() || "Room",
       retentionMinutes: Number(form.elements.namedItem("retentionMinutes").value) || 240,
       pauseDonationMode: form.elements.namedItem("pauseDonationMode").value || "QUEUE",
+      pauseGraceSeconds: Number(form.elements.namedItem("pauseGraceSeconds").value) || 0,
       players: collectPlayers(),
       board,
       movement: {
@@ -514,6 +515,17 @@
     if (pauseModeField && lifecycle.pauseDonationMode) {
       pauseModeField.value = lifecycle.pauseDonationMode;
     }
+    const pauseGraceField = form.elements.namedItem("pauseGraceSeconds");
+    if (pauseGraceField && Number.isFinite(Number(lifecycle.pauseGraceSeconds))) {
+      pauseGraceField.value = String(lifecycle.pauseGraceSeconds);
+    }
+
+    if (lifecycleState === "PAUSED" && lifecycle.pauseGraceUntil) {
+      const graceUntil = new Date(lifecycle.pauseGraceUntil);
+      if (!Number.isNaN(graceUntil.getTime())) {
+        previewMeta.textContent += " · 후원 유예 종료 " + graceUntil.toLocaleTimeString();
+      }
+    }
 
     if (overlayRow && overlayUrl) {
       const overlayAvailable = ready && !terminated;
@@ -587,15 +599,17 @@
         {
           method: "POST",
           body: JSON.stringify({
-            donationMode: form.elements.namedItem("pauseDonationMode").value || "QUEUE"
+            donationMode: form.elements.namedItem("pauseDonationMode").value || "QUEUE",
+            graceSeconds: Number(form.elements.namedItem("pauseGraceSeconds").value) || 0
           })
         }
       );
       renderRoom(snapshot);
+      const graceSeconds = Number(snapshot.lifecycle?.pauseGraceSeconds) || 0;
       showResult(
         snapshot.lifecycle?.pauseDonationMode === "IGNORE"
-          ? "일시정지했습니다. 정지 중 후원은 무시됩니다."
-          : "일시정지했습니다. 정지 중 후원은 큐에 순서대로 누적됩니다.",
+          ? "일시정지했습니다. 이후 후원은 즉시 무시됩니다."
+          : "일시정지했습니다. " + graceSeconds + "초 동안 들어온 후원만 큐에 저장하고 이후 후원은 무시합니다.",
         "success"
       );
     } catch (error) {

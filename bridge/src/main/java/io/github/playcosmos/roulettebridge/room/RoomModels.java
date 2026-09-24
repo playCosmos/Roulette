@@ -14,8 +14,32 @@ public final class RoomModels {
         MovementInput movement,
         RulesInput rules,
         List<InstructionInput> instructions,
-        RandomPoolInput randomPool
-    ) {}
+        RandomPoolInput randomPool,
+        Integer retentionMinutes,
+        String pauseDonationMode
+    ) {
+        public CreateRoomRequest(
+            String name,
+            List<PlayerInput> players,
+            BoardInput board,
+            MovementInput movement,
+            RulesInput rules,
+            List<InstructionInput> instructions,
+            RandomPoolInput randomPool
+        ) {
+            this(
+                name,
+                players,
+                board,
+                movement,
+                rules,
+                instructions,
+                randomPool,
+                null,
+                null
+            );
+        }
+    }
 
     public record PlayerInput(
         String soopId,
@@ -142,6 +166,15 @@ public final class RoomModels {
         boolean locked
     ) {}
 
+    public record RoomLifecycle(
+        String state,
+        int retentionMinutes,
+        String expiresAt,
+        String pauseDonationMode,
+        int queuedDonations,
+        String terminatedAt
+    ) {}
+
     public record RoomSnapshot(
         String roomId,
         String status,
@@ -149,8 +182,30 @@ public final class RoomModels {
         BoardPreview preview,
         BoardPreview committedBoard,
         String createdAt,
-        String updatedAt
-    ) {}
+        String updatedAt,
+        RoomLifecycle lifecycle
+    ) {
+        public RoomSnapshot(
+            String roomId,
+            String status,
+            NormalizedRoomConfig config,
+            BoardPreview preview,
+            BoardPreview committedBoard,
+            String createdAt,
+            String updatedAt
+        ) {
+            this(
+                roomId,
+                status,
+                config,
+                preview,
+                committedBoard,
+                createdAt,
+                updatedAt,
+                null
+            );
+        }
+    }
 
     public record ValidationError(String field, String message) {}
 

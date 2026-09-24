@@ -114,15 +114,25 @@ public final class RoomLayoutGenerator {
                 continue;
             }
 
-            cells.add(new CellState(
-                boardIndex,
-                "INSTRUCTION",
-                instruction.id(),
-                instruction.label(),
-                resolveAction(instruction.action(), random),
-                Boolean.TRUE.equals(instruction.rerollOnVacate()),
-                false
-            ));
+            if (isRandomCellPlaceholder(instruction)) {
+                cells.add(resolveRandomCell(
+                    boardIndex,
+                    instruction,
+                    config,
+                    byId,
+                    random
+                ));
+            } else {
+                cells.add(new CellState(
+                    boardIndex,
+                    "INSTRUCTION",
+                    instruction.id(),
+                    instruction.label(),
+                    resolveAction(instruction.action(), random),
+                    Boolean.TRUE.equals(instruction.rerollOnVacate()),
+                    false
+                ));
+            }
         }
 
         return new BoardPreview(
@@ -131,6 +141,79 @@ public final class RoomLayoutGenerator {
             config.board().layoutStyle(),
             List.copyOf(cells),
             List.copyOf(config.randomPool().entries())
+        );
+    }
+
+    private CellState resolveRandomCell(
+        int boardIndex,
+        InstructionInput placeholder,
+        NormalizedRoomConfig config,
+        Map<String, InstructionInput> byId,
+        SplittableRandom random
+    ) {
+        var candidates = new ArrayList<RandomPoolEntry>();
+        double totalWeight = 0.0d;
+
+        for (var entry : config.randomPool().entries()) {
+            var definition = byId.get(entry.instructionId());
+            if (
+                definition == null
+                || entry.weight() <= 0.0d
+                || isRandomCellPlaceholder(definition)
+            ) {
+                continue;
+            }
+            candidates.add(entry);
+            totalWeight += entry.weight();
+        }
+
+        if (candidates.isEmpty() || totalWeight <= 0.0d) {
+            return new CellState(
+                boardIndex,
+                "INSTRUCTION",
+                placeholder.id(),
+                placeholder.label(),
+                placeholder.action() == null ? null : placeholder.action().deepCopy(),
+                true,
+                false
+            );
+        }
+
+        double pick = random.nextDouble(totalWeight);
+        RandomPoolEntry selected = candidates.get(candidates.size() - 1);
+        double cursor = 0.0d;
+        for (var candidate : candidates) {
+            cursor += candidate.weight();
+            if (pick < cursor) {
+                selected = candidate;
+                break;
+            }
+        }
+
+        var definition = byId.get(selected.instructionId());
+        return new CellState(
+            boardIndex,
+            "INSTRUCTION",
+            definition.id(),
+            definition.label(),
+            resolveAction(definition.action(), random),
+            true,
+            false
+        );
+    }
+
+    private static boolean isRandomCellPlaceholder(InstructionInput instruction) {
+        if (
+            instruction == null
+            || !Boolean.TRUE.equals(instruction.rerollOnVacate())
+            || instruction.action() == null
+            || !instruction.action().isJsonObject()
+        ) {
+            return false;
+        }
+
+        return "randomCell".equalsIgnoreCase(
+            string(instruction.action().getAsJsonObject(), "type")
         );
     }
 

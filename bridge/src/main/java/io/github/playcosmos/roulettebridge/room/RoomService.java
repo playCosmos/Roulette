@@ -42,6 +42,7 @@ public final class RoomService {
         List<PlayerInput> players = normalizePlayers(request.players(), errors);
         BoardConfig board = normalizeBoard(request.board(), errors);
         MovementConfig movement = normalizeMovement(request.movement(), errors);
+        RulesConfig rules = normalizeRules(request.rules(), errors);
         List<InstructionInput> instructions = normalizeInstructions(
             request.instructions(),
             board == null ? 0 : board.cellCount() - 1,
@@ -60,6 +61,7 @@ public final class RoomService {
                 List.copyOf(players),
                 board,
                 movement,
+                rules,
                 List.copyOf(instructions),
                 randomPool
             );
@@ -375,6 +377,36 @@ public final class RoomService {
             movement.extraThrowOnDouble() == null || movement.extraThrowOnDouble(),
             movement.extraThrowOnYut() == null || movement.extraThrowOnYut(),
             movement.extraThrowOnMo() == null || movement.extraThrowOnMo()
+        );
+    }
+
+    private static RulesConfig normalizeRules(
+        RulesInput input,
+        List<ValidationError> errors
+    ) {
+        RulesInput rules = input == null
+            ? new RulesInput("destinationOnly", true, true)
+            : input;
+
+        String landingMode = normalizeText(
+            rules.landingInstructionMode(),
+            "destinationOnly"
+        );
+
+        if (!"destinationOnly".equalsIgnoreCase(landingMode)) {
+            errors.add(new ValidationError(
+                "rules.landingInstructionMode",
+                "only destinationOnly is currently supported"
+            ));
+            landingMode = "destinationOnly";
+        }
+
+        return new RulesConfig(
+            "destinationOnly",
+            rules.resolveLandingBeforeBonusThrow() == null
+                || rules.resolveLandingBeforeBonusThrow(),
+            rules.skipNextThrowConsumesBonus() == null
+                || rules.skipNextThrowConsumesBonus()
         );
     }
 

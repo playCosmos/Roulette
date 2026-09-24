@@ -141,7 +141,7 @@ POST /api/admin/test-ticket
 
 ## 보드게임 룸 서버 기초
 
-보드게임 룸 설정은 전역 `config.json`과 분리하여 SQLite에 저장한다. DB schema v4부터 `board_room`, `board_room_player`를 사용한다.
+보드게임 룸 설정은 전역 `config.json`과 분리하여 SQLite에 저장한다. DB schema v5는 `board_room`, `board_room_player`와 참가자별 방송 상태 snapshot을 사용한다.
 
 현재 구현된 룸 API:
 
@@ -158,6 +158,8 @@ POST /api/board/rooms/{roomId}/preview/commit
 
 - 참가자 1~6명
 - 참가자별 SOOP ID와 정확 일치 별풍선 trigger
+- 룸 생성 시 각 참가자의 SOOP ID를 병렬 조회하여 현재 방송 상태를 `LIVE / OFFLINE_OR_UNAVAILABLE / CHECK_FAILED`로 기록
+- `LIVE`이면 방송 BNO와 제목을 함께 저장하며, 방송 중이 아니거나 조회가 실패해도 룸 생성 자체는 차단하지 않음
 - 보드 sizing: `dimensions` 또는 `cellCount`
 - 보드 외곽 형상: `rounded` 또는 `rect`
 - 이동값 생성 방식: `dice` 또는 `yut`

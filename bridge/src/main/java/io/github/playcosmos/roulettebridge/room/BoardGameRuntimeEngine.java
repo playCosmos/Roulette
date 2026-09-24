@@ -95,6 +95,24 @@ public final class BoardGameRuntimeEngine {
         );
     }
 
+    public synchronized void terminateRoom(String roomId) throws SQLException {
+        String now = Instant.now().toString();
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 UPDATE board_room
+                 SET lifecycle_state = 'TERMINATED',
+                     terminated_at = COALESCE(terminated_at, ?),
+                     updated_at = ?
+                 WHERE room_id = ?
+                   AND lifecycle_state <> 'TERMINATED'
+                 """)) {
+            statement.setString(1, now);
+            statement.setString(2, now);
+            statement.setString(3, roomId);
+            statement.executeUpdate();
+        }
+    }
+
     public synchronized void pauseRoom(
         String roomId,
         String donationMode

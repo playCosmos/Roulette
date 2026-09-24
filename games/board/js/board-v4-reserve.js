@@ -877,6 +877,9 @@
     cell.style.zIndex = String(Math.round(weight * 100) + (occupied ? 200 : 0));
 
     cell.dataset.occupied = String(occupied);
+    cell.dataset.compact = String(
+      Math.min(geometry.width, geometry.height) <= 30
+    );
     cell.dataset.dockScale = weight.toFixed(3);
     cell.dataset.curved = String(geometry.point.curved);
     cell.dataset.pathAngle = geometry.point.angle.toFixed(4);

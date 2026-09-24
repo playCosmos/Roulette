@@ -116,6 +116,14 @@ public final class RoomHttpHandler implements HttpHandler {
                 return;
             }
 
+            if (route.endsWith("/extend")) {
+                if (!requireMethod(exchange, "POST")) return;
+                String roomId = route.substring(0, route.length() - "/extend".length());
+                var request = readExtensionRequest(exchange);
+                sendJson(exchange, 200, rooms.extendLifetime(roomId, request.minutes()));
+                return;
+            }
+
             if (route.contains("/")) {
                 sendJson(exchange, 404, error("Not Found"));
                 return;
@@ -137,6 +145,29 @@ public final class RoomHttpHandler implements HttpHandler {
         } catch (SQLException error) {
             error.printStackTrace(System.err);
             sendJson(exchange, 500, error("database operation failed"));
+        }
+    }
+
+    private ExtensionRequest readExtensionRequest(HttpExchange exchange) throws IOException {
+        byte[] bytes = exchange.getRequestBody().readNBytes(16 * 1024 + 1);
+        if (bytes.length > 16 * 1024) {
+            throw new IllegalArgumentException("extension request exceeds 16 KiB");
+        }
+        if (bytes.length == 0) {
+            throw new IllegalArgumentException("extension request body is required");
+        }
+
+        try {
+            var request = GSON.fromJson(
+                new String(bytes, StandardCharsets.UTF_8),
+                ExtensionRequest.class
+            );
+            if (request == null || request.minutes() == null) {
+                throw new IllegalArgumentException("minutes is required");
+            }
+            return new ExtensionRequest(request.minutes());
+        } catch (JsonParseException error) {
+            throw new IllegalArgumentException("invalid JSON body");
         }
     }
 
@@ -198,6 +229,8 @@ public final class RoomHttpHandler implements HttpHandler {
         String donationMode,
         Integer graceSeconds
     ) {}
+
+    private record ExtensionRequest(Integer minutes) {}
 
     private static void sendJson(HttpExchange exchange, int status, Object payload) throws IOException {
         byte[] body = GSON.toJson(payload).getBytes(StandardCharsets.UTF_8);

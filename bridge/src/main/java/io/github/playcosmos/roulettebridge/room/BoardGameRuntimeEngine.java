@@ -70,6 +70,11 @@ public final class BoardGameRuntimeEngine {
                 continue;
             }
 
+            if (existsDeferred(match.roomId(), fingerprint)) {
+                duplicateRooms += 1;
+                continue;
+            }
+
             var result = processRoom(match.roomId(), donation, fingerprint);
             if (result.duplicate()) {
                 duplicateRooms += 1;
@@ -460,6 +465,25 @@ public final class BoardGameRuntimeEngine {
             }
 
             return state;
+        }
+    }
+
+    private boolean existsDeferred(
+        String roomId,
+        String fingerprint
+    ) throws SQLException {
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 SELECT 1
+                 FROM board_game_deferred_donation
+                 WHERE room_id = ? AND source_fingerprint = ?
+                 LIMIT 1
+                 """)) {
+            statement.setString(1, roomId);
+            statement.setString(2, fingerprint);
+            try (var rows = statement.executeQuery()) {
+                return rows.next();
+            }
         }
     }
 

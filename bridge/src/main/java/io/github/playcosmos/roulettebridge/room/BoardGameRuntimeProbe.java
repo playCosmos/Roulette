@@ -210,6 +210,65 @@ public final class BoardGameRuntimeProbe {
             require(snapshot.players().get(0).position() == 8, "chained runtime position must persist");
             require(snapshot.sequence() == 1, "duplicate/wrong donation must not advance sequence");
 
+            runtime.pauseRoom(created.roomId(), "QUEUE");
+            var queuedOne = runtime.process(new SoopDonation(
+                "streamer",
+                "soop-a",
+                "A",
+                100,
+                2,
+                "runtime-probe-queue-1",
+                3_000L
+            ));
+            var queuedTwo = runtime.process(new SoopDonation(
+                "streamer",
+                "soop-a",
+                "A",
+                100,
+                3,
+                "runtime-probe-queue-2",
+                4_000L
+            ));
+            require(queuedOne.queuedRooms() == 1, "paused QUEUE mode must defer first donation");
+            require(queuedTwo.queuedRooms() == 1, "paused QUEUE mode must defer second donation");
+            require(dispatched.size() == 1, "queued donations must not dispatch before resume");
+
+            var paused = rooms.find(created.roomId());
+            require("PAUSED".equals(paused.lifecycle().state()), "room must report PAUSED");
+            require(paused.lifecycle().queuedDonations() == 2, "paused room must report two queued donations");
+
+            var resumed = runtime.resumeRoom(created.roomId());
+            require(resumed.processedQueuedDonations() == 2, "resume must process two queued donations");
+            require(resumed.events().size() == 2, "resume must emit two queued board turns");
+            require(resumed.events().get(0).sequence() == 2, "first queued donation must keep FIFO sequence");
+            require(resumed.events().get(1).sequence() == 3, "second queued donation must keep FIFO sequence");
+            require(dispatched.size() == 3, "resume must dispatch queued turns in order");
+
+            runtime.pauseRoom(created.roomId(), "IGNORE");
+            var ignoredDonation = new SoopDonation(
+                "streamer",
+                "soop-a",
+                "A",
+                100,
+                4,
+                "runtime-probe-ignore-1",
+                5_000L
+            );
+            var ignored = runtime.process(ignoredDonation);
+            require(ignored.ignoredRooms() == 1, "paused IGNORE mode must discard matching donation");
+            require(dispatched.size() == 3, "ignored donation must not dispatch");
+
+            var resumedIgnore = runtime.resumeRoom(created.roomId());
+            require(resumedIgnore.processedQueuedDonations() == 0, "IGNORE mode must not create resume queue work");
+            require(dispatched.size() == 3, "IGNORE resume must not dispatch ignored donation");
+
+            var replayIgnored = runtime.process(ignoredDonation);
+            require(replayIgnored.duplicateRooms() == 1, "ignored donation replay must stay ignored");
+            require(dispatched.size() == 3, "ignored replay must not dispatch");
+
+            var resumedSnapshot = runtime.snapshot(created.roomId());
+            require(resumedSnapshot.sequence() == 3, "queue processing must advance runtime sequence to three");
+
             System.out.println("[board-runtime-probe] PASS room=" + created.roomId());
             return 0;
         } catch (Exception error) {

@@ -144,7 +144,15 @@ public final class BoardGameRuntimeProbe {
                 )
             );
 
-            int[] randomValues = { 2, 2, 0, 1, 4, 5 };
+            int[] randomValues = {
+                2, 2,
+                0, 1,
+                4, 5,
+                0, 1,
+                0, 1,
+                0, 1,
+                0, 1
+            };
             var randomIndex = new AtomicInteger();
             var dispatched = new ArrayList<BoardGameRuntimeEngine.BoardTurnEvent>();
             var runtime = new BoardGameRuntimeEngine(
@@ -268,6 +276,120 @@ public final class BoardGameRuntimeProbe {
 
             var resumedSnapshot = runtime.snapshot(created.roomId());
             require(resumedSnapshot.sequence() == 3, "queue processing must advance runtime sequence to three");
+            require(resumedSnapshot.players().get(0).position() == 22, "FIFO probe must finish at cell 22");
+
+            patchRuntimeCell(
+                database,
+                created.roomId(),
+                1,
+                new CellState(
+                    1,
+                    "INSTRUCTION",
+                    "MULTIPLY_NEXT_THROW",
+                    "다음 던지기 2배",
+                    JsonParser.parseString("""
+                        {"type":"multiplyNextThrow","multiplier":2}
+                        """),
+                    false,
+                    false
+                )
+            );
+            patchRuntimeCell(
+                database,
+                created.roomId(),
+                7,
+                new CellState(
+                    7,
+                    "INSTRUCTION",
+                    "IGNORE_NEXT_LANDING",
+                    "다음 도착 칸 효과 무시",
+                    JsonParser.parseString("""
+                        {"type":"ignoreNextLanding","count":1}
+                        """),
+                    false,
+                    false
+                )
+            );
+            patchRuntimeCell(
+                database,
+                created.roomId(),
+                10,
+                new CellState(
+                    10,
+                    "INSTRUCTION",
+                    "MOVE_TO_START_IGNORED",
+                    "START로 이동",
+                    JsonParser.parseString("""
+                        {"type":"moveToStart"}
+                        """),
+                    false,
+                    false
+                )
+            );
+            patchRuntimeCell(
+                database,
+                created.roomId(),
+                13,
+                new CellState(
+                    13,
+                    "INSTRUCTION",
+                    "MOVE_TO_START",
+                    "START로 이동",
+                    JsonParser.parseString("""
+                        {"type":"moveToStart"}
+                        """),
+                    false,
+                    false
+                )
+            );
+
+            var multiplierSetup = runtime.process(new SoopDonation(
+                "streamer", "soop-a", "A", 100, 5,
+                "runtime-probe-multiplier-setup", 6_000L
+            ));
+            require(multiplierSetup.events().get(0).endPosition() == 1, "raw 3 from cell 22 must land on cell 1");
+            var multiplierState = runtime.snapshot(created.roomId()).players().get(0);
+            require(multiplierState.nextThrowMultiplier() == 2, "multiplier cell must arm x2 for next actual throw");
+
+            var multiplied = runtime.process(new SoopDonation(
+                "streamer", "soop-a", "A", 100, 6,
+                "runtime-probe-multiplied", 7_000L
+            ));
+            var multipliedThrow = multiplied.events().get(0).throwResolutions().get(0);
+            require(multipliedThrow.rawSteps() == 3, "multiplied throw raw value must remain 3");
+            require(multipliedThrow.appliedMultiplier() == 2, "next throw must apply x2");
+            require(multipliedThrow.steps() == 6, "effective movement must be 6");
+            require(multiplied.events().get(0).endPosition() == 7, "x2 movement must land on cell 7");
+            require(
+                runtime.snapshot(created.roomId()).players().get(0).ignoreNextLandingEffects() == 1,
+                "ignore-next-landing cell must arm one ignored landing"
+            );
+
+            var ignoredLanding = runtime.process(new SoopDonation(
+                "streamer", "soop-a", "A", 100, 7,
+                "runtime-probe-ignore-landing", 8_000L
+            ));
+            var ignoredResolution = ignoredLanding.events().get(0).throwResolutions().get(0);
+            require(ignoredLanding.events().get(0).endPosition() == 10, "ignored landing must remain on cell 10");
+            require(
+                ignoredResolution.landingChain().get(0).effectIgnored(),
+                "cell 10 START effect must be ignored once"
+            );
+
+            var moveToStart = runtime.process(new SoopDonation(
+                "streamer", "soop-a", "A", 100, 8,
+                "runtime-probe-start", 9_000L
+            ));
+            var startResolution = moveToStart.events().get(0).throwResolutions().get(0);
+            require(startResolution.throwLandingPosition() == 13, "raw 3 from cell 10 must land on cell 13");
+            require(startResolution.landingChain().size() == 2, "START move must include destination and START landing");
+            require(startResolution.landingChain().get(0).actionMoveSteps() == -13, "START move must relocate to cell 0");
+            require(moveToStart.events().get(0).endPosition() == 0, "START move must finish at cell 0");
+
+            var finalSnapshot = runtime.snapshot(created.roomId());
+            require(finalSnapshot.sequence() == 7, "built-in effects must advance sequence through seven");
+            require(finalSnapshot.players().get(0).nextThrowMultiplier() == 1, "multiplier must be one-shot");
+            require(finalSnapshot.players().get(0).ignoreNextLandingEffects() == 0, "landing ignore must be one-shot");
 
             System.out.println("[board-runtime-probe] PASS room=" + created.roomId());
             return 0;
@@ -288,6 +410,60 @@ public final class BoardGameRuntimeProbe {
                 } catch (Exception ignored) {
                     // best effort probe cleanup
                 }
+            }
+        }
+    }
+
+    private static void patchRuntimeCell(
+        BridgeDatabase database,
+        String roomId,
+        int cellIndex,
+        CellState replacement
+    ) throws SQLException {
+        try (var connection = database.open()) {
+            connection.setAutoCommit(false);
+            try {
+                String json;
+                try (var select = connection.prepareStatement("""
+                    SELECT board_json
+                    FROM board_game_state
+                    WHERE room_id = ?
+                    """)) {
+                    select.setString(1, roomId);
+                    try (var rows = select.executeQuery()) {
+                        if (!rows.next()) throw new SQLException("probe runtime board missing");
+                        json = rows.getString(1);
+                    }
+                }
+
+                var board = GSON.fromJson(json, BoardPreview.class);
+                var cells = new ArrayList<>(board.cells());
+                cells.set(cellIndex, replacement);
+                var patched = new BoardPreview(
+                    board.seed(),
+                    board.cellCount(),
+                    board.layoutStyle(),
+                    List.copyOf(cells),
+                    board.rerollPool()
+                );
+
+                try (var update = connection.prepareStatement("""
+                    UPDATE board_game_state
+                    SET board_json = ?
+                    WHERE room_id = ?
+                    """)) {
+                    update.setString(1, GSON.toJson(patched));
+                    update.setString(2, roomId);
+                    update.executeUpdate();
+                }
+
+                connection.commit();
+            } catch (Exception error) {
+                connection.rollback();
+                if (error instanceof SQLException sqlError) throw sqlError;
+                throw new SQLException("failed to patch runtime probe board", error);
+            } finally {
+                connection.setAutoCommit(true);
             }
         }
     }

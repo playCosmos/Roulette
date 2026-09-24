@@ -101,19 +101,39 @@ public final class BoardGameRuntimeEngine {
 
     public synchronized void terminateRoom(String roomId) throws SQLException {
         String now = Instant.now().toString();
-        try (var connection = database.open();
-             var statement = connection.prepareStatement("""
-                 UPDATE board_room
-                 SET lifecycle_state = 'TERMINATED',
-                     terminated_at = COALESCE(terminated_at, ?),
-                     updated_at = ?
-                 WHERE room_id = ?
-                   AND lifecycle_state <> 'TERMINATED'
-                 """)) {
-            statement.setString(1, now);
-            statement.setString(2, now);
-            statement.setString(3, roomId);
-            statement.executeUpdate();
+        try (var connection = database.open()) {
+            connection.setAutoCommit(false);
+            try {
+                try (var statement = connection.prepareStatement("""
+                    UPDATE board_room
+                    SET lifecycle_state = 'TERMINATED',
+                        terminated_at = COALESCE(terminated_at, ?),
+                        updated_at = ?
+                    WHERE room_id = ?
+                      AND lifecycle_state <> 'TERMINATED'
+                    """)) {
+                    statement.setString(1, now);
+                    statement.setString(2, now);
+                    statement.setString(3, roomId);
+                    statement.executeUpdate();
+                }
+
+                try (var statement = connection.prepareStatement("""
+                    UPDATE board_game_deferred_donation
+                    SET state = 'IGNORED'
+                    WHERE room_id = ? AND state = 'QUEUED'
+                    """)) {
+                    statement.setString(1, roomId);
+                    statement.executeUpdate();
+                }
+
+                connection.commit();
+            } catch (SQLException error) {
+                connection.rollback();
+                throw error;
+            } finally {
+                connection.setAutoCommit(true);
+            }
         }
     }
 

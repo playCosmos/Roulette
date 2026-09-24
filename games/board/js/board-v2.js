@@ -6,7 +6,8 @@
   const MAX_COLUMNS = 64;
   const MAX_ROWS = 48;
   const STEP_DELAY_MS = 220;
-  const MAX_VISIBLE_TOKENS = 6;
+  const MAX_PLAYERS = 6;
+  const MAX_VISIBLE_TOKENS = MAX_PLAYERS;
 
   const params = new URLSearchParams(window.location.search);
   const DEMO_MODE = params.get("demo") === "1";
@@ -418,6 +419,10 @@
     if (!id) throw new Error("player id is required");
 
     const current = state.players.get(id);
+    if (!current && state.players.size >= MAX_PLAYERS) {
+      throw new Error("maximum players: " + MAX_PLAYERS);
+    }
+
     const player = {
       id,
       name,
@@ -672,6 +677,7 @@
     MIN_ROWS,
     MAX_COLUMNS,
     MAX_ROWS,
+    MAX_PLAYERS,
     registerPlayer,
     removePlayer,
     enqueueRoll,

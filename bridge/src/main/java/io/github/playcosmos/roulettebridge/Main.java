@@ -16,6 +16,7 @@ import io.github.playcosmos.roulettebridge.operations.WindowsConsoleEncoding;
 import io.github.playcosmos.roulettebridge.recovery.PhaseFProbe;
 import io.github.playcosmos.roulettebridge.recovery.TicketRecoveryService;
 import io.github.playcosmos.roulettebridge.room.RoomHttpHandler;
+import io.github.playcosmos.roulettebridge.room.RoomProbe;
 import io.github.playcosmos.roulettebridge.room.RoomService;
 import io.github.playcosmos.roulettebridge.server.BridgeHttpServer;
 import io.github.playcosmos.roulettebridge.server.OverlayWebSocketServer;

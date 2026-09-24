@@ -427,8 +427,8 @@
           continue;
         }
 
-        const occupiedWeight = occupancy.has(index) ? 0.18 : 1;
-        const sizeWeight = 1 / Math.pow(Math.max(0.42, scales[index]), 1.28);
+        const occupiedWeight = occupancy.has(index) ? 0.72 : 1;
+        const sizeWeight = 1 / Math.pow(Math.max(0.42, scales[index]), 0.72);
         const weight = projectedCapacity * occupiedWeight * sizeWeight;
         capacities.push({ projected, projectedCapacity, weight });
         weightTotal += weight;

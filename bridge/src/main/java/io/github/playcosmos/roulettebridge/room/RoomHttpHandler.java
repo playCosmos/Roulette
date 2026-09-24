@@ -91,10 +91,11 @@ public final class RoomHttpHandler implements HttpHandler {
                 if (!requireMethod(exchange, "POST")) return;
                 String roomId = route.substring(0, route.length() - "/pause".length());
                 var request = readOptionalPauseRequest(exchange);
-                sendJson(exchange, 200, rooms.pause(
+                runtime.pauseRoom(
                     roomId,
                     request == null ? null : request.donationMode()
-                ));
+                );
+                sendJson(exchange, 200, rooms.find(roomId));
                 return;
             }
 

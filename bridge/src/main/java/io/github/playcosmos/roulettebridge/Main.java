@@ -152,6 +152,10 @@ public final class Main {
             database,
             event -> websocket.broadcastTransient(GSON.toJson(event))
         );
+        int recoveredBoardQueue = boardRuntime.recoverQueuedDonations();
+        if (recoveredBoardQueue > 0) {
+            System.out.println("[board-game] recovered queued donations=" + recoveredBoardQueue);
+        }
         var adjustment = new ManualAdjustmentService(
             database,
             config.ticket(),

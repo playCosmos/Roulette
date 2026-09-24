@@ -22,6 +22,9 @@
 
   const params = new URLSearchParams(window.location.search);
   const DEMO_MODE = params.get("demo") === "1";
+  const ROOM_ID = String(params.get("roomId") || "").trim();
+  const ROOM_PREVIEW_MODE = params.get("preview") === "1";
+  const ROOM_BOARD_SOURCE = params.get("board") === "committed" ? "committed" : "preview";
   const DEMO_PLAYER_COUNT = Math.min(
     MAX_PLAYERS,
     Math.max(1, Number.parseInt(params.get("players") || "4", 10) || 4)
@@ -2187,22 +2190,145 @@
 
   window.RamyaniBoard = Object.freeze(api);
 
-  buildBoard();
-  renderGlobalState();
+  function roomCellLabel(cell) {
+    if (!cell) return "";
+    if (cell.index === 0 || cell.type === "START") return "START";
+    if (cell.label) return cell.label;
 
-  if (window.ResizeObserver && refs.boardStage) {
-    new ResizeObserver(scheduleLayout).observe(refs.boardStage);
-  } else {
-    window.addEventListener("resize", scheduleLayout);
+    const action = cell.action;
+    if (!action || typeof action !== "object") return cell.instructionId || "";
+
+    if (action.type === "move") {
+      const resolved = Number(action.resolvedSteps);
+      const fixed = Number(action.steps?.value);
+      const steps = Number.isFinite(resolved) ? resolved : fixed;
+      if (Number.isFinite(steps)) {
+        return (action.direction === "backward" ? "-" : "+") + Math.abs(steps);
+      }
+    }
+    if (action.type === "skipThrow") return "다음 던지기 스킵";
+    if (action.type === "extraThrow") return "한 번 더";
+    return cell.instructionId || "";
   }
 
-  if (DEMO_MODE) {
-    startDemo();
-  } else {
+  async function loadRoomBoard(roomId) {
+    const response = await fetch("/api/board/rooms/" + encodeURIComponent(roomId), {
+      cache: "no-store",
+      headers: { "Accept": "application/json" }
+    });
+
+    const text = await response.text();
+    let snapshot = {};
+    if (text) {
+      try { snapshot = JSON.parse(text); }
+      catch { snapshot = { error: text }; }
+    }
+    if (!response.ok) {
+      throw new Error(snapshot.error || (response.status + " " + response.statusText));
+    }
+
+    const configuredStyle = snapshot.config?.board?.layoutStyle || "rounded";
+    const expectedStyle = "rect";
+    if (configuredStyle !== expectedStyle) {
+      const target = configuredStyle === "rect" ? "rect.html" : "index.html";
+      const url = new URL(target, window.location.href);
+      url.searchParams.set("roomId", roomId);
+      if (ROOM_PREVIEW_MODE) url.searchParams.set("preview", "1");
+      if (ROOM_BOARD_SOURCE === "committed") url.searchParams.set("board", "committed");
+      window.location.replace(url.toString());
+      return null;
+    }
+
+    const source = ROOM_BOARD_SOURCE === "committed"
+      ? (snapshot.committedBoard || snapshot.preview)
+      : snapshot.preview;
+
+    if (!source) throw new Error("room board preview is missing");
+
+    const columns = Number(snapshot.config?.board?.columns);
+    const rows = Number(snapshot.config?.board?.rows);
+    if (!Number.isInteger(columns) || !Number.isInteger(rows)) {
+      throw new Error("room board dimensions are invalid");
+    }
+
+    board.columns = clamp(columns, MIN_COLUMNS, MAX_COLUMNS);
+    board.rows = clamp(rows, MIN_ROWS, MAX_ROWS);
+    board.cellCount = perimeterCellCount(board.columns, board.rows);
+
+    const cells = {};
+    for (const cell of source.cells || []) {
+      const index = Number(cell.index);
+      if (!Number.isInteger(index) || index < 0 || index >= board.cellCount) continue;
+      cells[index] = {
+        label: roomCellLabel(cell),
+        command: roomCellLabel(cell),
+        kind: index === 0 ? "start" : (cell.type === "NORMAL" ? "normal" : "instruction")
+      };
+    }
+
+    state.phasePlan = [{
+      id: "room-preview",
+      minTotalLaps: 0,
+      label: "ROOM PREVIEW",
+      description: snapshot.config?.name || "Room",
+      cells
+    }];
+    state.currentPhaseId = "room-preview";
+
+    buildBoard();
+    renderGlobalState();
+
+    if (ROOM_PREVIEW_MODE) {
+      for (const [index, player] of (snapshot.config?.players || []).entries()) {
+        registerPlayer({
+          id: player.soopId || ("preview-player-" + index),
+          name: player.displayName || player.soopId || ("참가자 " + (index + 1)),
+          shortLabel: String(player.displayName || player.soopId || (index + 1)).slice(0, 1),
+          position: 0
+        });
+      }
+    }
+
     setEventMessage(
+      (snapshot.config?.name || "룸") + " · " +
       board.columns + "×" + board.rows +
-      " · 외곽 " + board.cellCount +
-      "칸 방송 오버레이 준비 완료"
+      " · 외곽 " + board.cellCount + "칸"
     );
+    return snapshot;
   }
+
+  async function initialize() {
+    if (ROOM_ID) {
+      try {
+        const loaded = await loadRoomBoard(ROOM_ID);
+        if (!loaded) return;
+      } catch (error) {
+        buildBoard();
+        renderGlobalState();
+        setEventMessage("룸 프리뷰 로드 실패: " + error.message);
+        console.error("[board-room]", error);
+      }
+    } else {
+      buildBoard();
+      renderGlobalState();
+    }
+
+    if (window.ResizeObserver && refs.boardStage) {
+      new ResizeObserver(scheduleLayout).observe(refs.boardStage);
+    } else {
+      window.addEventListener("resize", scheduleLayout);
+    }
+
+    if (DEMO_MODE) {
+      startDemo();
+    } else if (!ROOM_ID) {
+      setEventMessage(
+        board.columns + "×" + board.rows +
+        " · 외곽 " + board.cellCount +
+        "칸 방송 오버레이 준비 완료"
+      );
+    }
+  }
+
+  initialize();
 })();

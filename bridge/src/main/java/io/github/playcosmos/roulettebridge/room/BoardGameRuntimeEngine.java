@@ -107,6 +107,8 @@ public final class BoardGameRuntimeEngine {
                 try (var statement = connection.prepareStatement("""
                     UPDATE board_room
                     SET lifecycle_state = 'TERMINATED',
+                        pause_requested_at = NULL,
+                        pause_grace_until = NULL,
                         terminated_at = COALESCE(terminated_at, ?),
                         updated_at = ?
                     WHERE room_id = ?
@@ -139,7 +141,8 @@ public final class BoardGameRuntimeEngine {
 
     public synchronized void pauseRoom(
         String roomId,
-        String donationMode
+        String donationMode,
+        Integer requestedGraceSeconds
     ) throws SQLException {
         String mode = donationMode == null
             ? null
@@ -151,24 +154,61 @@ public final class BoardGameRuntimeEngine {
         ) {
             throw new IllegalArgumentException("donationMode must be QUEUE or IGNORE");
         }
+        if (
+            requestedGraceSeconds != null
+            && (requestedGraceSeconds < 0
+                || requestedGraceSeconds > RoomService.MAX_PAUSE_GRACE_SECONDS)
+        ) {
+            throw new IllegalArgumentException(
+                "graceSeconds must be 0~" + RoomService.MAX_PAUSE_GRACE_SECONDS
+            );
+        }
 
-        try (var connection = database.open();
-             var statement = connection.prepareStatement("""
-                 UPDATE board_room
-                 SET lifecycle_state = 'PAUSED',
-                     pause_donation_mode = COALESCE(?, pause_donation_mode),
-                     updated_at = ?
-                 WHERE room_id = ?
-                   AND status = 'READY'
-                   AND lifecycle_state = 'ACTIVE'
-                   AND expires_at IS NOT NULL
-                   AND datetime(expires_at) > datetime('now')
-                 """)) {
-            statement.setString(1, mode);
-            statement.setString(2, Instant.now().toString());
-            statement.setString(3, roomId);
-            if (statement.executeUpdate() != 1) {
-                throw new IllegalStateException("room is not pausable or has expired");
+        try (var connection = database.open()) {
+            int configuredGrace = RoomService.DEFAULT_PAUSE_GRACE_SECONDS;
+            try (var select = connection.prepareStatement("""
+                SELECT pause_grace_seconds
+                FROM board_room
+                WHERE room_id = ?
+                """)) {
+                select.setString(1, roomId);
+                try (var rows = select.executeQuery()) {
+                    if (!rows.next()) {
+                        throw new IllegalStateException("room not found: " + roomId);
+                    }
+                    configuredGrace = rows.getInt(1);
+                }
+            }
+
+            int graceSeconds = requestedGraceSeconds == null
+                ? configuredGrace
+                : requestedGraceSeconds;
+            Instant pauseAt = Instant.now();
+            Instant graceUntil = pauseAt.plusSeconds(graceSeconds);
+
+            try (var statement = connection.prepareStatement("""
+                UPDATE board_room
+                SET lifecycle_state = 'PAUSED',
+                    pause_donation_mode = COALESCE(?, pause_donation_mode),
+                    pause_grace_seconds = ?,
+                    pause_requested_at = ?,
+                    pause_grace_until = ?,
+                    updated_at = ?
+                WHERE room_id = ?
+                  AND status = 'READY'
+                  AND lifecycle_state = 'ACTIVE'
+                  AND expires_at IS NOT NULL
+                  AND datetime(expires_at) > datetime('now')
+                """)) {
+                statement.setString(1, mode);
+                statement.setInt(2, graceSeconds);
+                statement.setString(3, pauseAt.toString());
+                statement.setString(4, graceUntil.toString());
+                statement.setString(5, pauseAt.toString());
+                statement.setString(6, roomId);
+                if (statement.executeUpdate() != 1) {
+                    throw new IllegalStateException("room is not pausable or has expired");
+                }
             }
         }
     }
@@ -181,6 +221,8 @@ public final class BoardGameRuntimeEngine {
              var statement = connection.prepareStatement("""
                  UPDATE board_room
                  SET lifecycle_state = 'ACTIVE',
+                     pause_requested_at = NULL,
+                     pause_grace_until = NULL,
                      updated_at = ?
                  WHERE room_id = ?
                    AND status = 'READY'
@@ -488,7 +530,8 @@ public final class BoardGameRuntimeEngine {
         var rooms = new ArrayList<RoomMatch>();
         try (var connection = database.open();
              var statement = connection.prepareStatement("""
-                 SELECT br.room_id, br.lifecycle_state, br.pause_donation_mode
+                 SELECT br.room_id, br.lifecycle_state, br.pause_donation_mode,
+                        br.pause_grace_until
                  FROM board_room br
                  JOIN board_room_player p ON p.room_id = br.room_id
                  WHERE br.status = 'READY'
@@ -507,7 +550,8 @@ public final class BoardGameRuntimeEngine {
                     rooms.add(new RoomMatch(
                         rows.getString("room_id"),
                         rows.getString("lifecycle_state"),
-                        rows.getString("pause_donation_mode")
+                        rows.getString("pause_donation_mode"),
+                        rows.getString("pause_grace_until")
                     ));
                 }
             }
@@ -525,9 +569,28 @@ public final class BoardGameRuntimeEngine {
                 return "DUPLICATE";
             }
 
-            String state = "IGNORE".equals(room.pauseDonationMode())
-                ? "IGNORED"
-                : "QUEUED";
+            String state;
+            if ("IGNORE".equals(room.pauseDonationMode())) {
+                state = "IGNORED";
+            } else {
+                boolean withinGrace = false;
+                if (room.pauseGraceUntil() != null && !room.pauseGraceUntil().isBlank()) {
+                    try {
+                        withinGrace = !Instant.now().isAfter(
+                            Instant.parse(room.pauseGraceUntil())
+                        );
+                    } catch (java.time.format.DateTimeParseException ignored) {
+                        try {
+                            withinGrace = !OffsetDateTime.now().isAfter(
+                                OffsetDateTime.parse(room.pauseGraceUntil())
+                            );
+                        } catch (java.time.format.DateTimeParseException ignoredAgain) {
+                            withinGrace = false;
+                        }
+                    }
+                }
+                state = withinGrace ? "QUEUED" : "IGNORED";
+            }
 
             try (var statement = connection.prepareStatement("""
                 INSERT INTO board_game_deferred_donation(
@@ -1279,7 +1342,8 @@ public final class BoardGameRuntimeEngine {
     private record RoomMatch(
         String roomId,
         String lifecycleState,
-        String pauseDonationMode
+        String pauseDonationMode,
+        String pauseGraceUntil
     ) {}
 
     private record DeferredDonation(

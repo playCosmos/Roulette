@@ -281,6 +281,16 @@
     yutFields.hidden = dice;
   }
 
+  function syncPauseDonationPolicy() {
+    const mode = form.elements.namedItem("pauseDonationMode")?.value || "QUEUE";
+    const grace = form.elements.namedItem("pauseGraceSeconds");
+    if (!grace) return;
+    grace.disabled = mode === "IGNORE";
+    grace.title = mode === "IGNORE"
+      ? "즉시 무시 모드에서는 유예시간을 사용하지 않습니다."
+      : "일시정지 후 이 시간 동안 들어온 후원만 큐에 저장합니다.";
+  }
+
   function collectPlayers() {
     return Array.from(playersRoot.querySelectorAll(".board-room-player-row")).map((row) => ({
       soopId: row.querySelector('[data-field="soopId"]').value.trim(),
@@ -658,6 +668,7 @@
   playerCount.addEventListener("change", renderPlayers);
   sizingMode.addEventListener("change", syncBoardSizing);
   generator.addEventListener("change", syncMovement);
+  form.elements.namedItem("pauseDonationMode")?.addEventListener("change", syncPauseDonationPolicy);
   randomPoolMode.addEventListener("change", syncAllInstructionRows);
 
   instructionRows.addEventListener("change", (event) => {
@@ -709,5 +720,6 @@
   renderPlayers();
   syncBoardSizing();
   syncMovement();
+  syncPauseDonationPolicy();
   syncAllInstructionRows();
 })();

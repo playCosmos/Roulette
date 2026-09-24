@@ -595,3 +595,5 @@ java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar
 ```
 
 또는 배포본에서는 `RouletteBridge.exe`를 직접 실행합니다. 배포본은 콘솔 창 대신 Windows 시스템 트레이에서 동작합니다.
+
+- v4 Dock 영향 범위: 플레이어 칸 2.00×, ±1칸 1.42×, ±2칸 1.14×까지만 적용하며 ±3칸부터는 1.00× 일반 크기

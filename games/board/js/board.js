@@ -386,6 +386,8 @@
     heights,
     desiredWidths,
     desiredHeights,
+    baseWidth,
+    baseHeight,
     points,
     scales,
     occupancy,
@@ -398,11 +400,16 @@
 
     const nextWidths = widths.slice();
     const nextHeights = heights.slice();
-    const fillCap = clamp(1.38 + ((density - 1) * 0.24), 1.38, 1.62);
-    let remaining = spare * 0.985;
+
+    // 여유 공간은 우선 "간격"이 아니라 작은 칸의 크기로 흡수한다.
+    // Dock 강조는 유지하되, 플레이어 반대편/코너의 축소 칸이 지나치게 작아서
+    // 넓은 빈틈이 생기는 상황을 막기 위해 최소한 기본 칸 크기 근처까지 복원한다.
+    const nominalFill = clamp(1.02 + ((density - 1) * 0.06), 1.02, 1.12);
+    const highlightedFill = clamp(1.08 + ((density - 1) * 0.05), 1.08, 1.16);
+    let remaining = spare * 0.998;
     let consumedTotal = 0;
 
-    for (let round = 0; round < 4 && remaining > 0.5; round += 1) {
+    for (let round = 0; round < 7 && remaining > 0.25; round += 1) {
       const capacities = [];
       let weightTotal = 0;
 
@@ -414,11 +421,18 @@
           nextHeights[index] * cornerCorrection,
           point.angle
         );
-        const maxWidth = desiredWidths[index] * fillCap;
-        const maxHeight = desiredHeights[index] * fillCap;
+
+        const isOccupied = occupancy.has(index);
+        const targetWidth = isOccupied
+          ? Math.max(desiredWidths[index], desiredWidths[index] * highlightedFill)
+          : Math.max(desiredWidths[index], baseWidth * nominalFill);
+        const targetHeight = isOccupied
+          ? Math.max(desiredHeights[index], desiredHeights[index] * highlightedFill)
+          : Math.max(desiredHeights[index], baseHeight * nominalFill);
+
         const roomFactor = Math.min(
-          maxWidth / Math.max(1, nextWidths[index]),
-          maxHeight / Math.max(1, nextHeights[index])
+          targetWidth / Math.max(1, nextWidths[index]),
+          targetHeight / Math.max(1, nextHeights[index])
         );
         const projectedCapacity = Math.max(0, projected * (roomFactor - 1));
 
@@ -427,9 +441,18 @@
           continue;
         }
 
-        const occupiedWeight = occupancy.has(index) ? 0.72 : 1;
-        const sizeWeight = 1 / Math.pow(Math.max(0.42, scales[index]), 0.72);
-        const weight = projectedCapacity * occupiedWeight * sizeWeight;
+        // 작은 칸일수록 더 높은 우선순위로 키운다.
+        // 같은 여유 공간에서 작은 칸들이 먼저 서로 비슷한 크기로 수렴하므로
+        // edge-to-edge 간격 편차가 빠르게 줄어든다.
+        const normalizedSize = projected / Math.max(
+          1,
+          projectedTangentSize(baseWidth, baseHeight, point.angle)
+        );
+        const equalizeWeight = 1 / Math.pow(Math.max(0.34, normalizedSize), 1.45);
+        const occupiedWeight = isOccupied ? 0.42 : 1;
+        const dockWeight = 1 / Math.pow(Math.max(0.42, scales[index]), 0.34);
+        const weight = projectedCapacity * equalizeWeight * occupiedWeight * dockWeight;
+
         capacities.push({ projected, projectedCapacity, weight });
         weightTotal += weight;
       }
@@ -548,6 +571,8 @@
           fittedHeights,
           desiredWidths,
           desiredHeights,
+          baseWidth,
+          baseHeight,
           points,
           scales,
           occupancy,
@@ -573,7 +598,8 @@
         extra = Math.max(0, path.perimeter - requiredTotal);
       }
 
-      // 셀 크기로 흡수하고도 남는 극소량만 전체 간격에 균등 분배한다.
+      // 셀 크기로 최대한 흡수하고도 남는 양만 모든 간격에 동일하게 더한다.
+      // 최종 목표는 "큰 칸 주변도, 작은 칸 주변도 같은 edge-to-edge 간격"이다.
       const uniformSlack = extra / board.cellCount;
       const nextPositions = new Array(board.cellCount);
       nextPositions[0] = 0;

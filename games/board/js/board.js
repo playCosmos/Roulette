@@ -1430,32 +1430,65 @@
     }
   }
 
-  function tokenOffsets(count, tokenSize) {
-    if (count <= 1) return [{ x: 0, y: 0 }];
+  function tokenLayout(count, baseTokenSize) {
+    if (count <= 1) {
+      return {
+        tokenSize: baseTokenSize,
+        slots: [{ tangent: 0, depth: 0 }]
+      };
+    }
 
-    const spacing = tokenSize * 0.58;
+    const scale =
+      count === 2 ? 0.94 :
+      count === 3 ? 0.88 :
+      count === 4 ? 0.82 :
+      0.74;
+
+    const tokenSize = baseTokenSize * scale;
+    const spacing = tokenSize * 0.92;
 
     if (count === 2) {
-      return [
-        { x: -spacing * 0.5, y: 0 },
-        { x: spacing * 0.5, y: 0 }
-      ];
-    }
-
-    if (count <= 4) {
-      return Array.from({ length: count }, (_, index) => ({
-        x: (index % 2 === 0 ? -1 : 1) * spacing * 0.46,
-        y: (index < 2 ? -1 : 1) * spacing * 0.46
-      }));
-    }
-
-    return Array.from({ length: count }, (_, index) => {
-      const angle = (-Math.PI / 2) + ((Math.PI * 2 * index) / count);
       return {
-        x: Math.cos(angle) * spacing * 0.72,
-        y: Math.sin(angle) * spacing * 0.72
+        tokenSize,
+        slots: [
+          { tangent: -spacing * 0.5, depth: 0 },
+          { tangent:  spacing * 0.5, depth: 0 }
+        ]
       };
-    });
+    }
+
+    if (count === 3) {
+      return {
+        tokenSize,
+        slots: [
+          { tangent: -spacing, depth: 0 },
+          { tangent: 0, depth: 0 },
+          { tangent: spacing, depth: 0 }
+        ]
+      };
+    }
+
+    // 4~6명은 안쪽 테두리를 따라 최대 3명씩 2열로 펼친다.
+    // 두 번째 열만 셀 중앙 쪽으로 한 칸 내려 지시문 가림을 최소화한다.
+    const firstRowCount = Math.min(3, count);
+    const secondRowCount = count - firstRowCount;
+    const slots = [];
+
+    for (let index = 0; index < firstRowCount; index += 1) {
+      slots.push({
+        tangent: (index - ((firstRowCount - 1) * 0.5)) * spacing,
+        depth: 0
+      });
+    }
+
+    for (let index = 0; index < secondRowCount; index += 1) {
+      slots.push({
+        tangent: (index - ((secondRowCount - 1) * 0.5)) * spacing,
+        depth: -(tokenSize * 0.82)
+      });
+    }
+
+    return { tokenSize, slots };
   }
 
   function layoutPlayerTokens(placements, occupancy) {
@@ -1469,24 +1502,27 @@
       if (!geometry) continue;
 
       const visiblePlayers = players.slice(0, MAX_PLAYERS);
-      const tokenSize = clamp(
+      const baseTokenSize = clamp(
         Math.min(geometry.width, geometry.height) * 0.46,
         18,
         62
       );
-      const offsets = tokenOffsets(visiblePlayers.length, tokenSize);
+      const layout = tokenLayout(visiblePlayers.length, baseTokenSize);
+      const tokenSize = layout.tokenSize;
 
       visiblePlayers.forEach((player, index) => {
         const token = playerTokenElements.get(player.id);
         if (!token) return;
 
-        const offset = offsets[index] || { x: 0, y: 0 };
+        const slot = layout.slots[index] || { tangent: 0, depth: 0 };
 
-        // 지시문/라벨 영역을 최대한 비우기 위해 말을 셀의
-        // 보드 안쪽 테두리에 거의 붙인다. 고정 비율이 아니라 실제 말 반지름과
-        // 셀 경계를 기준으로 계산해 셀 크기가 달라도 동일한 여백을 유지한다.
-        const inwardX = -Math.sin(geometry.point.angle);
-        const inwardY = Math.cos(geometry.point.angle);
+        // 지시문/라벨 영역을 최대한 비우기 위해 기본 중심은 셀의
+        // 보드 안쪽 테두리에 붙인다. 여러 명이면 tangent 방향으로 펼치고,
+        // 4~6명은 두 번째 열만 중앙 쪽으로 살짝 이동한다.
+        const tangentX = Math.cos(geometry.point.angle);
+        const tangentY = Math.sin(geometry.point.angle);
+        const inwardX = -tangentY;
+        const inwardY = tangentX;
         const tokenRadius = tokenSize * 0.5;
         const edgePadding = 2;
 
@@ -1510,12 +1546,12 @@
 
         let centerX =
           geometry.centerX +
-          (inwardX * inwardOffset) +
-          offset.x;
+          (inwardX * (inwardOffset + slot.depth)) +
+          (tangentX * slot.tangent);
         let centerY =
           geometry.centerY +
-          (inwardY * inwardOffset) +
-          offset.y;
+          (inwardY * (inwardOffset + slot.depth)) +
+          (tangentY * slot.tangent);
 
         // 여러 말 배치 오프셋이 있어도 셀 밖으로 튀어나오지 않게 최종 clamp.
         centerX = clamp(

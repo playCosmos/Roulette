@@ -1,0 +1,517 @@
+(() => {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const form = $("boardRoomForm");
+  if (!form) return;
+
+  const playerCount = $("boardRoomPlayerCount");
+  const playersRoot = $("boardRoomPlayers");
+  const sizingMode = $("boardRoomSizingMode");
+  const dimensionsFields = $("boardRoomDimensionsFields");
+  const cellCountField = $("boardRoomCellCountField");
+  const generator = $("boardRoomGenerator");
+  const diceFields = $("boardRoomDiceFields");
+  const yutFields = $("boardRoomYutFields");
+  const instructionRows = $("boardRoomInstructionRows");
+  const randomPoolMode = $("boardRoomRandomPoolMode");
+  const result = $("boardRoomResult");
+  const liveSummary = $("boardRoomLiveSummary");
+  const previewPanel = $("boardRoomPreviewPanel");
+  const previewFrame = $("boardRoomPreviewFrame");
+  const previewMeta = $("boardRoomPreviewMeta");
+  const rerollButton = $("boardRoomRerollButton");
+  const commitButton = $("boardRoomCommitButton");
+  const createButton = $("boardRoomCreateButton");
+
+  let currentRoom = null;
+  let instructionSequence = 0;
+
+  function showResult(text, tone = "") {
+    result.textContent = text;
+    result.className = "operation-result" + (tone ? " " + tone : "");
+  }
+
+  async function fetchJson(url, options = {}) {
+    const response = await fetch(url, {
+      cache: "no-store",
+      headers: {
+        "Accept": "application/json",
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(options.headers || {})
+      },
+      ...options
+    });
+    const text = await response.text();
+    let payload = {};
+    if (text) {
+      try { payload = JSON.parse(text); }
+      catch { payload = { error: text }; }
+    }
+    if (!response.ok) {
+      const details = Array.isArray(payload.details)
+        ? payload.details.map((item) => item.field + ": " + item.message).join(" / ")
+        : "";
+      throw new Error((payload.error || response.status + " " + response.statusText) + (details ? " · " + details : ""));
+    }
+    return payload;
+  }
+
+  function renderPlayers() {
+    const count = Math.max(1, Math.min(6, Number(playerCount.value) || 4));
+    playerCount.value = String(count);
+
+    const previous = Array.from(playersRoot.querySelectorAll(".board-room-player-row")).map((row) => ({
+      soopId: row.querySelector('[data-field="soopId"]')?.value || "",
+      displayName: row.querySelector('[data-field="displayName"]')?.value || "",
+      balloonTrigger: row.querySelector('[data-field="balloonTrigger"]')?.value || ""
+    }));
+
+    playersRoot.innerHTML = "";
+    for (let i = 0; i < count; i += 1) {
+      const saved = previous[i] || {};
+      const row = document.createElement("div");
+      row.className = "board-room-player-row";
+      row.innerHTML = `
+        <span class="board-room-player-index">P${i + 1}</span>
+        <label>SOOP ID
+          <input data-field="soopId" autocomplete="off" maxlength="120" required value="${escapeAttribute(saved.soopId || "")}" />
+        </label>
+        <label>표시 이름
+          <input data-field="displayName" autocomplete="off" maxlength="80" value="${escapeAttribute(saved.displayName || "")}" placeholder="미입력 시 SOOP ID" />
+        </label>
+        <label>정확 별풍선
+          <input data-field="balloonTrigger" type="number" min="1" step="1" required value="${escapeAttribute(saved.balloonTrigger || String((i + 1) * 100))}" />
+        </label>
+        <span class="board-room-inline-status" data-live-status>생성 시 확인</span>
+      `;
+      playersRoot.append(row);
+    }
+  }
+
+  function escapeAttribute(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+
+  function normalizeInstructionId(value, fallback) {
+    const clean = String(value || fallback)
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9_]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    return clean || ("CUSTOM_" + (++instructionSequence));
+  }
+
+  function uniqueInstructionId(base) {
+    const ids = new Set(
+      Array.from(instructionRows.querySelectorAll('[data-field="instructionId"]'))
+        .map((input) => input.value.trim().toUpperCase())
+    );
+    let candidate = normalizeInstructionId(base, "CUSTOM");
+    let suffix = 2;
+    while (ids.has(candidate)) candidate = normalizeInstructionId(base, "CUSTOM") + "_" + suffix++;
+    return candidate;
+  }
+
+  function addInstruction(kind) {
+    const presets = {
+      forward: { id: "MOVE_FORWARD", label: "전진", action: "move", direction: "forward" },
+      backward: { id: "MOVE_BACKWARD", label: "후진", action: "move", direction: "backward" },
+      skip: { id: "SKIP_NEXT_THROW", label: "다음 던지기 스킵", action: "skipThrow" },
+      extra: { id: "EXTRA_THROW", label: "한 번 더 던지기", action: "extraThrow" },
+      custom: { id: "CUSTOM", label: "사용자 지시문", action: "display" }
+    };
+    const preset = presets[kind] || presets.custom;
+    const id = uniqueInstructionId(preset.id);
+    const row = document.createElement("div");
+    row.className = "board-room-instruction-row";
+    row.dataset.actionType = preset.action;
+    row.innerHTML = `
+      <div class="board-room-instruction-head">
+        <strong>${escapeAttribute(preset.label)}</strong>
+        <button type="button" class="board-room-small-button" data-action="remove">삭제</button>
+      </div>
+      <div class="board-room-instruction-grid">
+        <label>ID
+          <input data-field="instructionId" value="${escapeAttribute(id)}" maxlength="80" required />
+        </label>
+        <label>표시 문구
+          <input data-field="label" value="${escapeAttribute(preset.label)}" maxlength="120" required />
+        </label>
+        <label>배치 방식
+          <select data-field="allocationMode">
+            <option value="ratio">비율</option>
+            <option value="count">수량</option>
+          </select>
+        </label>
+        <label>배치 값
+          <input data-field="allocationValue" type="number" min="0" max="100" step="1" value="10" required />
+        </label>
+      </div>
+      <div class="board-room-instruction-options">
+        <label class="check-label"><input data-field="rerollOnVacate" type="checkbox" />점유가 0명이 되면 지시문 랜덤 변경</label>
+        <label class="check-label"><input data-field="poolEnabled" type="checkbox" />랜덤 후보에 포함</label>
+        <label class="pool-weight">랜덤 가중치
+          <input data-field="poolWeight" type="number" min="0.0001" step="0.1" value="10" />
+        </label>
+      </div>
+      <div class="board-room-action-options"></div>
+    `;
+
+    instructionRows.append(row);
+    renderActionOptions(row, preset);
+    syncInstructionRow(row);
+  }
+
+  function renderActionOptions(row, preset) {
+    const root = row.querySelector(".board-room-action-options");
+    if (preset.action === "move") {
+      root.innerHTML = `
+        <span class="board-room-action-chip">${preset.direction === "backward" ? "후진" : "전진"}</span>
+        <label>N 설정
+          <select data-field="stepsMode">
+            <option value="fixed">고정</option>
+            <option value="range">범위 랜덤</option>
+          </select>
+        </label>
+        <label data-fixed-steps>N
+          <input data-field="stepsValue" type="number" min="1" max="999" step="1" value="1" />
+        </label>
+        <label data-range-min hidden>최소
+          <input data-field="stepsMin" type="number" min="1" max="999" step="1" value="1" />
+        </label>
+        <label data-range-max hidden>최대
+          <input data-field="stepsMax" type="number" min="1" max="999" step="1" value="4" />
+        </label>
+      `;
+      row.dataset.direction = preset.direction;
+    } else if (preset.action === "skipThrow") {
+      root.innerHTML = '<span class="board-room-action-chip">가장 가까운 다음 던지기 1회 취소</span>';
+    } else if (preset.action === "extraThrow") {
+      root.innerHTML = '<span class="board-room-action-chip">현재 칸 처리 후 추가 던지기 1회</span>';
+    } else {
+      root.innerHTML = '<span class="board-room-action-chip">표시/사용자 지시문</span>';
+    }
+  }
+
+  function syncInstructionRow(row) {
+    const mode = row.querySelector('[data-field="allocationMode"]').value;
+    const value = row.querySelector('[data-field="allocationValue"]');
+    value.max = mode === "ratio" ? "100" : "999";
+
+    const poolEnabled = row.querySelector('[data-field="poolEnabled"]');
+    const poolWeight = row.querySelector('[data-field="poolWeight"]');
+    const inherited = randomPoolMode.value === "inheritRatioInstructions";
+
+    if (inherited) {
+      poolEnabled.checked = mode === "ratio" && Number(value.value) > 0;
+      poolEnabled.disabled = true;
+      poolWeight.value = mode === "ratio" ? value.value : "0";
+      poolWeight.disabled = true;
+    } else {
+      poolEnabled.disabled = false;
+      poolWeight.disabled = !poolEnabled.checked;
+    }
+
+    const stepsMode = row.querySelector('[data-field="stepsMode"]');
+    if (stepsMode) {
+      const range = stepsMode.value === "range";
+      row.querySelector("[data-fixed-steps]").hidden = range;
+      row.querySelector("[data-range-min]").hidden = !range;
+      row.querySelector("[data-range-max]").hidden = !range;
+    }
+  }
+
+  function syncAllInstructionRows() {
+    instructionRows.querySelectorAll(".board-room-instruction-row").forEach(syncInstructionRow);
+  }
+
+  function syncBoardSizing() {
+    const cellMode = sizingMode.value === "cellCount";
+    dimensionsFields.hidden = cellMode;
+    cellCountField.hidden = !cellMode;
+  }
+
+  function syncMovement() {
+    const dice = generator.value === "dice";
+    diceFields.hidden = !dice;
+    yutFields.hidden = dice;
+  }
+
+  function collectPlayers() {
+    return Array.from(playersRoot.querySelectorAll(".board-room-player-row")).map((row) => ({
+      soopId: row.querySelector('[data-field="soopId"]').value.trim(),
+      displayName: row.querySelector('[data-field="displayName"]').value.trim(),
+      profileImageUrl: null,
+      balloonTrigger: Number(row.querySelector('[data-field="balloonTrigger"]').value)
+    }));
+  }
+
+  function collectInstruction(row) {
+    const id = normalizeInstructionId(row.querySelector('[data-field="instructionId"]').value, "CUSTOM");
+    row.querySelector('[data-field="instructionId"]').value = id;
+
+    const label = row.querySelector('[data-field="label"]').value.trim() || id;
+    const allocationMode = row.querySelector('[data-field="allocationMode"]').value;
+    const allocationValue = Number(row.querySelector('[data-field="allocationValue"]').value);
+    const actionType = row.dataset.actionType;
+
+    let action;
+    if (actionType === "move") {
+      const stepsMode = row.querySelector('[data-field="stepsMode"]').value;
+      action = {
+        type: "move",
+        direction: row.dataset.direction,
+        steps: stepsMode === "range"
+          ? {
+              mode: "range",
+              min: Number(row.querySelector('[data-field="stepsMin"]').value),
+              max: Number(row.querySelector('[data-field="stepsMax"]').value)
+            }
+          : {
+              mode: "fixed",
+              value: Number(row.querySelector('[data-field="stepsValue"]').value)
+            }
+      };
+    } else if (actionType === "skipThrow") {
+      action = { type: "skipThrow", count: 1 };
+    } else if (actionType === "extraThrow") {
+      action = { type: "extraThrow", count: 1 };
+    } else {
+      action = { type: "display", text: label };
+    }
+
+    return {
+      id,
+      label,
+      allocation: {
+        mode: allocationMode,
+        value: allocationValue
+      },
+      rerollOnVacate: row.querySelector('[data-field="rerollOnVacate"]').checked,
+      action
+    };
+  }
+
+  function collectRequest() {
+    const instructions = Array.from(
+      instructionRows.querySelectorAll(".board-room-instruction-row")
+    ).map(collectInstruction);
+
+    const customPool = [];
+    if (randomPoolMode.value === "custom") {
+      instructionRows.querySelectorAll(".board-room-instruction-row").forEach((row) => {
+        if (!row.querySelector('[data-field="poolEnabled"]').checked) return;
+        customPool.push({
+          instructionId: row.querySelector('[data-field="instructionId"]').value.trim(),
+          weight: Number(row.querySelector('[data-field="poolWeight"]').value)
+        });
+      });
+    }
+
+    const board = sizingMode.value === "cellCount"
+      ? {
+          sizingMode: "cellCount",
+          columns: null,
+          rows: null,
+          cellCount: Number(form.elements.namedItem("cellCount").value),
+          layoutStyle: form.elements.namedItem("layoutStyle").value
+        }
+      : {
+          sizingMode: "dimensions",
+          columns: Number(form.elements.namedItem("columns").value),
+          rows: Number(form.elements.namedItem("rows").value),
+          cellCount: null,
+          layoutStyle: form.elements.namedItem("layoutStyle").value
+        };
+
+    return {
+      name: form.elements.namedItem("roomName").value.trim() || "Room",
+      players: collectPlayers(),
+      board,
+      movement: {
+        generator: generator.value,
+        diceCount: Number(form.elements.namedItem("diceCount").value),
+        extraThrowOnDouble: form.elements.namedItem("extraThrowOnDouble").checked,
+        extraThrowOnYut: form.elements.namedItem("extraThrowOnYut").checked,
+        extraThrowOnMo: form.elements.namedItem("extraThrowOnMo").checked
+      },
+      rules: {
+        landingInstructionMode: "destinationOnly",
+        resolveLandingBeforeBonusThrow: true,
+        skipNextThrowConsumesBonus: true
+      },
+      instructions,
+      randomPool: {
+        mode: randomPoolMode.value,
+        entries: randomPoolMode.value === "custom" ? customPool : [],
+        allowSameInstruction: null
+      }
+    };
+  }
+
+  function liveText(status) {
+    switch (status) {
+      case "LIVE": return ["방송 중", "live"];
+      case "OFFLINE_OR_UNAVAILABLE": return ["오프라인", "offline"];
+      case "CHECK_FAILED": return ["확인 실패", "failed"];
+      default: return ["미확인", "unknown"];
+    }
+  }
+
+  function renderLiveStatuses(snapshot) {
+    liveSummary.innerHTML = "";
+    const players = snapshot?.config?.players || [];
+    players.forEach((player, index) => {
+      const [label, tone] = liveText(player.live?.status);
+      const card = document.createElement("article");
+      card.className = "board-room-live-card " + tone;
+      const detail = player.live?.status === "LIVE"
+        ? (player.live?.title || "방송 중")
+        : (player.live?.error || "현재 방송을 찾지 못했습니다.");
+      card.innerHTML = `
+        <div>
+          <strong>P${index + 1} · ${escapeAttribute(player.displayName || player.soopId)}</strong>
+          <span>${escapeAttribute(player.soopId)}</span>
+        </div>
+        <div class="board-room-live-state">
+          <b>${label}</b>
+          <span>${escapeAttribute(detail)}</span>
+        </div>
+      `;
+      liveSummary.append(card);
+
+      const row = playersRoot.querySelectorAll(".board-room-player-row")[index];
+      const inline = row?.querySelector("[data-live-status]");
+      if (inline) {
+        inline.textContent = label;
+        inline.dataset.status = tone;
+      }
+    });
+  }
+
+  function previewUrl(snapshot) {
+    const style = snapshot?.config?.board?.layoutStyle || "rounded";
+    const page = style === "rect" ? "./games/board/rect.html" : "./games/board/index.html";
+    const url = new URL(page, window.location.href);
+    url.searchParams.set("roomId", snapshot.roomId);
+    url.searchParams.set("preview", "1");
+    url.searchParams.set("_", String(Date.now()));
+    return url.toString();
+  }
+
+  function renderRoom(snapshot) {
+    currentRoom = snapshot;
+    renderLiveStatuses(snapshot);
+    previewPanel.hidden = false;
+    previewFrame.src = previewUrl(snapshot);
+
+    const board = snapshot.config?.board;
+    previewMeta.textContent =
+      snapshot.config?.name + " · " +
+      board.columns + "×" + board.rows +
+      " · " + board.cellCount + "칸 · " +
+      (board.layoutStyle === "rect" ? "직각" : "라운드") +
+      " · " + snapshot.status;
+
+    const ready = snapshot.status === "READY";
+    rerollButton.disabled = ready;
+    commitButton.disabled = ready;
+    commitButton.textContent = ready ? "배치 확정됨" : "이 배치로 확정";
+  }
+
+  async function createRoom(event) {
+    event.preventDefault();
+    createButton.disabled = true;
+    showResult("룸 설정 검증 및 참가자 방송 상태 확인 중…", "working");
+    try {
+      const snapshot = await fetchJson("/api/board/rooms", {
+        method: "POST",
+        body: JSON.stringify(collectRequest())
+      });
+      renderRoom(snapshot);
+      showResult("룸을 생성했습니다. 참가자 방송 상태와 보드 프리뷰를 확인하세요.", "success");
+    } catch (error) {
+      showResult("룸 생성 실패: " + error.message, "error-text");
+    } finally {
+      createButton.disabled = false;
+    }
+  }
+
+  async function rerollPreview() {
+    if (!currentRoom) return;
+    rerollButton.disabled = true;
+    showResult("보드 지시문을 다시 배치하는 중…", "working");
+    try {
+      const snapshot = await fetchJson(
+        "/api/board/rooms/" + encodeURIComponent(currentRoom.roomId) + "/preview/reroll",
+        { method: "POST" }
+      );
+      renderRoom(snapshot);
+      showResult("새 배치를 생성했습니다. START는 일반 칸으로 고정되어 있습니다.", "success");
+    } catch (error) {
+      showResult("재배치 실패: " + error.message, "error-text");
+    } finally {
+      if (currentRoom?.status !== "READY") rerollButton.disabled = false;
+    }
+  }
+
+  async function commitPreview() {
+    if (!currentRoom) return;
+    rerollButton.disabled = true;
+    commitButton.disabled = true;
+    showResult("현재 프리뷰를 룸 보드로 확정하는 중…", "working");
+    try {
+      const snapshot = await fetchJson(
+        "/api/board/rooms/" + encodeURIComponent(currentRoom.roomId) + "/preview/commit",
+        { method: "POST" }
+      );
+      renderRoom(snapshot);
+      showResult("보드 배치를 확정했습니다. 이후 전체 재배치는 차단됩니다.", "success");
+    } catch (error) {
+      showResult("배치 확정 실패: " + error.message, "error-text");
+      rerollButton.disabled = false;
+      commitButton.disabled = false;
+    }
+  }
+
+  playerCount.addEventListener("change", renderPlayers);
+  sizingMode.addEventListener("change", syncBoardSizing);
+  generator.addEventListener("change", syncMovement);
+  randomPoolMode.addEventListener("change", syncAllInstructionRows);
+
+  instructionRows.addEventListener("change", (event) => {
+    const row = event.target.closest(".board-room-instruction-row");
+    if (row) syncInstructionRow(row);
+  });
+  instructionRows.addEventListener("input", (event) => {
+    const row = event.target.closest(".board-room-instruction-row");
+    if (row && (
+      event.target.dataset.field === "allocationValue" ||
+      event.target.dataset.field === "poolWeight"
+    )) {
+      syncInstructionRow(row);
+    }
+  });
+  instructionRows.addEventListener("click", (event) => {
+    const button = event.target.closest('[data-action="remove"]');
+    if (button) button.closest(".board-room-instruction-row")?.remove();
+  });
+
+  document.querySelectorAll("[data-add-board-instruction]").forEach((button) => {
+    button.addEventListener("click", () => addInstruction(button.dataset.addBoardInstruction));
+  });
+
+  form.addEventListener("submit", createRoom);
+  rerollButton.addEventListener("click", rerollPreview);
+  commitButton.addEventListener("click", commitPreview);
+
+  renderPlayers();
+  syncBoardSizing();
+  syncMovement();
+  syncAllInstructionRows();
+})();

@@ -98,6 +98,15 @@
             <label>참가자 수
               <input id="boardRoomPlayerCount" type="number" min="1" max="6" step="1" value="4" />
             </label>
+            <label>룸 유지 시간(분)
+              <input name="retentionMinutes" type="number" min="1" max="480" step="1" value="240" />
+            </label>
+            <label>일시정지 중 후원
+              <select name="pauseDonationMode">
+                <option value="QUEUE" selected>큐에 누적 후 재개 시 순서대로 처리</option>
+                <option value="IGNORE">무시</option>
+              </select>
+            </label>
           </div>
         </fieldset>
 
@@ -164,12 +173,16 @@
 
         <fieldset>
           <legend>지시문 배치</legend>
+          <p class="board-room-rule-note">기본 아무 효과 없음 칸은 별도 배치하지 않은 나머지 칸입니다. 아래 기본 칸과 랜덤칸을 필요한 만큼 추가하세요.</p>
           <div class="board-room-instruction-toolbar">
-            <button type="button" class="board-room-small-button" data-add-board-instruction="forward">전진 추가</button>
-            <button type="button" class="board-room-small-button" data-add-board-instruction="backward">후진 추가</button>
-            <button type="button" class="board-room-small-button" data-add-board-instruction="skip">다음 던지기 스킵 추가</button>
-            <button type="button" class="board-room-small-button" data-add-board-instruction="extra">한 번 더 던지기 추가</button>
-            <button type="button" class="board-room-small-button" data-add-board-instruction="custom">사용자 지시문 추가</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="forward">+N칸 이동</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="backward">-N칸 이동</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="start">START로 이동</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="skip">다음 던지기 무효</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="multiplier">다음 던지기 M배</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="ignoreLanding">다음 도착 칸 효과 무시</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="random">랜덤칸</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="custom">사용자 지시문</button>
           </div>
           <div class="board-room-instruction-list" id="boardRoomInstructionRows"></div>
 
@@ -201,6 +214,9 @@
           <div class="board-room-preview-actions">
             <button type="button" id="boardRoomRerollButton">다시 배치</button>
             <button type="button" id="boardRoomCommitButton">이 배치로 확정</button>
+            <button type="button" id="boardRoomPauseButton" hidden>일시정지</button>
+            <button type="button" id="boardRoomResumeButton" hidden>재개</button>
+            <button type="button" id="boardRoomTerminateButton" hidden>룸 종료</button>
           </div>
         </div>
         <div class="board-room-preview-shell">

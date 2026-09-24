@@ -138,12 +138,31 @@ public final class RoomProbe {
                 "retention above 480 minutes must be rejected"
             );
 
+            var invalidPauseGrace = new CreateRoomRequest(
+                request.name(),
+                request.players(),
+                request.board(),
+                request.movement(),
+                request.rules(),
+                request.instructions(),
+                request.randomPool(),
+                240,
+                "QUEUE",
+                121
+            );
+            require(
+                rooms.validate(invalidPauseGrace).errors().stream()
+                    .anyMatch(error -> "pauseGraceSeconds".equals(error.field())),
+                "pause grace above 120 seconds must be rejected"
+            );
+
             var created = rooms.create(request);
             require("DRAFT".equals(created.status()), "room must start as DRAFT");
             require(created.lifecycle() != null, "room lifecycle must be returned");
             require("DRAFT".equals(created.lifecycle().state()), "new room lifecycle must start DRAFT");
             require(created.lifecycle().retentionMinutes() == 240, "default retention must be 240 minutes");
             require("QUEUE".equals(created.lifecycle().pauseDonationMode()), "pause donation default must be QUEUE");
+            require(created.lifecycle().pauseGraceSeconds() == 10, "pause grace default must be 10 seconds");
             require(created.lifecycle().expiresAt() != null, "room expiry timestamp must be persisted");
             require(created.config().board().columns() == 16, "52 cells must resolve to 16 columns");
             require(created.config().board().rows() == 12, "52 cells must resolve to 12 rows");

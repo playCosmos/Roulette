@@ -142,7 +142,7 @@ public final class BoardGameRuntimeEngine {
                 int initialPosition = player.position;
                 boolean openingThrowSkipped = false;
                 boolean safetyStopped = false;
-                var throws = new ArrayList<ResolvedThrow>();
+                var throwResolutions = new ArrayList<ResolvedThrow>();
                 var allCellUpdates = new ArrayList<CellUpdate>();
 
                 if (player.skipNextThrows > 0) {
@@ -230,7 +230,7 @@ public final class BoardGameRuntimeEngine {
                         }
 
                         allCellUpdates.addAll(updates);
-                        throws.add(new ResolvedThrow(
+                        throwResolutions.add(new ResolvedThrow(
                             throwIndex,
                             room.config().movement().generator(),
                             outcome.dice(),
@@ -293,7 +293,7 @@ public final class BoardGameRuntimeEngine {
                     openingThrowSkipped,
                     player.skipNextThrows,
                     safetyStopped,
-                    List.copyOf(throws),
+                    List.copyOf(throwResolutions),
                     List.copyOf(allCellUpdates),
                     createdAt
                 );
@@ -914,7 +914,7 @@ public final class BoardGameRuntimeEngine {
         boolean openingThrowSkipped,
         int skipNextThrowsAfter,
         boolean safetyStopped,
-        List<ResolvedThrow> throws,
+        List<ResolvedThrow> throwResolutions,
         List<CellUpdate> cellUpdates,
         String createdAt
     ) {}

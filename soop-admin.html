@@ -217,8 +217,8 @@
           <div class="board-room-preview-actions">
             <button type="button" id="boardRoomRerollButton">다시 배치</button>
             <button type="button" id="boardRoomCommitButton">이 배치로 확정</button>
-            <label class="board-room-inline-control" id="boardRoomExtendControl">연장(분)
-              <input id="boardRoomExtendMinutes" type="number" min="1" step="1" value="60" />
+            <label class="board-room-inline-control" id="boardRoomExtendControl">연장(분, 최대 120)
+              <input id="boardRoomExtendMinutes" type="number" min="1" max="120" step="1" value="60" />
             </label>
             <button type="button" id="boardRoomExtendButton">시간 연장</button>
             <button type="button" id="boardRoomPauseButton" hidden>일시정지</button>
@@ -312,7 +312,7 @@
     </section>
   </main>
   <script src="./soop/admin/soop-admin.js?v=20260917-1" defer></script>
-  <script src="./soop/admin/board-room-admin.js?v=20260925-6" defer></script>
+  <script src="./soop/admin/board-room-admin.js?v=20260925-7" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       const setupPanel = document.getElementById("setupPanel");

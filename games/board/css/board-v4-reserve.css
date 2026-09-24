@@ -173,11 +173,8 @@ body {
   font-weight: 900;
   line-height: 1;
   transform:
-    translate3d(
-      calc(var(--token-x, 0px) - (var(--token-size, 26px) / 2)),
-      calc(var(--token-y, 0px) - (var(--token-size, 26px) / 2)),
-      0
-    )
+    translate3d(var(--token-x, 0px), var(--token-y, 0px), 0)
+    translate(-50%, -50%)
     scale(1);
   transform-origin: center center;
   transition:

@@ -22,6 +22,8 @@ public final class RoomService {
     private static final int MIN_ROWS = 6;
     private static final int MAX_ROWS = 48;
     private static final int MAX_PLAYERS = 6;
+    public static final int DEFAULT_RETENTION_MINUTES = 240;
+    public static final int MAX_RETENTION_MINUTES = 480;
     private static final int MAX_SAFE_LAYOUT_ATTEMPTS = 256;
     private static final double TARGET_GRID_RATIO = 4.0d / 3.0d;
 
@@ -45,6 +47,9 @@ public final class RoomService {
             errors.add(new ValidationError("request", "room request is required"));
             return new ValidationResult(null, errors);
         }
+
+        int retentionMinutes = normalizeRetentionMinutes(request.retentionMinutes(), errors);
+        normalizePauseDonationMode(request.pauseDonationMode(), errors);
 
         String name = normalizeText(request.name(), "Room");
         List<PlayerConfig> players = normalizePlayers(request.players(), errors);
@@ -84,6 +89,12 @@ public final class RoomService {
         }
 
         var config = validation.config();
+        int retentionMinutes = request.retentionMinutes() == null
+            ? DEFAULT_RETENTION_MINUTES
+            : request.retentionMinutes();
+        String pauseDonationMode = request.pauseDonationMode() == null
+            ? "QUEUE"
+            : request.pauseDonationMode().trim().toUpperCase();
         var preview = generateSafePreview(config);
         var checkedPlayers = liveChecker.check(config.players());
         config = new NormalizedRoomConfig(
@@ -97,7 +108,9 @@ public final class RoomService {
         );
 
         String roomId = UUID.randomUUID().toString();
-        String now = OffsetDateTime.now().toString();
+        var createdAt = OffsetDateTime.now();
+        String now = createdAt.toString();
+        String expiresAt = createdAt.plusMinutes(retentionMinutes).toString();
 
         try (var connection = database.open()) {
             connection.setAutoCommit(false);
@@ -105,8 +118,11 @@ public final class RoomService {
                 try (var statement = connection.prepareStatement("""
                     INSERT INTO board_room(
                         room_id, name, status, config_json, preview_json,
-                        committed_board_json, preview_seed, created_at, updated_at
-                    ) VALUES (?, ?, 'DRAFT', ?, ?, NULL, ?, ?, ?)
+                        committed_board_json, preview_seed, created_at, updated_at,
+                        lifecycle_state, retention_minutes, expires_at,
+                        pause_donation_mode, terminated_at
+                    ) VALUES (?, ?, 'DRAFT', ?, ?, NULL, ?, ?, ?,
+                              'DRAFT', ?, ?, ?, NULL)
                     """)) {
                     statement.setString(1, roomId);
                     statement.setString(2, config.name());
@@ -115,6 +131,9 @@ public final class RoomService {
                     statement.setLong(5, preview.seed());
                     statement.setString(6, now);
                     statement.setString(7, now);
+                    statement.setInt(8, retentionMinutes);
+                    statement.setString(9, expiresAt);
+                    statement.setString(10, pauseDonationMode);
                     statement.executeUpdate();
                 }
 
@@ -136,17 +155,35 @@ public final class RoomService {
             preview,
             null,
             now,
-            now
+            now,
+            new RoomLifecycle(
+                "DRAFT",
+                retentionMinutes,
+                expiresAt,
+                pauseDonationMode,
+                0,
+                null
+            )
         );
     }
 
     public RoomSnapshot find(String roomId) throws SQLException {
+        terminateExpiredRooms();
+
         try (var connection = database.open();
              var statement = connection.prepareStatement("""
-                 SELECT room_id, status, config_json, preview_json,
-                        committed_board_json, created_at, updated_at
-                 FROM board_room
-                 WHERE room_id = ?
+                 SELECT br.room_id, br.status, br.config_json, br.preview_json,
+                        br.committed_board_json, br.created_at, br.updated_at,
+                        br.lifecycle_state, br.retention_minutes, br.expires_at,
+                        br.pause_donation_mode, br.terminated_at,
+                        (
+                          SELECT COUNT(*)
+                          FROM board_game_deferred_donation q
+                          WHERE q.room_id = br.room_id
+                            AND q.state = 'QUEUED'
+                        ) AS queued_donations
+                 FROM board_room br
+                 WHERE br.room_id = ?
                  """)) {
             statement.setString(1, roomId);
             try (var rows = statement.executeQuery()) {
@@ -166,7 +203,15 @@ public final class RoomService {
                     preview,
                     committed,
                     rows.getString("created_at"),
-                    rows.getString("updated_at")
+                    rows.getString("updated_at"),
+                    new RoomLifecycle(
+                        rows.getString("lifecycle_state"),
+                        rows.getInt("retention_minutes"),
+                        rows.getString("expires_at"),
+                        rows.getString("pause_donation_mode"),
+                        rows.getInt("queued_donations"),
+                        rows.getString("terminated_at")
+                    )
                 );
             }
         }
@@ -174,8 +219,12 @@ public final class RoomService {
 
     public RoomSnapshot rerollPreview(String roomId) throws SQLException {
         var current = find(roomId);
-        if (!"DRAFT".equals(current.status())) {
-            throw new IllegalStateException("committed room preview cannot be rerolled");
+        if (
+            !"DRAFT".equals(current.status())
+            || current.lifecycle() == null
+            || !"DRAFT".equals(current.lifecycle().state())
+        ) {
+            throw new IllegalStateException("room preview cannot be rerolled in current lifecycle state");
         }
 
         var preview = generateSafePreview(current.config());
@@ -203,7 +252,8 @@ public final class RoomService {
             preview,
             current.committedBoard(),
             current.createdAt(),
-            now
+            now,
+            current.lifecycle()
         );
     }
 
@@ -211,6 +261,12 @@ public final class RoomService {
         var current = find(roomId);
         if (!"DRAFT".equals(current.status())) {
             return current;
+        }
+        if (
+            current.lifecycle() == null
+            || !"DRAFT".equals(current.lifecycle().state())
+        ) {
+            throw new IllegalStateException("terminated room cannot be activated");
         }
 
         cycleValidator.requireSafe(current.preview());
@@ -232,6 +288,7 @@ public final class RoomService {
                 try (var statement = connection.prepareStatement("""
                     UPDATE board_room
                     SET status = 'READY',
+                        lifecycle_state = 'ACTIVE',
                         committed_board_json = ?,
                         updated_at = ?
                     WHERE room_id = ? AND status = 'DRAFT'
@@ -269,8 +326,100 @@ public final class RoomService {
             current.preview(),
             current.preview(),
             current.createdAt(),
-            now
+            now,
+            new RoomLifecycle(
+                "ACTIVE",
+                current.lifecycle().retentionMinutes(),
+                current.lifecycle().expiresAt(),
+                current.lifecycle().pauseDonationMode(),
+                current.lifecycle().queuedDonations(),
+                null
+            )
         );
+    }
+
+    public synchronized RoomSnapshot pause(
+        String roomId,
+        String requestedDonationMode
+    ) throws SQLException {
+        var current = find(roomId);
+        if (!"READY".equals(current.status())) {
+            throw new IllegalStateException("only committed rooms can be paused");
+        }
+        if (!"ACTIVE".equals(current.lifecycle().state())) {
+            throw new IllegalStateException("only active rooms can be paused");
+        }
+
+        var modeErrors = new ArrayList<ValidationError>();
+        String mode = normalizePauseDonationMode(
+            requestedDonationMode == null
+                ? current.lifecycle().pauseDonationMode()
+                : requestedDonationMode,
+            modeErrors
+        );
+        if (!modeErrors.isEmpty()) {
+            throw new RoomValidationException(modeErrors);
+        }
+
+        String now = OffsetDateTime.now().toString();
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 UPDATE board_room
+                 SET lifecycle_state = 'PAUSED',
+                     pause_donation_mode = ?,
+                     updated_at = ?
+                 WHERE room_id = ?
+                   AND status = 'READY'
+                   AND lifecycle_state = 'ACTIVE'
+                 """)) {
+            statement.setString(1, mode);
+            statement.setString(2, now);
+            statement.setString(3, roomId);
+            if (statement.executeUpdate() != 1) {
+                throw new IllegalStateException("room pause state changed concurrently");
+            }
+        }
+        return find(roomId);
+    }
+
+    public synchronized RoomSnapshot terminate(String roomId) throws SQLException {
+        var current = find(roomId);
+        if ("TERMINATED".equals(current.lifecycle().state())) return current;
+
+        String now = OffsetDateTime.now().toString();
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 UPDATE board_room
+                 SET lifecycle_state = 'TERMINATED',
+                     terminated_at = ?,
+                     updated_at = ?
+                 WHERE room_id = ?
+                   AND lifecycle_state <> 'TERMINATED'
+                 """)) {
+            statement.setString(1, now);
+            statement.setString(2, now);
+            statement.setString(3, roomId);
+            statement.executeUpdate();
+        }
+        return find(roomId);
+    }
+
+    public int terminateExpiredRooms() throws SQLException {
+        String now = OffsetDateTime.now().toString();
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 UPDATE board_room
+                 SET lifecycle_state = 'TERMINATED',
+                     terminated_at = COALESCE(terminated_at, ?),
+                     updated_at = ?
+                 WHERE lifecycle_state <> 'TERMINATED'
+                   AND expires_at IS NOT NULL
+                   AND datetime(expires_at) <= datetime('now')
+                 """)) {
+            statement.setString(1, now);
+            statement.setString(2, now);
+            return statement.executeUpdate();
+        }
     }
 
     private static String findActiveRoomId(
@@ -281,6 +430,7 @@ public final class RoomService {
             SELECT room_id
             FROM board_room
             WHERE status = 'READY'
+              AND lifecycle_state IN ('ACTIVE', 'PAUSED')
               AND room_id <> ?
             ORDER BY updated_at DESC
             LIMIT 1
@@ -295,8 +445,7 @@ public final class RoomService {
     private static boolean isSingleActiveRoomConstraint(SQLException error) {
         String message = error.getMessage();
         return message != null
-            && message.contains("UNIQUE constraint failed")
-            && message.contains("board_room.status");
+            && message.contains("UNIQUE constraint failed");
     }
 
     private static void insertPlayers(
@@ -650,6 +799,36 @@ public final class RoomService {
         }
 
         return new RandomPoolConfig(mode, List.copyOf(entries), allowSame);
+    }
+
+    private static int normalizeRetentionMinutes(
+        Integer requested,
+        List<ValidationError> errors
+    ) {
+        int value = requested == null ? DEFAULT_RETENTION_MINUTES : requested;
+        if (value < 1 || value > MAX_RETENTION_MINUTES) {
+            errors.add(new ValidationError(
+                "retentionMinutes",
+                "retentionMinutes must be 1~" + MAX_RETENTION_MINUTES
+            ));
+            return Math.max(1, Math.min(MAX_RETENTION_MINUTES, value));
+        }
+        return value;
+    }
+
+    private static String normalizePauseDonationMode(
+        String requested,
+        List<ValidationError> errors
+    ) {
+        String mode = normalizeText(requested, "QUEUE").toUpperCase();
+        if (!Set.of("QUEUE", "IGNORE").contains(mode)) {
+            errors.add(new ValidationError(
+                "pauseDonationMode",
+                "pauseDonationMode must be QUEUE or IGNORE"
+            ));
+            return "QUEUE";
+        }
+        return mode;
     }
 
     private BoardPreview generateSafePreview(NormalizedRoomConfig config) {

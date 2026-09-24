@@ -118,9 +118,13 @@ public final class BoardGameRuntimeEngine {
         String donationMode
     ) throws SQLException {
         String mode = donationMode == null
-            ? "QUEUE"
+            ? null
             : donationMode.trim().toUpperCase();
-        if (!"QUEUE".equals(mode) && !"IGNORE".equals(mode)) {
+        if (
+            mode != null
+            && !"QUEUE".equals(mode)
+            && !"IGNORE".equals(mode)
+        ) {
             throw new IllegalArgumentException("donationMode must be QUEUE or IGNORE");
         }
 
@@ -128,7 +132,7 @@ public final class BoardGameRuntimeEngine {
              var statement = connection.prepareStatement("""
                  UPDATE board_room
                  SET lifecycle_state = 'PAUSED',
-                     pause_donation_mode = ?,
+                     pause_donation_mode = COALESCE(?, pause_donation_mode),
                      updated_at = ?
                  WHERE room_id = ?
                    AND status = 'READY'

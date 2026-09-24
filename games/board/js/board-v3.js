@@ -13,7 +13,9 @@
   // 2) every cell scales uniformly in X/Y,
   // 3) every neighbor gap is one shared path gap,
   // 4) inactive cells all receive the same remaining-space base size.
-  const PLAYER_SCALE_PROFILE = [1.42, 1.22, 1.08, 1.02];
+  const PLAYER_SCALE_PROFILE = [1.72, 1.38, 1.16, 1.06];
+  const STACKED_PLAYER_BOOST = 0.22;
+  const MAX_STACKED_SCALE = 2.60;
 
   const params = new URLSearchParams(window.location.search);
   const DEMO_MODE = params.get("demo") === "1";
@@ -165,7 +167,8 @@
   }
 
   function scaleWeights() {
-    const positions = Array.from(state.players.values(), (player) => player.position);
+    const occupancy = occupancyByCell();
+    const positions = Array.from(occupancy.keys());
 
     if (!positions.length) {
       return Array.from({ length: board.cellCount }, () => 1);
@@ -178,6 +181,14 @@
         const distance = circularDistance(cellIndex, position);
         if (distance >= PLAYER_SCALE_PROFILE.length) continue;
         weight = Math.max(weight, PLAYER_SCALE_PROFILE[distance]);
+      }
+
+      const stackedCount = occupancy.get(cellIndex)?.length || 0;
+      if (stackedCount > 1) {
+        weight = Math.min(
+          MAX_STACKED_SCALE,
+          weight + ((stackedCount - 1) * STACKED_PLAYER_BOOST)
+        );
       }
 
       return weight;

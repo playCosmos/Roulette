@@ -48,6 +48,11 @@ body {
   inset: 0;
 }
 
+.board-stage[data-layout-ready="false"] .board-cell {
+  visibility: hidden;
+  transition: none !important;
+}
+
 .board-cell {
   position: absolute;
   overflow: hidden;

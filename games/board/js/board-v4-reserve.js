@@ -926,6 +926,19 @@
       startSlot = nearestSlot;
     }
 
+    if (physicalOrder[startSlot] !== 0) {
+      physicalOrder = buildPhysicalOrder(startSlot);
+      const physicalWeights = physicalOrder.map(
+        (logicalIndex) => logicalWeights[logicalIndex]
+      );
+      solved = solveReserveFirstLoop(
+        path,
+        aspect,
+        physicalWeights,
+        gap
+      );
+    }
+
     const logicalPlacements = remapPlacementsToLogical(
       solved.placements,
       physicalOrder

@@ -1944,7 +1944,13 @@
         generator: "yut",
         yut: {
           name,
-          steps: stepByName[name]
+          steps: stepByName[name],
+          faces: Array.isArray(event.yut?.faces)
+            ? event.yut.faces.slice(0, 4).map((face, index) => ({
+                face: face?.face === "flat" ? "flat" : "convex",
+                special: Boolean(face?.special) && index === 0
+              }))
+            : null
         },
         steps: stepByName[name],
         bonusThrow:

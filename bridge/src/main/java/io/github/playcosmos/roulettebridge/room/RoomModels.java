@@ -24,6 +24,22 @@ public final class RoomModels {
         int balloonTrigger
     ) {}
 
+    public record PlayerLiveStatus(
+        String status,
+        String bno,
+        String title,
+        String checkedAt,
+        String error
+    ) {}
+
+    public record PlayerConfig(
+        String soopId,
+        String displayName,
+        String profileImageUrl,
+        int balloonTrigger,
+        PlayerLiveStatus live
+    ) {}
+
     public record BoardInput(
         String sizingMode,
         Integer columns,
@@ -72,7 +88,7 @@ public final class RoomModels {
 
     public record NormalizedRoomConfig(
         String name,
-        List<PlayerInput> players,
+        List<PlayerConfig> players,
         BoardConfig board,
         MovementConfig movement,
         RulesConfig rules,

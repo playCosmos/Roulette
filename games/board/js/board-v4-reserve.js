@@ -559,33 +559,70 @@
   }
 
   function validatePlacements(placements, gap) {
-    const tolerance = Math.max(0.35, gap * 0.04);
-    let minimumDistance = Infinity;
+    // P0: 모든 순환 인접쌍의 실제 외곽 간격이 같은 값이어야 한다.
+    // 허용 오차는 렌더링 소수점/이분 탐색 오차만 허용한다.
+    const gapTolerance = Math.max(0.12, gap * 0.015);
+    const overlapTolerance = 0.08;
+    const adjacentGaps = [];
+
+    let minimumAdjacentGap = Infinity;
+    let maximumAdjacentGap = -Infinity;
+    let maximumGapError = 0;
+    let gapMismatchPair = null;
     let collisionPair = null;
 
+    for (let index = 0; index < placements.length; index += 1) {
+      const nextIndex = (index + 1) % placements.length;
+      const distance = polygonDistance(
+        placements[index].corners,
+        placements[nextIndex].corners
+      );
+
+      adjacentGaps.push(distance);
+      minimumAdjacentGap = Math.min(minimumAdjacentGap, distance);
+      maximumAdjacentGap = Math.max(maximumAdjacentGap, distance);
+
+      const error = Math.abs(distance - gap);
+      if (error > maximumGapError) {
+        maximumGapError = error;
+      }
+
+      if (error > gapTolerance && gapMismatchPair === null) {
+        gapMismatchPair = [index, nextIndex];
+      }
+    }
+
+    // 인접하지 않은 칸은 동일 gap 대상은 아니지만 절대 겹쳐서는 안 된다.
     for (let a = 0; a < placements.length; a += 1) {
       for (let b = a + 1; b < placements.length; b += 1) {
+        const isAdjacent =
+          b === a + 1 ||
+          (a === 0 && b === placements.length - 1);
+
+        if (isAdjacent) continue;
+
         const distance = polygonDistance(
           placements[a].corners,
           placements[b].corners
         );
 
-        minimumDistance = Math.min(minimumDistance, distance);
-
-        if (distance < gap - tolerance) {
+        if (distance <= overlapTolerance) {
           collisionPair = [a, b];
-          return {
-            valid: false,
-            minimumDistance,
-            collisionPair
-          };
+          break;
         }
       }
+
+      if (collisionPair) break;
     }
 
     return {
-      valid: true,
-      minimumDistance,
+      valid: gapMismatchPair === null && collisionPair === null,
+      adjacentGaps,
+      minimumAdjacentGap,
+      maximumAdjacentGap,
+      maximumGapError,
+      gapTolerance,
+      gapMismatchPair,
       collisionPair
     };
   }
@@ -628,7 +665,7 @@
       gap
     );
 
-    for (let iteration = 0; iteration < 30; iteration += 1) {
+    for (let iteration = 0; iteration < 42; iteration += 1) {
       const middle = (low + high) * 0.5;
       const trial = placeLoopWithWidths(
         path,
@@ -750,7 +787,7 @@
       highTrial = trialFor(high);
     }
 
-    for (let iteration = 0; iteration < 30; iteration += 1) {
+    for (let iteration = 0; iteration < 42; iteration += 1) {
       const middle = (low + high) * 0.5;
       const trial = trialFor(middle);
 
@@ -883,9 +920,18 @@
     refs.boardGrid.dataset.pathPerimeter = path.perimeter.toFixed(3);
     refs.boardGrid.dataset.requiredPerimeter = solved.requiredPerimeter.toFixed(3);
     refs.boardGrid.dataset.cellGap = solved.gap.toFixed(3);
-    refs.boardGrid.dataset.minimumCellDistance =
-      solved.validation.minimumDistance.toFixed(3);
-    refs.boardGrid.dataset.collisionFree = String(solved.validation.valid);
+    refs.boardGrid.dataset.minimumAdjacentGap =
+      solved.validation.minimumAdjacentGap.toFixed(3);
+    refs.boardGrid.dataset.maximumAdjacentGap =
+      solved.validation.maximumAdjacentGap.toFixed(3);
+    refs.boardGrid.dataset.maximumGapError =
+      solved.validation.maximumGapError.toFixed(3);
+    refs.boardGrid.dataset.equalGap = String(
+      solved.validation.gapMismatchPair === null
+    );
+    refs.boardGrid.dataset.collisionFree = String(
+      solved.validation.collisionPair === null
+    );
     refs.boardGrid.dataset.cellAspect = aspect.toFixed(6);
     refs.boardGrid.dataset.neutralCellWidth = solved.neutralWidth.toFixed(3);
     refs.boardGrid.dataset.normalCellWidth = solved.normalWidth.toFixed(3);

@@ -33,6 +33,8 @@ import java.awt.Desktop;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -166,12 +168,19 @@ public final class Main {
         var soop = new SoopBridgeAdapter(config, soopState, donation -> {
             try {
                 var gameResult = boardRuntime.process(donation);
-                if (gameResult.processedRooms() > 0 || gameResult.duplicateRooms() > 0) {
+                if (
+                    gameResult.processedRooms() > 0
+                    || gameResult.duplicateRooms() > 0
+                    || gameResult.queuedRooms() > 0
+                    || gameResult.ignoredRooms() > 0
+                ) {
                     System.out.println(
                         "[board-game] donor=" + donation.donorId()
                             + " balloons=" + donation.balloonCount()
                             + " matched=" + gameResult.matchedRooms()
                             + " processed=" + gameResult.processedRooms()
+                            + " queued=" + gameResult.queuedRooms()
+                            + " ignored=" + gameResult.ignoredRooms()
                             + " duplicates=" + gameResult.duplicateRooms()
                     );
                 }
@@ -213,6 +222,24 @@ public final class Main {
         );
 
         var roomService = new RoomService(database);
+        roomService.terminateExpiredRooms();
+
+        var roomLifecycleExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "board-room-lifecycle");
+            thread.setDaemon(true);
+            return thread;
+        });
+        roomLifecycleExecutor.scheduleAtFixedRate(() -> {
+            try {
+                int terminated = roomService.terminateExpiredRooms();
+                if (terminated > 0) {
+                    System.out.println("[board-room] auto-terminated expired rooms=" + terminated);
+                }
+            } catch (Exception error) {
+                System.err.println("[board-room] expiry scan failed: " + error.getMessage());
+            }
+        }, 1, 1, TimeUnit.MINUTES);
+
         var roomHttp = new RoomHttpHandler(roomService, boardRuntime);
 
         var http = new BridgeHttpServer(
@@ -253,6 +280,8 @@ public final class Main {
                     System.err.println("[shutdown] tray close failed: " + error.getMessage());
                 }
             }
+
+            roomLifecycleExecutor.shutdownNow();
 
             try {
                 http.close();

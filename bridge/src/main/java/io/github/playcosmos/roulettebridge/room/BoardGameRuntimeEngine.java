@@ -707,7 +707,7 @@ public final class BoardGameRuntimeEngine {
             definition.id(),
             definition.label(),
             resolveAction(definition.action()),
-            Boolean.TRUE.equals(definition.rerollOnVacate()),
+            current.rerollOnVacate(),
             false
         );
         board.cells().set(cellIndex, replacement);

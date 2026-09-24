@@ -87,6 +87,7 @@
   // 중앙 Throw 연출은 화면이 하나이므로 FIFO로 직렬화한다.
   // 결과 공개 이후의 말 이동은 기존 플레이어별 큐에서 독립적으로 진행된다.
   let throwPresentationQueue = Promise.resolve();
+  let roomTurnPlaybackQueue = Promise.resolve();
 
   const TOKEN_BASE_SIZE = 26;
   const MOTION_EPSILON = 0.025;
@@ -2414,6 +2415,35 @@
     }
   }
 
+  async function syncRoomRuntimeState() {
+    if (!ROOM_ID || ROOM_PREVIEW_MODE) return 0;
+
+    const response = await fetch(
+      "/api/board/rooms/" + encodeURIComponent(ROOM_ID) + "/runtime",
+      {
+        cache: "no-store",
+        headers: { "Accept": "application/json" }
+      }
+    );
+    if (!response.ok) return 0;
+
+    const runtime = await response.json();
+
+    for (const cell of runtime.board?.cells || []) {
+      applyCellUpdate({ cellIndex: cell.index, current: cell });
+    }
+
+    for (const runtimePlayer of runtime.players || []) {
+      const player = state.players.get(String(runtimePlayer.soopId));
+      if (!player) continue;
+      player.position = normalizeCell(runtimePlayer.position);
+      player.laps = Number(runtimePlayer.laps) || 0;
+    }
+    renderPlayers();
+
+    return Number(runtime.sequence) || 0;
+  }
+
   function connectRoomWebSocket() {
     if (!ROOM_ID || !ROOM_WS_URL || ROOM_PREVIEW_MODE) return;
 
@@ -2434,6 +2464,11 @@
 
       socket.addEventListener("open", () => {
         retryAttempt = 0;
+        syncRoomRuntimeState()
+          .then((sequence) => {
+            if (sequence > lastSequence) lastSequence = sequence;
+          })
+          .catch(() => {});
       });
 
       socket.addEventListener("message", (message) => {
@@ -2450,9 +2485,12 @@
         if (sequence && sequence <= lastSequence) return;
         if (sequence) lastSequence = sequence;
 
-        playResolvedTurn(payload).catch((error) => {
-          console.error("[board-room] turn playback failed", error);
-        });
+        roomTurnPlaybackQueue = roomTurnPlaybackQueue
+          .catch(() => undefined)
+          .then(() => playResolvedTurn(payload))
+          .catch((error) => {
+            console.error("[board-room] turn playback failed", error);
+          });
       });
 
       socket.addEventListener("close", schedule);

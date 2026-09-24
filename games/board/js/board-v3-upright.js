@@ -13,9 +13,11 @@
   // 2) every cell scales uniformly in X/Y,
   // 3) every neighbor gap is one shared path gap,
   // 4) inactive cells all receive the same remaining-space base size.
-  const PLAYER_SCALE_PROFILE = [1.72, 1.38, 1.16, 1.06];
-  const STACKED_PLAYER_BOOST = 0.22;
-  const MAX_STACKED_SCALE = 2.60;
+  // 3~4명 중심의 강한 대비 프로파일.
+  // 강조 칸이 둘레 공간을 더 가져가고 나머지 칸의 공통 base size가 줄어든다.
+  const PLAYER_SCALE_PROFILE = [2.20, 1.52, 1.18, 1.04];
+  const STACKED_PLAYER_BOOST = 0.34;
+  const MAX_STACKED_SCALE = 3.40;
 
   const params = new URLSearchParams(window.location.search);
   const DEMO_MODE = params.get("demo") === "1";

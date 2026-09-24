@@ -74,6 +74,7 @@
   const cellElements = new Map();
   const playerTokenElements = new Map();
   let layoutFrame = 0;
+  let previousScaleWeights = null;
 
   function normalizeCell(index) {
     const numeric = Number.parseInt(index, 10);
@@ -133,6 +134,7 @@
 
     refs.boardGrid.innerHTML = "";
     cellElements.clear();
+    previousScaleWeights = null;
 
     for (let index = 0; index < board.cellCount; index += 1) {
       const definition = cellDefinition(index);
@@ -914,7 +916,7 @@
     };
   }
 
-  function applyCellGeometry(index, geometry, weight, occupied) {
+  function applyCellGeometry(index, geometry, weight, occupied, motionMode) {
     const cell = cellElements.get(index);
     if (!cell) return;
 
@@ -945,6 +947,7 @@
     cell.style.zIndex = String(Math.round(weight * 100) + (occupied ? 200 : 0));
 
     cell.dataset.occupied = String(occupied);
+    cell.dataset.motion = motionMode || "neutral";
     cell.dataset.compact = String(
       Math.min(geometry.width, geometry.height) <= 30
     );
@@ -986,14 +989,28 @@
     );
 
     for (let index = 0; index < board.cellCount; index += 1) {
+      const previousWeight =
+        previousScaleWeights && Number.isFinite(previousScaleWeights[index])
+          ? previousScaleWeights[index]
+          : weights[index];
+
+      let motionMode = "neutral";
+      if (weights[index] > previousWeight + 0.001) {
+        motionMode = "approach";
+      } else if (weights[index] < previousWeight - 0.001) {
+        motionMode = "release";
+      }
+
       applyCellGeometry(
         index,
         solved.placements[index],
         weights[index],
-        occupancy.has(index)
+        occupancy.has(index),
+        motionMode
       );
     }
 
+    previousScaleWeights = weights.slice();
     layoutPlayerTokens(solved.placements, occupancy);
 
     refs.boardGrid.dataset.pathPerimeter = path.perimeter.toFixed(3);

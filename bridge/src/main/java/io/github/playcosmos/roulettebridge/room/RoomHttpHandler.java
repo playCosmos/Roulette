@@ -1,0 +1,152 @@
+package io.github.playcosmos.roulettebridge.room;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonParseException;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
+import java.util.Map;
+import java.util.NoSuchElementException;
+
+import static io.github.playcosmos.roulettebridge.room.RoomModels.*;
+
+public final class RoomHttpHandler implements HttpHandler {
+    private static final Gson GSON = new Gson();
+    private static final int MAX_REQUEST_BYTES = 1024 * 1024;
+    private static final String BASE = "/api/board/rooms";
+
+    private final RoomService rooms;
+
+    public RoomHttpHandler(RoomService rooms) {
+        this.rooms = rooms;
+    }
+
+    @Override
+    public void handle(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type");
+        exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+
+        if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+            return;
+        }
+
+        if (!isLoopback(exchange)) {
+            sendJson(exchange, 403, error("board room API is loopback-only"));
+            return;
+        }
+
+        String path = exchange.getRequestURI().getPath();
+        String suffix = path != null && path.startsWith(BASE)
+            ? path.substring(BASE.length())
+            : "";
+
+        try {
+            if ((suffix.isEmpty() || "/".equals(suffix))
+                && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                create(exchange);
+                return;
+            }
+
+            if (!suffix.startsWith("/")) {
+                sendJson(exchange, 404, error("Not Found"));
+                return;
+            }
+
+            String route = suffix.substring(1);
+            if (route.isBlank()) {
+                sendJson(exchange, 404, error("Not Found"));
+                return;
+            }
+
+            if (route.endsWith("/preview/reroll")) {
+                requireMethod(exchange, "POST");
+                if (exchange.getResponseCode() == 405) return;
+                String roomId = route.substring(0, route.length() - "/preview/reroll".length());
+                sendJson(exchange, 200, rooms.rerollPreview(roomId));
+                return;
+            }
+
+            if (route.endsWith("/preview/commit")) {
+                requireMethod(exchange, "POST");
+                if (exchange.getResponseCode() == 405) return;
+                String roomId = route.substring(0, route.length() - "/preview/commit".length());
+                sendJson(exchange, 200, rooms.commitPreview(roomId));
+                return;
+            }
+
+            if (route.contains("/")) {
+                sendJson(exchange, 404, error("Not Found"));
+                return;
+            }
+
+            requireMethod(exchange, "GET");
+            if (exchange.getResponseCode() == 405) return;
+            sendJson(exchange, 200, rooms.find(route));
+        } catch (RoomService.RoomValidationException error) {
+            sendJson(exchange, 400, Map.of(
+                "error", error.getMessage(),
+                "details", error.errors()
+            ));
+        } catch (IllegalArgumentException error) {
+            sendJson(exchange, 400, error(message(error)));
+        } catch (IllegalStateException error) {
+            sendJson(exchange, 409, error(message(error)));
+        } catch (NoSuchElementException error) {
+            sendJson(exchange, 404, error(message(error)));
+        } catch (SQLException error) {
+            error.printStackTrace(System.err);
+            sendJson(exchange, 500, error("database operation failed"));
+        }
+    }
+
+    private void create(HttpExchange exchange) throws IOException, SQLException {
+        byte[] bytes = exchange.getRequestBody().readNBytes(MAX_REQUEST_BYTES + 1);
+        if (bytes.length > MAX_REQUEST_BYTES) {
+            sendJson(exchange, 413, error("room request exceeds 1 MiB"));
+            return;
+        }
+
+        try {
+            var request = GSON.fromJson(
+                new String(bytes, StandardCharsets.UTF_8),
+                CreateRoomRequest.class
+            );
+            sendJson(exchange, 201, rooms.create(request));
+        } catch (JsonParseException error) {
+            sendJson(exchange, 400, RoomModels.error("invalid JSON body"));
+        }
+    }
+
+    private static void requireMethod(HttpExchange exchange, String method) throws IOException {
+        if (method.equalsIgnoreCase(exchange.getRequestMethod())) return;
+        exchange.getResponseHeaders().set("Allow", method);
+        exchange.sendResponseHeaders(405, -1);
+        exchange.close();
+    }
+
+    private static boolean isLoopback(HttpExchange exchange) {
+        return exchange.getRemoteAddress() != null
+            && exchange.getRemoteAddress().getAddress() != null
+            && exchange.getRemoteAddress().getAddress().isLoopbackAddress();
+    }
+
+    private static String message(Throwable error) {
+        String value = error.getMessage();
+        return value == null || value.isBlank() ? error.getClass().getSimpleName() : value;
+    }
+
+    private static void sendJson(HttpExchange exchange, int status, Object payload) throws IOException {
+        byte[] body = GSON.toJson(payload).getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+        exchange.sendResponseHeaders(status, body.length);
+        try (var output = exchange.getResponseBody()) {
+            output.write(body);
+        }
+    }
+}

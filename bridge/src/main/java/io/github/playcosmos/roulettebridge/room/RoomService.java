@@ -1,6 +1,8 @@
 package io.github.playcosmos.roulettebridge.room;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import io.github.playcosmos.roulettebridge.db.BridgeDatabase;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
@@ -704,6 +706,8 @@ public final class RoomService {
                 errors.add(new ValidationError(prefix + ".allocation.mode", "allocation mode must be count or ratio"));
             }
 
+            validateInstructionAction(instruction, prefix, errors);
+
             normalized.add(new InstructionInput(
                 id,
                 normalizeText(instruction.label(), id),
@@ -749,6 +753,7 @@ public final class RoomService {
 
         if ("inheritRatioInstructions".equalsIgnoreCase(mode)) {
             for (var instruction : instructions) {
+                if ("randomCell".equals(instructionActionType(instruction))) continue;
                 if (!"ratio".equals(instruction.allocation().mode())) continue;
                 if (instruction.allocation().value() <= 0.0d) continue;
                 entries.add(new RandomPoolEntry(
@@ -769,6 +774,14 @@ public final class RoomService {
                 String prefix = "randomPool.entries[" + i + "]";
                 if (entry == null || !byId.containsKey(entry.instructionId())) {
                     errors.add(new ValidationError(prefix + ".instructionId", "unknown instruction id"));
+                    continue;
+                }
+                var definition = byId.get(entry.instructionId());
+                if ("randomCell".equals(instructionActionType(definition))) {
+                    errors.add(new ValidationError(
+                        prefix + ".instructionId",
+                        "random-cell placeholder cannot be a random pool candidate"
+                    ));
                     continue;
                 }
                 if (!seen.add(entry.instructionId())) {
@@ -799,6 +812,83 @@ public final class RoomService {
         }
 
         return new RandomPoolConfig(mode, List.copyOf(entries), allowSame);
+    }
+
+    private static void validateInstructionAction(
+        InstructionInput instruction,
+        String prefix,
+        List<ValidationError> errors
+    ) {
+        JsonElement actionElement = instruction.action();
+        if (
+            actionElement == null
+            || actionElement.isJsonNull()
+            || !actionElement.isJsonObject()
+        ) {
+            return;
+        }
+
+        JsonObject action = actionElement.getAsJsonObject();
+        String type = jsonText(action, "type");
+
+        if ("multiplyNextThrow".equals(type)) {
+            int multiplier = jsonInt(action, "multiplier", 0);
+            if (multiplier < 2 || multiplier > 100) {
+                errors.add(new ValidationError(
+                    prefix + ".action.multiplier",
+                    "next throw multiplier must be 2~100"
+                ));
+            }
+        } else if ("randomCell".equals(type)) {
+            if (!Boolean.TRUE.equals(instruction.rerollOnVacate())) {
+                errors.add(new ValidationError(
+                    prefix + ".rerollOnVacate",
+                    "randomCell action requires rerollOnVacate=true"
+                ));
+            }
+            if (!"count".equalsIgnoreCase(instruction.allocation().mode())) {
+                errors.add(new ValidationError(
+                    prefix + ".allocation.mode",
+                    "randomCell action must use count allocation"
+                ));
+            }
+        } else if ("skipThrow".equals(type) || "ignoreNextLanding".equals(type)) {
+            if (jsonInt(action, "count", 1) < 1) {
+                errors.add(new ValidationError(
+                    prefix + ".action.count",
+                    "action count must be >= 1"
+                ));
+            }
+        }
+    }
+
+    private static String instructionActionType(InstructionInput instruction) {
+        if (
+            instruction == null
+            || instruction.action() == null
+            || !instruction.action().isJsonObject()
+        ) {
+            return "";
+        }
+        return jsonText(instruction.action().getAsJsonObject(), "type");
+    }
+
+    private static String jsonText(JsonObject object, String key) {
+        try {
+            JsonElement value = object.get(key);
+            return value != null && !value.isJsonNull() ? value.getAsString() : "";
+        } catch (RuntimeException ignored) {
+            return "";
+        }
+    }
+
+    private static int jsonInt(JsonObject object, String key, int fallback) {
+        try {
+            JsonElement value = object.get(key);
+            return value != null && !value.isJsonNull() ? value.getAsInt() : fallback;
+        } catch (RuntimeException ignored) {
+            return fallback;
+        }
     }
 
     private static int normalizeRetentionMinutes(

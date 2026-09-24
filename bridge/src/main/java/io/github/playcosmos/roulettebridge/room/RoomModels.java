@@ -36,6 +36,7 @@ public final class RoomModels {
                 instructions,
                 randomPool,
                 null,
+                null,
                 null
             );
         }
@@ -171,6 +172,9 @@ public final class RoomModels {
         int retentionMinutes,
         String expiresAt,
         String pauseDonationMode,
+        int pauseGraceSeconds,
+        String pauseRequestedAt,
+        String pauseGraceUntil,
         int queuedDonations,
         String terminatedAt
     ) {}

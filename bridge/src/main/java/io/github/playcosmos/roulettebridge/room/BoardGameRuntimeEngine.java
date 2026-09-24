@@ -436,6 +436,7 @@ public final class BoardGameRuntimeEngine {
             try (var rows = statement.executeQuery()) {
                 while (rows.next()) {
                     result.add(new MutablePlayer(
+                        roomId,
                         rows.getInt("player_index"),
                         rows.getString("soop_id"),
                         rows.getString("display_name"),
@@ -809,7 +810,7 @@ public final class BoardGameRuntimeEngine {
     ) {}
 
     private static final class MutablePlayer {
-        private String roomId;
+        private final String roomId;
         private final int playerIndex;
         private final String soopId;
         private final String displayName;
@@ -818,6 +819,7 @@ public final class BoardGameRuntimeEngine {
         private int skipNextThrows;
 
         private MutablePlayer(
+            String roomId,
             int playerIndex,
             String soopId,
             String displayName,
@@ -825,6 +827,7 @@ public final class BoardGameRuntimeEngine {
             int laps,
             int skipNextThrows
         ) {
+            this.roomId = roomId;
             this.playerIndex = playerIndex;
             this.soopId = soopId;
             this.displayName = displayName;

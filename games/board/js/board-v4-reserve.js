@@ -561,7 +561,7 @@
   function validatePlacements(placements, gap) {
     // P0: 모든 순환 인접쌍의 실제 외곽 간격이 같은 값이어야 한다.
     // 허용 오차는 렌더링 소수점/이분 탐색 오차만 허용한다.
-    const gapTolerance = Math.max(0.12, gap * 0.015);
+    const gapTolerance = 0.05;
     const overlapTolerance = 0.08;
     const adjacentGaps = [];
 

@@ -18,7 +18,21 @@ public final class RoomProbe {
             root = Files.createTempDirectory("roulette-room-probe-");
             var database = new BridgeDatabase(root.resolve("probe.db"));
             database.initialize();
-            var rooms = new RoomService(database);
+            var rooms = new RoomService(database, players -> players.stream()
+                .map(player -> new PlayerConfig(
+                    player.soopId(),
+                    player.displayName(),
+                    player.profileImageUrl(),
+                    player.balloonTrigger(),
+                    new PlayerLiveStatus(
+                        "LIVE",
+                        "probe-bno-" + player.soopId(),
+                        "Probe " + player.displayName(),
+                        "2026-09-25T00:00:00+09:00",
+                        null
+                    )
+                ))
+                .toList());
 
             var request = new CreateRoomRequest(
                 "Room Probe",
@@ -85,6 +99,11 @@ public final class RoomProbe {
                 "skip-next-throw must consume pending bonus throw"
             );
             require(created.preview().cells().size() == 52, "preview cell count mismatch");
+            require(
+                created.config().players().stream()
+                    .allMatch(player -> player.live() != null && "LIVE".equals(player.live().status())),
+                "participant live checks must be persisted in room config"
+            );
 
             var start = created.preview().cells().get(0);
             require(start.locked(), "START must be locked");
@@ -144,6 +163,10 @@ public final class RoomProbe {
             var loaded = rooms.find(created.roomId());
             require("READY".equals(loaded.status()), "READY room must survive database reload");
             require(loaded.config().players().get(0).balloonTrigger() == 100, "exact donation trigger lost");
+            require(
+                "LIVE".equals(loaded.config().players().get(0).live().status()),
+                "participant live status lost after database reload"
+            );
 
             System.out.println("[room-probe] PASS room=" + created.roomId());
             return 0;

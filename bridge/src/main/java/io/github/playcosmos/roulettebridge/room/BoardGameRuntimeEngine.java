@@ -217,10 +217,13 @@ public final class BoardGameRuntimeEngine {
                         throwIndex += 1;
                         int throwStart = player.position;
                         var outcome = roll(room.config().movement());
+                        int appliedMultiplier = Math.max(1, player.nextThrowMultiplier);
+                        player.nextThrowMultiplier = 1;
+                        int effectiveSteps = outcome.steps() * appliedMultiplier;
 
                         int throwLanding = advancePlayer(
                             player,
-                            outcome.steps(),
+                            effectiveSteps,
                             room.config().board().cellCount()
                         );
 
@@ -273,6 +276,8 @@ public final class BoardGameRuntimeEngine {
                             outcome.dice(),
                             outcome.yut(),
                             outcome.steps(),
+                            appliedMultiplier,
+                            effectiveSteps,
                             throwStart,
                             throwLanding,
                             player.position,
@@ -581,7 +586,8 @@ public final class BoardGameRuntimeEngine {
         var result = new ArrayList<MutablePlayer>();
         try (var statement = connection.prepareStatement("""
             SELECT ps.player_index, ps.soop_id, ps.position, ps.laps,
-                   ps.skip_next_throws, p.display_name
+                   ps.skip_next_throws, ps.next_throw_multiplier,
+                   ps.ignore_next_landing_effects, p.display_name
             FROM board_game_player_state ps
             JOIN board_room_player p
               ON p.room_id = ps.room_id
@@ -599,7 +605,9 @@ public final class BoardGameRuntimeEngine {
                         rows.getString("display_name"),
                         rows.getInt("position"),
                         rows.getInt("laps"),
-                        rows.getInt("skip_next_throws")
+                        rows.getInt("skip_next_throws"),
+                        rows.getInt("next_throw_multiplier"),
+                        rows.getInt("ignore_next_landing_effects")
                     ));
                 }
             }
@@ -614,15 +622,19 @@ public final class BoardGameRuntimeEngine {
     ) throws SQLException {
         try (var statement = connection.prepareStatement("""
             UPDATE board_game_player_state
-            SET position = ?, laps = ?, skip_next_throws = ?, updated_at = ?
+            SET position = ?, laps = ?, skip_next_throws = ?,
+                next_throw_multiplier = ?, ignore_next_landing_effects = ?,
+                updated_at = ?
             WHERE room_id = ? AND player_index = ?
             """)) {
             statement.setInt(1, player.position);
             statement.setInt(2, player.laps);
             statement.setInt(3, player.skipNextThrows);
-            statement.setString(4, updatedAt);
-            statement.setString(5, player.roomId);
-            statement.setInt(6, player.playerIndex);
+            statement.setInt(4, player.nextThrowMultiplier);
+            statement.setInt(5, player.ignoreNextLandingEffects);
+            statement.setString(6, updatedAt);
+            statement.setString(7, player.roomId);
+            statement.setInt(8, player.playerIndex);
             statement.executeUpdate();
         }
     }
@@ -773,14 +785,32 @@ public final class BoardGameRuntimeEngine {
 
             String type = actionType(landingAction);
             Integer actionMoveSteps = null;
+            boolean effectIgnored = false;
 
-            if ("skipThrow".equals(type)) {
+            if (player.ignoreNextLandingEffects > 0) {
+                player.ignoreNextLandingEffects -= 1;
+                effectIgnored = true;
+            } else if ("skipThrow".equals(type)) {
                 player.skipNextThrows += positiveInt(landingAction, "count", 1);
             } else if ("extraThrow".equals(type)) {
                 pendingBonusThrows += positiveInt(landingAction, "count", 1);
             } else if ("move".equals(type)) {
                 int moveSteps = resolvedMoveSteps(landingAction);
                 if (moveSteps != 0) actionMoveSteps = moveSteps;
+            } else if ("moveToStart".equals(type)) {
+                if (player.position != 0) actionMoveSteps = -player.position;
+            } else if ("multiplyNextThrow".equals(type)) {
+                player.nextThrowMultiplier = positiveInt(
+                    landingAction,
+                    "multiplier",
+                    2
+                );
+            } else if ("ignoreNextLanding".equals(type)) {
+                player.ignoreNextLandingEffects += positiveInt(
+                    landingAction,
+                    "count",
+                    1
+                );
             }
 
             landings.add(new LandingResolution(
@@ -788,7 +818,8 @@ public final class BoardGameRuntimeEngine {
                 landingCell.instructionId(),
                 landingCell.label(),
                 landingAction,
-                actionMoveSteps
+                actionMoveSteps,
+                effectIgnored
             ));
 
             if (actionMoveSteps == null) {
@@ -1118,6 +1149,8 @@ public final class BoardGameRuntimeEngine {
         private int position;
         private int laps;
         private int skipNextThrows;
+        private int nextThrowMultiplier;
+        private int ignoreNextLandingEffects;
 
         private MutablePlayer(
             String roomId,
@@ -1126,7 +1159,9 @@ public final class BoardGameRuntimeEngine {
             String displayName,
             int position,
             int laps,
-            int skipNextThrows
+            int skipNextThrows,
+            int nextThrowMultiplier,
+            int ignoreNextLandingEffects
         ) {
             this.roomId = roomId;
             this.playerIndex = playerIndex;
@@ -1135,6 +1170,8 @@ public final class BoardGameRuntimeEngine {
             this.position = position;
             this.laps = laps;
             this.skipNextThrows = skipNextThrows;
+            this.nextThrowMultiplier = Math.max(1, nextThrowMultiplier);
+            this.ignoreNextLandingEffects = Math.max(0, ignoreNextLandingEffects);
         }
 
         private RuntimePlayer snapshot() {
@@ -1144,7 +1181,9 @@ public final class BoardGameRuntimeEngine {
                 displayName,
                 position,
                 laps,
-                skipNextThrows
+                skipNextThrows,
+                nextThrowMultiplier,
+                ignoreNextLandingEffects
             );
         }
     }
@@ -1171,7 +1210,8 @@ public final class BoardGameRuntimeEngine {
         String instructionId,
         String label,
         JsonElement action,
-        Integer actionMoveSteps
+        Integer actionMoveSteps,
+        boolean effectIgnored
     ) {}
 
     public record CellUpdate(
@@ -1186,6 +1226,8 @@ public final class BoardGameRuntimeEngine {
         String generator,
         DiceResult dice,
         YutResult yut,
+        int rawSteps,
+        int appliedMultiplier,
         int steps,
         int startPosition,
         int throwLandingPosition,
@@ -1227,7 +1269,9 @@ public final class BoardGameRuntimeEngine {
         String displayName,
         int position,
         int laps,
-        int skipNextThrows
+        int skipNextThrows,
+        int nextThrowMultiplier,
+        int ignoreNextLandingEffects
     ) {}
 
     public record RuntimeSnapshot(

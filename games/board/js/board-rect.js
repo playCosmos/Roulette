@@ -1472,22 +1472,52 @@
 
         const offset = offsets[index] || { x: 0, y: 0 };
 
-        // 지시문/라벨을 가리지 않도록 말 기준점을 셀 중심이 아니라
-        // 보드 안쪽 면으로 이동한다. 셀 자체는 회전하지 않지만
-        // path tangent에서 구한 inward normal은 모든 변/코너에서 일관된다.
+        // 지시문/라벨 영역을 최대한 비우기 위해 말을 셀의
+        // 보드 안쪽 테두리에 거의 붙인다. 고정 비율이 아니라 실제 말 반지름과
+        // 셀 경계를 기준으로 계산해 셀 크기가 달라도 동일한 여백을 유지한다.
         const inwardX = -Math.sin(geometry.point.angle);
         const inwardY = Math.cos(geometry.point.angle);
-        const inwardOffset =
-          Math.min(geometry.width, geometry.height) * 0.20;
+        const tokenRadius = tokenSize * 0.5;
+        const edgePadding = 2;
 
-        const centerX =
+        const maxOffsetX =
+          Math.abs(inwardX) > 0.0001
+            ? Math.max(
+                0,
+                ((geometry.width * 0.5) - tokenRadius - edgePadding) /
+                  Math.abs(inwardX)
+              )
+            : Infinity;
+        const maxOffsetY =
+          Math.abs(inwardY) > 0.0001
+            ? Math.max(
+                0,
+                ((geometry.height * 0.5) - tokenRadius - edgePadding) /
+                  Math.abs(inwardY)
+              )
+            : Infinity;
+        const inwardOffset = Math.min(maxOffsetX, maxOffsetY);
+
+        let centerX =
           geometry.centerX +
           (inwardX * inwardOffset) +
           offset.x;
-        const centerY =
+        let centerY =
           geometry.centerY +
           (inwardY * inwardOffset) +
           offset.y;
+
+        // 여러 말 배치 오프셋이 있어도 셀 밖으로 튀어나오지 않게 최종 clamp.
+        centerX = clamp(
+          centerX,
+          geometry.centerX - (geometry.width * 0.5) + tokenRadius + edgePadding,
+          geometry.centerX + (geometry.width * 0.5) - tokenRadius - edgePadding
+        );
+        centerY = clamp(
+          centerY,
+          geometry.centerY - (geometry.height * 0.5) + tokenRadius + edgePadding,
+          geometry.centerY + (geometry.height * 0.5) - tokenRadius - edgePadding
+        );
 
         token.dataset.cellIndex = String(cellIndex);
         token.dataset.stacked = String(visiblePlayers.length > 1);

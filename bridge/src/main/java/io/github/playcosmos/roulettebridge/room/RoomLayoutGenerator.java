@@ -39,11 +39,51 @@ public final class RoomLayoutGenerator {
         }
 
         // 비율 배치는 수량 배치 이후 남은 슬롯을 기준으로 계산한다.
+        // 각 항목을 단순 floor하면 전체 비율이 100%여도 빈 칸이 생길 수 있으므로,
+        // 목표 총 칸 수를 정한 뒤 largest-remainder 방식으로 정수 칸 수를 배분한다.
         int ratioBase = assignable - cursor;
-        for (var instruction : config.instructions()) {
-            if (!"ratio".equals(instruction.allocation().mode())) continue;
-            int count = (int) Math.floor(ratioBase * instruction.allocation().value() / 100.0d);
-            for (int i = 0; i < count && cursor < freeSlots.size(); i++) {
+        var ratioInstructions = config.instructions().stream()
+            .filter(instruction -> "ratio".equals(instruction.allocation().mode()))
+            .toList();
+
+        double ratioTotal = ratioInstructions.stream()
+            .mapToDouble(instruction -> instruction.allocation().value())
+            .sum();
+
+        int ratioTarget = Math.min(
+            ratioBase,
+            (int) Math.round(ratioBase * ratioTotal / 100.0d)
+        );
+
+        int[] ratioCounts = new int[ratioInstructions.size()];
+        double[] remainders = new double[ratioInstructions.size()];
+        int allocatedRatio = 0;
+
+        for (int i = 0; i < ratioInstructions.size(); i++) {
+            double exact = ratioBase
+                * ratioInstructions.get(i).allocation().value()
+                / 100.0d;
+            int whole = (int) Math.floor(exact);
+            ratioCounts[i] = whole;
+            remainders[i] = exact - whole;
+            allocatedRatio += whole;
+        }
+
+        var remainderOrder = new ArrayList<Integer>(ratioInstructions.size());
+        for (int i = 0; i < ratioInstructions.size(); i++) remainderOrder.add(i);
+        remainderOrder.sort((left, right) -> {
+            int fraction = Double.compare(remainders[right], remainders[left]);
+            return fraction != 0 ? fraction : Integer.compare(left, right);
+        });
+
+        int extra = Math.max(0, ratioTarget - allocatedRatio);
+        for (int i = 0; i < extra && i < remainderOrder.size(); i++) {
+            ratioCounts[remainderOrder.get(i)] += 1;
+        }
+
+        for (int index = 0; index < ratioInstructions.size(); index++) {
+            var instruction = ratioInstructions.get(index);
+            for (int i = 0; i < ratioCounts[index] && cursor < freeSlots.size(); i++) {
                 assignments.set(freeSlots.get(cursor++), instruction);
             }
         }

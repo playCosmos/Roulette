@@ -90,6 +90,38 @@ public final class BoardGameRuntimeEngine {
         );
     }
 
+    public synchronized void pauseRoom(
+        String roomId,
+        String donationMode
+    ) throws SQLException {
+        String mode = donationMode == null
+            ? "QUEUE"
+            : donationMode.trim().toUpperCase();
+        if (!"QUEUE".equals(mode) && !"IGNORE".equals(mode)) {
+            throw new IllegalArgumentException("donationMode must be QUEUE or IGNORE");
+        }
+
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 UPDATE board_room
+                 SET lifecycle_state = 'PAUSED',
+                     pause_donation_mode = ?,
+                     updated_at = ?
+                 WHERE room_id = ?
+                   AND status = 'READY'
+                   AND lifecycle_state = 'ACTIVE'
+                   AND expires_at IS NOT NULL
+                   AND datetime(expires_at) > datetime('now')
+                 """)) {
+            statement.setString(1, mode);
+            statement.setString(2, Instant.now().toString());
+            statement.setString(3, roomId);
+            if (statement.executeUpdate() != 1) {
+                throw new IllegalStateException("room is not pausable or has expired");
+            }
+        }
+    }
+
     public synchronized ResumeResult resumeRoom(String roomId) throws SQLException {
         var events = new ArrayList<BoardTurnEvent>();
         int duplicateCount = 0;
@@ -914,6 +946,8 @@ public final class BoardGameRuntimeEngine {
         for (var entry : board.rerollPool()) {
             if (entry == null || entry.weight() <= 0.0d) continue;
             if (!instructionById.containsKey(entry.instructionId())) continue;
+            var candidateDefinition = instructionById.get(entry.instructionId());
+            if ("randomCell".equals(actionType(candidateDefinition.action()))) continue;
             if (
                 Boolean.FALSE.equals(room.config().randomPool().allowSameInstruction())
                 && entry.instructionId().equals(current.instructionId())

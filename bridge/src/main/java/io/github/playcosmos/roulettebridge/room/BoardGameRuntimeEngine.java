@@ -304,7 +304,8 @@ public final class BoardGameRuntimeEngine {
                  WHERE br.status = 'READY'
                    AND p.soop_id = ?
                    AND p.balloon_trigger = ?
-                 ORDER BY br.created_at ASC
+                 ORDER BY br.updated_at DESC, br.created_at DESC
+                 LIMIT 1
                  """)) {
             statement.setString(1, soopId);
             statement.setInt(2, balloonCount);

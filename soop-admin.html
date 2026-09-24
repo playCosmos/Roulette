@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="dark" />
   <title>먀로또 · SOOP 브리지 관리</title>
   <link rel="stylesheet" href="./soop/admin/soop-admin.css?v=20260917-1" />
+  <link rel="stylesheet" href="./soop/admin/board-room-admin.css?v=20260925-1" />
 </head>
 <body>
   <main class="admin-shell">
@@ -77,6 +78,135 @@
           <p class="operation-result" id="configResult">설정을 불러오는 중…</p>
         </div>
       </form>
+    </section>
+
+    <section class="panel board-room-panel" id="boardRoomPanel">
+      <div class="panel-heading">
+        <div>
+          <h2>보드게임 룸 생성</h2>
+          <p>룸별 설정은 SQLite에 저장합니다. 생성 시 참가자별 SOOP 방송 상태를 확인하고, 서버가 만든 실제 보드 프리뷰를 확인한 뒤 배치를 확정합니다.</p>
+        </div>
+      </div>
+
+      <form class="board-room-form" id="boardRoomForm">
+        <fieldset>
+          <legend>룸 기본</legend>
+          <div class="board-room-basic-grid">
+            <label>룸 이름
+              <input name="roomName" autocomplete="off" value="Board Room" maxlength="120" />
+            </label>
+            <label>참가자 수
+              <input id="boardRoomPlayerCount" type="number" min="1" max="6" step="1" value="4" />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>참가자 / 후원 트리거</legend>
+          <p class="board-room-rule-note">각 참가자의 SOOP ID와 정확히 일치하는 후원 이벤트만 사용합니다. 입력한 별풍선 수와 정확히 같은 단일 후원만 해당 참가자의 던지기 이벤트가 됩니다.</p>
+          <div class="board-room-player-list" id="boardRoomPlayers"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>보드</legend>
+          <div class="board-room-board-grid">
+            <label>크기 입력 방식
+              <select id="boardRoomSizingMode">
+                <option value="dimensions">가로/세로</option>
+                <option value="cellCount">전체 칸 수</option>
+              </select>
+            </label>
+            <label>모서리 형상
+              <select name="layoutStyle">
+                <option value="rounded">라운드</option>
+                <option value="rect">직각</option>
+              </select>
+            </label>
+            <span class="board-room-field-cluster" id="boardRoomDimensionsFields">
+              <label>가로 칸
+                <input name="columns" type="number" min="8" max="64" step="1" value="16" />
+              </label>
+              <label>세로 칸
+                <input name="rows" type="number" min="6" max="48" step="1" value="12" />
+              </label>
+            </span>
+            <label id="boardRoomCellCountField" hidden>전체 외곽 칸 수
+              <input name="cellCount" type="number" min="24" step="2" value="52" />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>이동값 생성</legend>
+          <div class="board-room-movement-grid">
+            <label>방식
+              <select id="boardRoomGenerator">
+                <option value="dice">주사위</option>
+                <option value="yut">윷</option>
+              </select>
+            </label>
+            <span class="board-room-field-cluster" id="boardRoomDiceFields">
+              <label>주사위 개수
+                <select name="diceCount">
+                  <option value="1">1개</option>
+                  <option value="2" selected>2개</option>
+                </select>
+              </label>
+              <label class="check-label"><input name="extraThrowOnDouble" type="checkbox" checked />더블이면 한 번 더</label>
+            </span>
+            <span class="board-room-field-cluster" id="boardRoomYutFields" hidden>
+              <label class="check-label"><input name="extraThrowOnYut" type="checkbox" checked />윷이면 한 번 더</label>
+              <label class="check-label"><input name="extraThrowOnMo" type="checkbox" checked />모이면 한 번 더</label>
+            </span>
+          </div>
+          <p class="board-room-rule-note">이동 중 경유 칸은 실행하지 않고 최종 도착 칸 지시문만 처리합니다. 도착 지시문 처리가 끝난 뒤 보너스 던지기를 진행하며, 다음 던지기 스킵은 아직 실행하지 않은 보너스 던지기도 취소합니다.</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>지시문 배치</legend>
+          <div class="board-room-instruction-toolbar">
+            <button type="button" class="board-room-small-button" data-add-board-instruction="forward">전진 추가</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="backward">후진 추가</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="skip">다음 던지기 스킵 추가</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="extra">한 번 더 던지기 추가</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="custom">사용자 지시문 추가</button>
+          </div>
+          <div class="board-room-instruction-list" id="boardRoomInstructionRows"></div>
+
+          <div class="board-room-random-row">
+            <label>랜덤 변경 후보 설정
+              <select id="boardRoomRandomPoolMode">
+                <option value="inheritRatioInstructions">비율 지시문 전체 자동 포함 + 원 비율 상속</option>
+                <option value="custom">후보/가중치 직접 설정</option>
+              </select>
+            </label>
+            <p class="board-room-rule-note">자동 상속에서는 비율로 배치한 지시문만 랜덤 후보가 되며, 처음 지정한 비율이 그대로 가중치가 됩니다. 수량 배치 지시문은 기본 후보에서 제외됩니다.</p>
+          </div>
+        </fieldset>
+
+        <div class="board-room-create-actions">
+          <button type="submit" id="boardRoomCreateButton">룸 생성 및 방송 상태 확인</button>
+          <p class="operation-result" id="boardRoomResult">설정을 입력한 뒤 룸을 생성하세요.</p>
+        </div>
+      </form>
+
+      <div class="board-room-live-summary" id="boardRoomLiveSummary" aria-live="polite"></div>
+
+      <div class="board-room-preview-panel" id="boardRoomPreviewPanel" hidden>
+        <div class="board-room-preview-head">
+          <div>
+            <h2>보드 프리뷰</h2>
+            <p class="board-room-preview-meta" id="boardRoomPreviewMeta"></p>
+          </div>
+          <div class="board-room-preview-actions">
+            <button type="button" id="boardRoomRerollButton">다시 배치</button>
+            <button type="button" id="boardRoomCommitButton">이 배치로 확정</button>
+          </div>
+        </div>
+        <div class="board-room-preview-shell">
+          <iframe id="boardRoomPreviewFrame" title="보드게임 룸 프리뷰" loading="lazy"></iframe>
+        </div>
+      </div>
     </section>
 
     <section class="panel overlay-guide">
@@ -154,6 +284,7 @@
     </section>
   </main>
   <script src="./soop/admin/soop-admin.js?v=20260917-1" defer></script>
+  <script src="./soop/admin/board-room-admin.js?v=20260925-1" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       const setupPanel = document.getElementById("setupPanel");

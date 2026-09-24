@@ -50,7 +50,6 @@ body {
   --bottom-band: 80px;
   --right-band: 100px;
   --left-band: 100px;
-  --cell-aspect: 1.35;
 
   position: absolute;
   inset: 0;
@@ -60,6 +59,7 @@ body {
   position: absolute;
   display: flex;
   gap: var(--board-gap);
+  justify-content: space-between;
   pointer-events: none;
 }
 
@@ -103,8 +103,7 @@ body {
   position: relative;
   min-width: 1px;
   min-height: 1px;
-  flex: 1 1 0;
-  aspect-ratio: var(--cell-aspect);
+  flex: 0 0 auto;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,.16);
   border-radius: clamp(8px, .9vw, 16px);
@@ -113,7 +112,6 @@ body {
     inset 0 1px 0 rgba(255,255,255,.018),
     0 7px 22px rgba(0,0,0,.12);
   transition:
-    flex-grow 220ms cubic-bezier(.22,1,.36,1),
     width 220ms cubic-bezier(.22,1,.36,1),
     height 220ms cubic-bezier(.22,1,.36,1),
     border-color 180ms ease,

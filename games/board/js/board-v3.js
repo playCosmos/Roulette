@@ -422,12 +422,14 @@
 
     let centerX = point.x + (inwardX * cellHeight * 0.5);
     let centerY = point.y + (inwardY * cellHeight * 0.5);
+    // 코너에서도 셀 자체는 회전하지 않는다.
+    // 중심 위치만 둥근 경로를 따라 이동하고 직사각형/텍스트는 항상 정방향을 유지한다.
     let corners = rectangleCorners(
       centerX,
       centerY,
       cellWidth,
       cellHeight,
-      point.angle
+      0
     );
 
     // 직선부는 margin 끝에 정확히 붙고, 코너/코너 주변에서만
@@ -458,7 +460,7 @@
         centerY,
         cellWidth,
         cellHeight,
-        point.angle
+        0
       );
     }
 
@@ -586,8 +588,6 @@
 
     const left = geometry.centerX - (geometry.width * 0.5);
     const top = geometry.centerY - (geometry.height * 0.5);
-    const angleDeg = geometry.point.angle * (180 / Math.PI);
-
     const typographyBasis = Math.sqrt(geometry.width * geometry.height);
     const tokenBasis = Math.min(geometry.width, geometry.height);
     const indexFontSize = clamp(typographyBasis * 0.135, 8, 16);
@@ -599,7 +599,7 @@
     cell.style.top = top.toFixed(3) + "px";
     cell.style.width = geometry.width.toFixed(3) + "px";
     cell.style.height = geometry.height.toFixed(3) + "px";
-    cell.style.transform = "rotate(" + angleDeg.toFixed(3) + "deg)";
+    cell.style.transform = "none";
     cell.style.setProperty("--cell-index-font", indexFontSize.toFixed(3) + "px");
     cell.style.setProperty("--cell-label-font", labelFontSize.toFixed(3) + "px");
     cell.style.setProperty("--cell-token-size", tokenSize.toFixed(3) + "px");
@@ -611,6 +611,7 @@
     cell.dataset.dockScale = weight.toFixed(3);
     cell.dataset.curved = String(geometry.point.curved);
     cell.dataset.pathAngle = geometry.point.angle.toFixed(4);
+    cell.dataset.rotation = "0";
   }
 
   function layoutNow() {

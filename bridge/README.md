@@ -160,6 +160,9 @@ POST /api/board/rooms/{roomId}/preview/commit
 - 참가자별 SOOP ID와 정확 일치 별풍선 trigger
 - 룸 생성 시 각 참가자의 SOOP ID를 병렬 조회하여 현재 방송 상태를 `LIVE / OFFLINE_OR_UNAVAILABLE / CHECK_FAILED`로 기록
 - `LIVE`이면 방송 BNO와 제목을 함께 저장하며, 방송 중이 아니거나 조회가 실패해도 룸 생성 자체는 차단하지 않음
+- 관리자 페이지의 `보드게임 룸 생성` 패널에서 참가자·후원 trigger·보드 형상·이동 방식·지시문 배치·랜덤 풀을 설정
+- 룸 생성 응답의 참가자 방송 상태를 `방송 중 / 오프라인 / 확인 실패`로 표시
+- 서버가 저장한 preview를 실제 `games/board` 렌더러로 iframe에 표시하고 `다시 배치 / 이 배치로 확정`을 같은 화면에서 수행
 - 보드 sizing: `dimensions` 또는 `cellCount`
 - 보드 외곽 형상: `rounded` 또는 `rect`
 - 이동값 생성 방식: `dice` 또는 `yut`

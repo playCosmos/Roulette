@@ -359,6 +359,48 @@ public final class RoomService {
         );
     }
 
+    public synchronized RoomSnapshot extendLifetime(
+        String roomId,
+        int additionalMinutes
+    ) throws SQLException {
+        if (additionalMinutes <= 0) {
+            throw new IllegalArgumentException("additionalMinutes must be positive");
+        }
+
+        var current = find(roomId);
+        if (
+            current.lifecycle() == null
+            || "TERMINATED".equals(current.lifecycle().state())
+        ) {
+            throw new IllegalStateException("terminated room cannot be extended");
+        }
+
+        String now = OffsetDateTime.now().toString();
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 UPDATE board_room
+                 SET retention_minutes = retention_minutes + ?,
+                     expires_at = datetime(expires_at, '+' || ? || ' minutes'),
+                     updated_at = ?
+                 WHERE room_id = ?
+                   AND lifecycle_state <> 'TERMINATED'
+                   AND expires_at IS NOT NULL
+                   AND datetime(expires_at) > datetime('now')
+                 """)) {
+            statement.setInt(1, additionalMinutes);
+            statement.setInt(2, additionalMinutes);
+            statement.setString(3, now);
+            statement.setString(4, roomId);
+            if (statement.executeUpdate() != 1) {
+                throw new IllegalStateException(
+                    "room cannot be extended because it is terminated or expired"
+                );
+            }
+        }
+
+        return find(roomId);
+    }
+
     public synchronized RoomSnapshot pause(
         String roomId,
         String requestedDonationMode

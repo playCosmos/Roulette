@@ -207,7 +207,7 @@ public final class RoomService {
         );
     }
 
-    public RoomSnapshot commitPreview(String roomId) throws SQLException {
+    public synchronized RoomSnapshot commitPreview(String roomId) throws SQLException {
         var current = find(roomId);
         if (!"DRAFT".equals(current.status())) {
             return current;
@@ -216,19 +216,47 @@ public final class RoomService {
         String now = OffsetDateTime.now().toString();
         String previewJson = GSON.toJson(current.preview());
 
-        try (var connection = database.open();
-             var statement = connection.prepareStatement("""
-                 UPDATE board_room
-                 SET status = 'READY',
-                     committed_board_json = ?,
-                     updated_at = ?
-                 WHERE room_id = ? AND status = 'DRAFT'
-                 """)) {
-            statement.setString(1, previewJson);
-            statement.setString(2, now);
-            statement.setString(3, roomId);
-            if (statement.executeUpdate() != 1) {
-                throw new IllegalStateException("room preview changed concurrently");
+        try (var connection = database.open()) {
+            connection.setAutoCommit(false);
+            try {
+                String activeRoomId = findActiveRoomId(connection, roomId);
+                if (activeRoomId != null) {
+                    connection.rollback();
+                    throw new IllegalStateException(
+                        "another board room is already active: " + activeRoomId
+                    );
+                }
+
+                try (var statement = connection.prepareStatement("""
+                    UPDATE board_room
+                    SET status = 'READY',
+                        committed_board_json = ?,
+                        updated_at = ?
+                    WHERE room_id = ? AND status = 'DRAFT'
+                    """)) {
+                    statement.setString(1, previewJson);
+                    statement.setString(2, now);
+                    statement.setString(3, roomId);
+                    if (statement.executeUpdate() != 1) {
+                        throw new IllegalStateException("room preview changed concurrently");
+                    }
+                }
+
+                connection.commit();
+            } catch (IllegalStateException error) {
+                connection.rollback();
+                throw error;
+            } catch (SQLException error) {
+                connection.rollback();
+                if (isSingleActiveRoomConstraint(error)) {
+                    throw new IllegalStateException(
+                        "another board room became active concurrently",
+                        error
+                    );
+                }
+                throw error;
+            } finally {
+                connection.setAutoCommit(true);
             }
         }
 
@@ -241,6 +269,32 @@ public final class RoomService {
             current.createdAt(),
             now
         );
+    }
+
+    private static String findActiveRoomId(
+        java.sql.Connection connection,
+        String excludedRoomId
+    ) throws SQLException {
+        try (var statement = connection.prepareStatement("""
+            SELECT room_id
+            FROM board_room
+            WHERE status = 'READY'
+              AND room_id <> ?
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """)) {
+            statement.setString(1, excludedRoomId);
+            try (var rows = statement.executeQuery()) {
+                return rows.next() ? rows.getString(1) : null;
+            }
+        }
+    }
+
+    private static boolean isSingleActiveRoomConstraint(SQLException error) {
+        String message = error.getMessage();
+        return message != null
+            && message.contains("UNIQUE constraint failed")
+            && message.contains("board_room.status");
     }
 
     private static void insertPlayers(

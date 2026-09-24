@@ -195,18 +195,30 @@
       const total = Number(event.dice?.total) ||
         values.reduce((sum, value) => sum + Number(value || 0), 0);
       const isDouble = Boolean(event.dice?.isDouble);
+      const multiplier = Math.max(1, Number(event.appliedMultiplier) || 1);
+      const effectiveSteps = Number(event.steps);
       let suffix = "";
-      if (isDouble && event.bonusThrow) suffix = " · 더블! 한 번 더";
-      else if (isDouble) suffix = " · 더블";
-      else if (event.bonusThrow) suffix = " · 한 번 더";
+      if (multiplier > 1 && Number.isFinite(effectiveSteps)) {
+        suffix += " · ×" + multiplier + " → " + effectiveSteps + "칸";
+      }
+      if (isDouble && event.bonusThrow) suffix += " · 더블! 한 번 더";
+      else if (isDouble) suffix += " · 더블";
+      else if (event.bonusThrow) suffix += " · 한 번 더";
       return values.join(" + ") + " = " + total + suffix;
     }
 
     const name = event.yut?.name || "DO";
-    const steps = Number(event.yut?.steps) || 0;
-    const direction = steps < 0 ? steps + "칸" : "+" + steps + "칸";
+    const rawSteps = Number(event.yut?.steps) || 0;
+    const multiplier = Math.max(1, Number(event.appliedMultiplier) || 1);
+    const effectiveSteps = Number.isFinite(Number(event.steps))
+      ? Number(event.steps)
+      : rawSteps;
+    const rawDirection = rawSteps < 0 ? rawSteps + "칸" : "+" + rawSteps + "칸";
+    const multiplied = multiplier > 1
+      ? " · ×" + multiplier + " → " + (effectiveSteps >= 0 ? "+" : "") + effectiveSteps + "칸"
+      : "";
     const suffix = event.bonusThrow ? " · 한 번 더" : "";
-    return yutLabel(name) + " · " + direction + suffix;
+    return yutLabel(name) + " · " + rawDirection + multiplied + suffix;
   }
 
   function setFinalVisual(event) {

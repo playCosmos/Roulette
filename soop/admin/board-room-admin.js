@@ -204,9 +204,20 @@
   }
 
   function syncInstructionRow(row) {
-    const mode = row.querySelector('[data-field="allocationMode"]').value;
+    const allocationMode = row.querySelector('[data-field="allocationMode"]');
+    const randomCell = row.querySelector('[data-field="rerollOnVacate"]').checked;
+
+    if (randomCell) {
+      allocationMode.value = "count";
+      allocationMode.disabled = true;
+    } else {
+      allocationMode.disabled = false;
+    }
+
+    const mode = allocationMode.value;
     const value = row.querySelector('[data-field="allocationValue"]');
     value.max = mode === "ratio" ? "100" : "999";
+    value.step = "1";
 
     const poolEnabled = row.querySelector('[data-field="poolEnabled"]');
     const poolWeight = row.querySelector('[data-field="poolWeight"]');

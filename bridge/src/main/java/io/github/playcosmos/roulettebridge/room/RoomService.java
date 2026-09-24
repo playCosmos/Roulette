@@ -26,6 +26,8 @@ public final class RoomService {
     private static final int MAX_PLAYERS = 6;
     public static final int DEFAULT_RETENTION_MINUTES = 240;
     public static final int MAX_RETENTION_MINUTES = 480;
+    public static final int DEFAULT_PAUSE_GRACE_SECONDS = 10;
+    public static final int MAX_PAUSE_GRACE_SECONDS = 120;
     private static final int MAX_SAFE_LAYOUT_ATTEMPTS = 256;
     private static final double TARGET_GRID_RATIO = 4.0d / 3.0d;
 
@@ -52,6 +54,7 @@ public final class RoomService {
 
         int retentionMinutes = normalizeRetentionMinutes(request.retentionMinutes(), errors);
         normalizePauseDonationMode(request.pauseDonationMode(), errors);
+        normalizePauseGraceSeconds(request.pauseGraceSeconds(), errors);
 
         String name = normalizeText(request.name(), "Room");
         List<PlayerConfig> players = normalizePlayers(request.players(), errors);
@@ -97,6 +100,9 @@ public final class RoomService {
         String pauseDonationMode = request.pauseDonationMode() == null
             ? "QUEUE"
             : request.pauseDonationMode().trim().toUpperCase();
+        int pauseGraceSeconds = request.pauseGraceSeconds() == null
+            ? DEFAULT_PAUSE_GRACE_SECONDS
+            : request.pauseGraceSeconds();
         var preview = generateSafePreview(config);
         var checkedPlayers = liveChecker.check(config.players());
         config = new NormalizedRoomConfig(
@@ -122,9 +128,10 @@ public final class RoomService {
                         room_id, name, status, config_json, preview_json,
                         committed_board_json, preview_seed, created_at, updated_at,
                         lifecycle_state, retention_minutes, expires_at,
-                        pause_donation_mode, terminated_at
+                        pause_donation_mode, pause_grace_seconds,
+                        pause_requested_at, pause_grace_until, terminated_at
                     ) VALUES (?, ?, 'DRAFT', ?, ?, NULL, ?, ?, ?,
-                              'DRAFT', ?, ?, ?, NULL)
+                              'DRAFT', ?, ?, ?, ?, NULL, NULL, NULL)
                     """)) {
                     statement.setString(1, roomId);
                     statement.setString(2, config.name());
@@ -136,6 +143,7 @@ public final class RoomService {
                     statement.setInt(8, retentionMinutes);
                     statement.setString(9, expiresAt);
                     statement.setString(10, pauseDonationMode);
+                    statement.setInt(11, pauseGraceSeconds);
                     statement.executeUpdate();
                 }
 
@@ -163,6 +171,9 @@ public final class RoomService {
                 retentionMinutes,
                 expiresAt,
                 pauseDonationMode,
+                pauseGraceSeconds,
+                null,
+                null,
                 0,
                 null
             )
@@ -177,7 +188,9 @@ public final class RoomService {
                  SELECT br.room_id, br.status, br.config_json, br.preview_json,
                         br.committed_board_json, br.created_at, br.updated_at,
                         br.lifecycle_state, br.retention_minutes, br.expires_at,
-                        br.pause_donation_mode, br.terminated_at,
+                        br.pause_donation_mode, br.pause_grace_seconds,
+                        br.pause_requested_at, br.pause_grace_until,
+                        br.terminated_at,
                         (
                           SELECT COUNT(*)
                           FROM board_game_deferred_donation q
@@ -211,6 +224,9 @@ public final class RoomService {
                         rows.getInt("retention_minutes"),
                         rows.getString("expires_at"),
                         rows.getString("pause_donation_mode"),
+                        rows.getInt("pause_grace_seconds"),
+                        rows.getString("pause_requested_at"),
+                        rows.getString("pause_grace_until"),
                         rows.getInt("queued_donations"),
                         rows.getString("terminated_at")
                     )
@@ -334,6 +350,9 @@ public final class RoomService {
                 current.lifecycle().retentionMinutes(),
                 current.lifecycle().expiresAt(),
                 current.lifecycle().pauseDonationMode(),
+                current.lifecycle().pauseGraceSeconds(),
+                null,
+                null,
                 current.lifecycle().queuedDonations(),
                 null
             )
@@ -369,14 +388,19 @@ public final class RoomService {
                  UPDATE board_room
                  SET lifecycle_state = 'PAUSED',
                      pause_donation_mode = ?,
+                     pause_requested_at = ?,
+                     pause_grace_until = ?,
                      updated_at = ?
                  WHERE room_id = ?
                    AND status = 'READY'
                    AND lifecycle_state = 'ACTIVE'
                  """)) {
+            var pauseAt = OffsetDateTime.now();
             statement.setString(1, mode);
-            statement.setString(2, now);
-            statement.setString(3, roomId);
+            statement.setString(2, pauseAt.toString());
+            statement.setString(3, pauseAt.plusSeconds(current.lifecycle().pauseGraceSeconds()).toString());
+            statement.setString(4, now);
+            statement.setString(5, roomId);
             if (statement.executeUpdate() != 1) {
                 throw new IllegalStateException("room pause state changed concurrently");
             }
@@ -393,6 +417,8 @@ public final class RoomService {
              var statement = connection.prepareStatement("""
                  UPDATE board_room
                  SET lifecycle_state = 'TERMINATED',
+                     pause_requested_at = NULL,
+                     pause_grace_until = NULL,
                      terminated_at = ?,
                      updated_at = ?
                  WHERE room_id = ?
@@ -945,6 +971,21 @@ public final class RoomService {
                 "retentionMinutes must be 1~" + MAX_RETENTION_MINUTES
             ));
             return Math.max(1, Math.min(MAX_RETENTION_MINUTES, value));
+        }
+        return value;
+    }
+
+    private static int normalizePauseGraceSeconds(
+        Integer requested,
+        List<ValidationError> errors
+    ) {
+        int value = requested == null ? DEFAULT_PAUSE_GRACE_SECONDS : requested;
+        if (value < 0 || value > MAX_PAUSE_GRACE_SECONDS) {
+            errors.add(new ValidationError(
+                "pauseGraceSeconds",
+                "pauseGraceSeconds must be 0~" + MAX_PAUSE_GRACE_SECONDS
+            ));
+            return Math.max(0, Math.min(MAX_PAUSE_GRACE_SECONDS, value));
         }
         return value;
     }

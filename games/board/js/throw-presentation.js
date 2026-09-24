@@ -43,27 +43,58 @@
     }
   }
 
-  function createDie(value) {
+  const ALL_DICE_PIP_POSITIONS = ["tl", "tr", "ml", "mr", "c", "bl", "br"];
+
+  function createDie() {
     const die = document.createElement("div");
     die.className = "throw-die";
-    die.dataset.value = String(value);
+    die.dataset.value = "1";
 
-    for (const position of DICE_PIP_POSITIONS[value] || []) {
+    for (const position of ALL_DICE_PIP_POSITIONS) {
       const pip = document.createElement("span");
       pip.className = "throw-die-pip";
       pip.dataset.position = position;
       die.append(pip);
     }
+
     return die;
   }
 
-  function renderDice(values) {
-    const { stage } = ensureRefs();
-    stage.innerHTML = "";
-    stage.dataset.generator = "dice";
-    for (const value of values) {
-      stage.append(createDie(value));
+  function setDieValue(die, value) {
+    const safeValue = Math.max(1, Math.min(6, Number.parseInt(value, 10) || 1));
+    const visible = new Set(DICE_PIP_POSITIONS[safeValue] || []);
+    die.dataset.value = String(safeValue);
+
+    for (const pip of die.querySelectorAll(".throw-die-pip")) {
+      pip.hidden = !visible.has(pip.dataset.position);
     }
+  }
+
+  function ensureDiceNodes(count) {
+    const { stage } = ensureRefs();
+    const safeCount = Math.max(1, Math.min(2, count));
+
+    if (stage.dataset.generator !== "dice") {
+      stage.innerHTML = "";
+      stage.dataset.generator = "dice";
+    }
+
+    while (stage.children.length < safeCount) {
+      stage.append(createDie());
+    }
+
+    while (stage.children.length > safeCount) {
+      stage.lastElementChild?.remove();
+    }
+
+    return Array.from(stage.children);
+  }
+
+  function renderDice(values) {
+    const dice = ensureDiceNodes(values.length || 1);
+    dice.forEach((die, index) => {
+      setDieValue(die, values[index] || 1);
+    });
   }
 
   function yutFacesFor(name) {
@@ -175,9 +206,16 @@
   function setRollingVisual(event) {
     if (event.generator === "dice") {
       const count = Math.max(1, Math.min(2, event.dice?.values?.length || 1));
-      renderDice(Array.from({ length: count }, () => 1 + Math.floor(Math.random() * 6)));
+      const dice = ensureDiceNodes(count);
+
+      dice.forEach((die) => {
+        setDieValue(die, 1 + Math.floor(Math.random() * 6));
+      });
+
       rollerTimer = window.setInterval(() => {
-        renderDice(Array.from({ length: count }, () => 1 + Math.floor(Math.random() * 6)));
+        dice.forEach((die) => {
+          setDieValue(die, 1 + Math.floor(Math.random() * 6));
+        });
       }, 90);
       return;
     }

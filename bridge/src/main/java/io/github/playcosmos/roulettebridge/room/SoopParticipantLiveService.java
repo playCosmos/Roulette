@@ -15,10 +15,11 @@ import java.util.concurrent.TimeoutException;
 
 import static io.github.playcosmos.roulettebridge.room.RoomModels.*;
 
-public final class SoopParticipantLiveService {
+public final class SoopParticipantLiveService implements ParticipantLiveChecker {
     private static final long LOOKUP_TIMEOUT_SECONDS = 8L;
 
-    public List<PlayerConfig> check(List<PlayerInput> players) {
+    @Override
+    public List<PlayerConfig> check(List<PlayerConfig> players) {
         if (players == null || players.isEmpty()) return List.of();
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -37,7 +38,7 @@ public final class SoopParticipantLiveService {
         }
     }
 
-    private PlayerConfig checkOne(PlayerInput player) {
+    private PlayerConfig checkOne(PlayerConfig player) {
         String checkedAt = OffsetDateTime.now().toString();
 
         try (var client = new SOOPClient()) {

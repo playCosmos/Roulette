@@ -73,7 +73,7 @@ body {
   transform-origin: center center;
   backface-visibility: hidden;
   will-change: transform;
-  contain: layout paint style;
+  contain: layout style;
   transition:
     border-color 330ms ease,
     box-shadow 360ms ease;

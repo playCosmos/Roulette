@@ -158,7 +158,7 @@
         </label>
       </div>
       <div class="board-room-instruction-options">
-        <label class="check-label"><input data-field="rerollOnVacate" type="checkbox" />점유가 0명이 되면 지시문 랜덤 변경</label>
+        <label class="check-label"><input data-field="rerollOnVacate" type="checkbox" />랜덤칸 (점유 0 시 지시문 재선정 · 수량만)</label>
         <label class="check-label"><input data-field="poolEnabled" type="checkbox" />랜덤 후보에 포함</label>
         <label class="pool-weight">랜덤 가중치
           <input data-field="poolWeight" type="number" min="0.0001" step="0.1" value="10" />

@@ -65,16 +65,14 @@ public final class RoomHttpHandler implements HttpHandler {
             }
 
             if (route.endsWith("/preview/reroll")) {
-                requireMethod(exchange, "POST");
-                if (exchange.getResponseCode() == 405) return;
+                if (!requireMethod(exchange, "POST")) return;
                 String roomId = route.substring(0, route.length() - "/preview/reroll".length());
                 sendJson(exchange, 200, rooms.rerollPreview(roomId));
                 return;
             }
 
             if (route.endsWith("/preview/commit")) {
-                requireMethod(exchange, "POST");
-                if (exchange.getResponseCode() == 405) return;
+                if (!requireMethod(exchange, "POST")) return;
                 String roomId = route.substring(0, route.length() - "/preview/commit".length());
                 sendJson(exchange, 200, rooms.commitPreview(roomId));
                 return;
@@ -85,8 +83,7 @@ public final class RoomHttpHandler implements HttpHandler {
                 return;
             }
 
-            requireMethod(exchange, "GET");
-            if (exchange.getResponseCode() == 405) return;
+            if (!requireMethod(exchange, "GET")) return;
             sendJson(exchange, 200, rooms.find(route));
         } catch (RoomService.RoomValidationException error) {
             sendJson(exchange, 400, Map.of(
@@ -123,11 +120,12 @@ public final class RoomHttpHandler implements HttpHandler {
         }
     }
 
-    private static void requireMethod(HttpExchange exchange, String method) throws IOException {
-        if (method.equalsIgnoreCase(exchange.getRequestMethod())) return;
+    private static boolean requireMethod(HttpExchange exchange, String method) throws IOException {
+        if (method.equalsIgnoreCase(exchange.getRequestMethod())) return true;
         exchange.getResponseHeaders().set("Allow", method);
         exchange.sendResponseHeaders(405, -1);
         exchange.close();
+        return false;
     }
 
     private static boolean isLoopback(HttpExchange exchange) {

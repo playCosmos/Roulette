@@ -132,6 +132,12 @@
   animation: throw-yut-flip-b 420ms ease-in-out infinite alternate;
 }
 
+.player-token-label {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
 .player-result-bubble {
   position: absolute;
   z-index: 2100;
@@ -146,8 +152,36 @@
   color: white;
   box-shadow: 0 8px 20px rgba(0,0,0,.38);
   pointer-events: none;
-  transform: translate(-50%, -100%);
   white-space: nowrap;
+  --bubble-scale: var(--bubble-inverse-scale, 1);
+}
+
+.player-token[data-bubble-side="down"] .player-result-bubble {
+  left: 50%;
+  top: calc(100% + 7px);
+  transform: translateX(-50%) scale(var(--bubble-scale));
+  transform-origin: top center;
+}
+
+.player-token[data-bubble-side="up"] .player-result-bubble {
+  left: 50%;
+  bottom: calc(100% + 7px);
+  transform: translateX(-50%) scale(var(--bubble-scale));
+  transform-origin: bottom center;
+}
+
+.player-token[data-bubble-side="left"] .player-result-bubble {
+  right: calc(100% + 7px);
+  top: 50%;
+  transform: translateY(-50%) scale(var(--bubble-scale));
+  transform-origin: center right;
+}
+
+.player-token[data-bubble-side="right"] .player-result-bubble {
+  left: calc(100% + 7px);
+  top: 50%;
+  transform: translateY(-50%) scale(var(--bubble-scale));
+  transform-origin: center left;
 }
 
 .player-result-bubble[data-visible="true"] {

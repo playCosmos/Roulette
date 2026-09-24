@@ -22,10 +22,12 @@ public final class RoomService {
     private static final int MIN_ROWS = 6;
     private static final int MAX_ROWS = 48;
     private static final int MAX_PLAYERS = 6;
+    private static final int MAX_SAFE_LAYOUT_ATTEMPTS = 256;
     private static final double TARGET_GRID_RATIO = 4.0d / 3.0d;
 
     private final BridgeDatabase database;
     private final RoomLayoutGenerator layoutGenerator = new RoomLayoutGenerator();
+    private final FixedInstructionCycleValidator cycleValidator = new FixedInstructionCycleValidator();
     private final ParticipantLiveChecker liveChecker;
 
     public RoomService(BridgeDatabase database) {
@@ -82,6 +84,7 @@ public final class RoomService {
         }
 
         var config = validation.config();
+        var preview = generateSafePreview(config);
         var checkedPlayers = liveChecker.check(config.players());
         config = new NormalizedRoomConfig(
             config.name(),
@@ -94,8 +97,6 @@ public final class RoomService {
         );
 
         String roomId = UUID.randomUUID().toString();
-        long seed = nextSeed();
-        var preview = layoutGenerator.generate(config, seed);
         String now = OffsetDateTime.now().toString();
 
         try (var connection = database.open()) {
@@ -111,7 +112,7 @@ public final class RoomService {
                     statement.setString(2, config.name());
                     statement.setString(3, GSON.toJson(config));
                     statement.setString(4, GSON.toJson(preview));
-                    statement.setLong(5, seed);
+                    statement.setLong(5, preview.seed());
                     statement.setString(6, now);
                     statement.setString(7, now);
                     statement.executeUpdate();
@@ -177,8 +178,7 @@ public final class RoomService {
             throw new IllegalStateException("committed room preview cannot be rerolled");
         }
 
-        long seed = nextSeed();
-        var preview = layoutGenerator.generate(current.config(), seed);
+        var preview = generateSafePreview(current.config());
         String now = OffsetDateTime.now().toString();
 
         try (var connection = database.open();
@@ -188,7 +188,7 @@ public final class RoomService {
                  WHERE room_id = ? AND status = 'DRAFT'
                  """)) {
             statement.setString(1, GSON.toJson(preview));
-            statement.setLong(2, seed);
+            statement.setLong(2, preview.seed());
             statement.setString(3, now);
             statement.setString(4, roomId);
             if (statement.executeUpdate() != 1) {
@@ -212,6 +212,8 @@ public final class RoomService {
         if (!"DRAFT".equals(current.status())) {
             return current;
         }
+
+        cycleValidator.requireSafe(current.preview());
 
         String now = OffsetDateTime.now().toString();
         String previewJson = GSON.toJson(current.preview());
@@ -529,6 +531,14 @@ public final class RoomService {
 
             String mode = normalizeText(allocation.mode(), "").toLowerCase();
             double value = allocation.value();
+            boolean randomCell = Boolean.TRUE.equals(instruction.rerollOnVacate());
+
+            if (randomCell && !"count".equals(mode)) {
+                errors.add(new ValidationError(
+                    prefix + ".allocation.mode",
+                    "random cells must use count allocation"
+                ));
+            }
             if ("count".equals(mode)) {
                 if (value < 0 || value != Math.rint(value)) {
                     errors.add(new ValidationError(prefix + ".allocation.value", "count must be a non-negative integer"));
@@ -640,6 +650,24 @@ public final class RoomService {
         }
 
         return new RandomPoolConfig(mode, List.copyOf(entries), allowSame);
+    }
+
+    private BoardPreview generateSafePreview(NormalizedRoomConfig config) {
+        FixedInstructionCycleValidator.Cycle lastCycle = null;
+
+        for (int attempt = 0; attempt < MAX_SAFE_LAYOUT_ATTEMPTS; attempt++) {
+            long seed = nextSeed();
+            var preview = layoutGenerator.generate(config, seed);
+            var cycle = cycleValidator.findCycle(preview);
+            if (cycle.isEmpty()) return preview;
+            lastCycle = cycle.get();
+        }
+
+        String detail = lastCycle == null ? "" : " last cycle: " + lastCycle.describe();
+        throw new IllegalStateException(
+            "unable to generate a fixed-cycle-free board after "
+                + MAX_SAFE_LAYOUT_ATTEMPTS + " attempts." + detail
+        );
     }
 
     private static int[] dimensionsForCellCount(int cellCount) {

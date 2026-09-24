@@ -57,13 +57,13 @@ body {
     0 7px 22px rgba(0,0,0,.12);
   transform-origin: center;
   transition:
-    left 180ms cubic-bezier(.2,.72,.24,1),
-    top 180ms cubic-bezier(.2,.72,.24,1),
-    width 180ms cubic-bezier(.2,.72,.24,1),
-    height 180ms cubic-bezier(.2,.72,.24,1),
-    border-color 140ms ease,
-    box-shadow 140ms ease,
-    opacity 140ms ease;
+    left 220ms cubic-bezier(.22,1,.36,1),
+    top 220ms cubic-bezier(.22,1,.36,1),
+    width 220ms cubic-bezier(.22,1,.36,1),
+    height 220ms cubic-bezier(.22,1,.36,1),
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    opacity 180ms ease;
   will-change: left, top, width, height;
 }
 
@@ -141,9 +141,9 @@ body {
   font-weight: 900;
   line-height: 1;
   transition:
-    width 160ms cubic-bezier(.2,.72,.24,1),
-    font-size 160ms cubic-bezier(.2,.72,.24,1),
-    transform 160ms cubic-bezier(.2,.72,.24,1);
+    width 220ms cubic-bezier(.22,1,.36,1),
+    font-size 220ms cubic-bezier(.22,1,.36,1),
+    transform 220ms cubic-bezier(.22,1,.36,1);
 }
 
 .board-center {

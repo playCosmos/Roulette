@@ -25,6 +25,9 @@
   const pauseButton = $("boardRoomPauseButton");
   const resumeButton = $("boardRoomResumeButton");
   const terminateButton = $("boardRoomTerminateButton");
+  const extendControl = $("boardRoomExtendControl");
+  const extendMinutes = $("boardRoomExtendMinutes");
+  const extendButton = $("boardRoomExtendButton");
   const createButton = $("boardRoomCreateButton");
   const overlayRow = $("boardRoomOverlayRow");
   const overlayUrl = $("boardRoomOverlayUrl");
@@ -489,6 +492,34 @@
     return url.toString();
   }
 
+  function syncExtensionAvailability() {
+    if (!extendButton || !extendControl || !extendMinutes) return;
+
+    const lifecycle = currentRoom?.lifecycle || {};
+    const terminated = lifecycle.state === "TERMINATED";
+    const expiresAt = lifecycle.expiresAt ? new Date(lifecycle.expiresAt) : null;
+    const remainingMs = expiresAt && !Number.isNaN(expiresAt.getTime())
+      ? expiresAt.getTime() - Date.now()
+      : Number.POSITIVE_INFINITY;
+
+    const withinFinalHour = remainingMs > 0 && remainingMs <= 60 * 60 * 1000;
+    extendControl.hidden = terminated;
+    extendButton.hidden = terminated;
+    extendButton.disabled = terminated || !withinFinalHour;
+
+    const requested = Number(extendMinutes.value);
+    if (!Number.isFinite(requested) || requested < 1) extendMinutes.value = "1";
+    if (requested > 120) extendMinutes.value = "120";
+
+    if (terminated) {
+      extendButton.title = "종료된 룸은 연장할 수 없습니다.";
+    } else if (!withinFinalHour) {
+      extendButton.title = "룸 종료까지 60분 이하로 남았을 때 연장할 수 있습니다.";
+    } else {
+      extendButton.title = "1회 최대 120분까지 연장할 수 있습니다.";
+    }
+  }
+
   function renderRoom(snapshot) {
     currentRoom = snapshot;
     renderLiveStatuses(snapshot);
@@ -542,6 +573,8 @@
       overlayRow.hidden = !overlayAvailable;
       overlayUrl.value = overlayAvailable ? roomOverlayUrl(snapshot) : "";
     }
+
+    syncExtensionAvailability();
   }
 
   async function createRoom(event) {
@@ -647,6 +680,36 @@
     }
   }
 
+  async function extendRoomLifetime() {
+    if (!currentRoom || !extendButton || !extendMinutes) return;
+
+    const minutes = Number(extendMinutes.value);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 120) {
+      showResult("연장 시간은 1~120분으로 입력하세요.", "error-text");
+      return;
+    }
+
+    extendButton.disabled = true;
+    showResult("룸 종료 시간을 연장하는 중…", "working");
+    try {
+      const snapshot = await fetchJson(
+        "/api/board/rooms/" + encodeURIComponent(currentRoom.roomId) + "/extend",
+        {
+          method: "POST",
+          body: JSON.stringify({ minutes })
+        }
+      );
+      renderRoom(snapshot);
+      showResult(
+        "룸 종료 시간을 " + minutes + "분 연장했습니다. 누적 유지시간에는 8시간 상한을 적용하지 않습니다.",
+        "success"
+      );
+    } catch (error) {
+      showResult("시간 연장 실패: " + error.message, "error-text");
+      syncExtensionAvailability();
+    }
+  }
+
   async function terminateRoom() {
     if (!currentRoom) return;
     terminateButton.disabled = true;
@@ -696,6 +759,8 @@
   form.addEventListener("submit", createRoom);
   rerollButton.addEventListener("click", rerollPreview);
   commitButton.addEventListener("click", commitPreview);
+  extendButton?.addEventListener("click", extendRoomLifetime);
+  extendMinutes?.addEventListener("input", syncExtensionAvailability);
   pauseButton?.addEventListener("click", pauseRoom);
   resumeButton?.addEventListener("click", resumeRoom);
   terminateButton?.addEventListener("click", terminateRoom);
@@ -722,4 +787,6 @@
   syncMovement();
   syncPauseDonationPolicy();
   syncAllInstructionRows();
+  syncExtensionAvailability();
+  window.setInterval(syncExtensionAvailability, 1000);
 })();

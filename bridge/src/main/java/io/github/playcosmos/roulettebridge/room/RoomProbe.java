@@ -104,6 +104,20 @@ public final class RoomProbe {
                 "SKIP_NEXT_THROW ratio weight must be inherited"
             );
 
+            long moveForwardCount = created.preview().cells().stream()
+                .filter(cell -> "MOVE_FORWARD".equals(cell.instructionId()))
+                .count();
+            long skipCount = created.preview().cells().stream()
+                .filter(cell -> "SKIP_NEXT_THROW".equals(cell.instructionId()))
+                .count();
+            long fixedCount = created.preview().cells().stream()
+                .filter(cell -> "CUSTOM_FIXED".equals(cell.instructionId()))
+                .count();
+
+            require(moveForwardCount == 10, "20% ratio apportionment mismatch");
+            require(skipCount == 5, "10% ratio apportionment mismatch");
+            require(fixedCount == 2, "fixed count allocation mismatch");
+
             for (var cell : created.preview().cells()) {
                 if (!"MOVE_FORWARD".equals(cell.instructionId())) continue;
                 var action = cell.action().getAsJsonObject();

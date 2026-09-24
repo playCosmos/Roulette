@@ -93,7 +93,8 @@ public final class RoomHttpHandler implements HttpHandler {
                 var request = readOptionalPauseRequest(exchange);
                 runtime.pauseRoom(
                     roomId,
-                    request == null ? null : request.donationMode()
+                    request == null ? null : request.donationMode(),
+                    request == null ? null : request.graceSeconds()
                 );
                 sendJson(exchange, 200, rooms.find(roomId));
                 return;
@@ -193,7 +194,10 @@ public final class RoomHttpHandler implements HttpHandler {
         return value == null || value.isBlank() ? error.getClass().getSimpleName() : value;
     }
 
-    private record PauseRequest(String donationMode) {}
+    private record PauseRequest(
+        String donationMode,
+        Integer graceSeconds
+    ) {}
 
     private static void sendJson(HttpExchange exchange, int status, Object payload) throws IOException {
         byte[] body = GSON.toJson(payload).getBytes(StandardCharsets.UTF_8);

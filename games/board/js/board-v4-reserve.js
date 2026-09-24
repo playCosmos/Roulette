@@ -875,74 +875,29 @@
   }
 
   function solveTopLeftStartLoop(path, aspect, logicalWeights, gap) {
-    // 좌상단 코너 곡선의 중앙을 START의 시각적 목표점으로 사용한다.
-    // 기하 seam은 상단 중앙에 남겨 P0 END↔START 간격 안정성을 유지한다.
+    // 논리 START의 물리 슬롯은 셀 크기/플레이어 가중치와 무관하게 고정한다.
+    // 플레이어가 이동해 강조 크기가 달라져도 칸 번호 순서는 절대 재매핑하지 않는다.
     const targetDistance =
       path.perimeter - (path.quarterArc * 0.5);
     const relativeTarget =
       ((targetDistance - (path.horizontal * 0.5)) % path.perimeter +
         path.perimeter) % path.perimeter;
 
-    let startSlot = normalizeCell(
+    const startSlot = normalizeCell(
       Math.round((relativeTarget / path.perimeter) * board.cellCount)
     );
-    let solved = null;
-    let physicalOrder = null;
 
-    // 강조칸 크기에 따라 실제 중심 위치가 약간 달라질 수 있으므로
-    // START에 가장 가까운 물리 슬롯을 다시 선택해 최대 4회 수렴시킨다.
-    for (let iteration = 0; iteration < 4; iteration += 1) {
-      physicalOrder = buildPhysicalOrder(startSlot);
-      const physicalWeights = physicalOrder.map(
-        (logicalIndex) => logicalWeights[logicalIndex]
-      );
+    const physicalOrder = buildPhysicalOrder(startSlot);
+    const physicalWeights = physicalOrder.map(
+      (logicalIndex) => logicalWeights[logicalIndex]
+    );
 
-      solved = solveReserveFirstLoop(
-        path,
-        aspect,
-        physicalWeights,
-        gap
-      );
-
-      let nearestSlot = startSlot;
-      let nearestDistance = Infinity;
-
-      for (
-        let physicalIndex = 0;
-        physicalIndex < solved.placements.length;
-        physicalIndex += 1
-      ) {
-        const placementDistance =
-          ((solved.placements[physicalIndex].distance % path.perimeter) +
-            path.perimeter) % path.perimeter;
-        const distance = circularPathDistance(
-          placementDistance,
-          targetDistance,
-          path.perimeter
-        );
-
-        if (distance < nearestDistance) {
-          nearestDistance = distance;
-          nearestSlot = physicalIndex;
-        }
-      }
-
-      if (nearestSlot === startSlot) break;
-      startSlot = nearestSlot;
-    }
-
-    if (physicalOrder[startSlot] !== 0) {
-      physicalOrder = buildPhysicalOrder(startSlot);
-      const physicalWeights = physicalOrder.map(
-        (logicalIndex) => logicalWeights[logicalIndex]
-      );
-      solved = solveReserveFirstLoop(
-        path,
-        aspect,
-        physicalWeights,
-        gap
-      );
-    }
+    const solved = solveReserveFirstLoop(
+      path,
+      aspect,
+      physicalWeights,
+      gap
+    );
 
     const logicalPlacements = remapPlacementsToLogical(
       solved.placements,

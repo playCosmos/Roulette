@@ -80,6 +80,9 @@
   let lastMotionTime = 0;
   let previousScaleWeights = null;
   let neutralSolveCache = null;
+  // 중앙 Throw 연출은 화면이 하나이므로 FIFO로 직렬화한다.
+  // 결과 공개 이후의 말 이동은 기존 플레이어별 큐에서 독립적으로 진행된다.
+  let throwPresentationQueue = Promise.resolve();
 
   const TOKEN_BASE_SIZE = 26;
   const MOTION_EPSILON = 0.025;
@@ -1939,6 +1942,35 @@
     throw new Error("throw generator must be dice or yut");
   }
 
+  function reserveThrowPresentation(event, player) {
+    let revealResolve;
+    const reveal = new Promise((resolve) => {
+      revealResolve = resolve;
+    });
+
+    const run = throwPresentationQueue
+      .catch(() => undefined)
+      .then(async () => {
+        const presenter = window.RamyaniThrowPresentation;
+        const presentation = presenter?.present
+          ? presenter.present(event, player)
+          : {
+              reveal: Promise.resolve(),
+              finished: Promise.resolve()
+            };
+
+        await presentation.reveal;
+        revealResolve();
+        await presentation.finished;
+      });
+
+    throwPresentationQueue = run;
+    return {
+      reveal,
+      finished: run
+    };
+  }
+
   function enqueueThrowEvent(input, meta = {}) {
     let event;
     try {
@@ -1963,13 +1995,7 @@
 
         // 서버가 이미 확정한 event를 그대로 표현한다.
         // 클라이언트는 결과를 다시 추첨하지 않는다.
-        const presenter = window.RamyaniThrowPresentation;
-        const presentation = presenter?.present
-          ? presenter.present(event, player)
-          : {
-              reveal: Promise.resolve(),
-              finished: Promise.resolve()
-            };
+        const presentation = reserveThrowPresentation(event, player);
 
         window.dispatchEvent(new CustomEvent("ramyani-board:throwstarted", {
           detail: { event, source: meta.source || null }

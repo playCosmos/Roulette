@@ -18,9 +18,11 @@ public final class RoomHttpHandler implements HttpHandler {
     private static final String BASE = "/api/board/rooms";
 
     private final RoomService rooms;
+    private final BoardGameRuntimeEngine runtime;
 
-    public RoomHttpHandler(RoomService rooms) {
+    public RoomHttpHandler(RoomService rooms, BoardGameRuntimeEngine runtime) {
         this.rooms = rooms;
+        this.runtime = runtime;
     }
 
     @Override
@@ -75,6 +77,13 @@ public final class RoomHttpHandler implements HttpHandler {
                 if (!requireMethod(exchange, "POST")) return;
                 String roomId = route.substring(0, route.length() - "/preview/commit".length());
                 sendJson(exchange, 200, rooms.commitPreview(roomId));
+                return;
+            }
+
+            if (route.endsWith("/runtime")) {
+                if (!requireMethod(exchange, "GET")) return;
+                String roomId = route.substring(0, route.length() - "/runtime".length());
+                sendJson(exchange, 200, runtime.snapshot(roomId));
                 return;
             }
 

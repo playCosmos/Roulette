@@ -844,10 +844,10 @@
     return weights.map((weight) => {
       if (weight <= 1.0001) return normalWidth;
 
-      // 강조 칸은 먼저 neutral 기준 크기를 예약한다.
-      // emphasisFactor는 P0 충돌 시에만 마지막 안전장치로 낮춘다.
+      // Dock 배율은 실제 일반 칸(normalWidth)을 기준으로 정의한다.
+      // 따라서 플레이어 1명 칸 2.00×는 화면에서도 항상 일반 칸의 정확히 2배다.
       const effectiveWeight = 1 + ((weight - 1) * emphasisFactor);
-      return neutralWidth * effectiveWeight;
+      return normalWidth * effectiveWeight;
     });
   }
 
@@ -892,23 +892,17 @@
       };
     }
 
-    // reserve-first의 초기 추정은 유지하되, 최종 크기는
-    // START 양방향 front가 반대편에서 정확히 동일 gap으로 만나는 값으로 푼다.
-    const reservedWidths = weights
-      .filter((weight) => weight > 1.0001)
-      .map((weight) =>
-        neutralWidth * (1 + ((weight - 1) * emphasisFactor))
-      );
-
-    const reservedTotal = reservedWidths.reduce((sum, width) => sum + width, 0);
-    const gapTotal = gap * board.cellCount;
-    const remainingEstimate = Math.max(
-      0.5 * normalIndices.length,
-      path.perimeter - gapTotal - reservedTotal
+    // 모든 배율은 실제 일반 칸 크기 기준이므로 초기값도
+    // 강조 weight 총합을 포함한 전체 비율로 직접 추정한다.
+    const effectiveWeightTotal = weights.reduce(
+      (sum, weight) =>
+        sum + (1 + ((Math.max(1, weight) - 1) * emphasisFactor)),
+      0
     );
     const estimatedNormalWidth = Math.max(
       0.5,
-      remainingEstimate / normalIndices.length
+      (path.perimeter - (gap * board.cellCount)) /
+        Math.max(1, effectiveWeightTotal)
     );
 
     let low = 0.5;

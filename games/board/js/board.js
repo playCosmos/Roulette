@@ -169,7 +169,8 @@
     );
     const peakRange = (0.84 + ((density - 1) * 1.12)) * intensity;
     const maxScale = clamp(1.60 + ((density - 1) * 1.45), 1.60, 2.75);
-    const proximityProfile = [1, 0.60, 0.32, density > 1.35 ? 0.12 : 0];
+    const influenceSigma = clamp(1.08 + ((density - 1) * 0.44), 1.08, 1.85);
+    const influenceRadius = Math.ceil(influenceSigma * 3.2);
 
     return Array.from({ length: board.cellCount }, (_, cellIndex) => {
       let remaining = 1;
@@ -178,7 +179,9 @@
       for (const position of playerPositions) {
         const distance = circularDistance(cellIndex, position);
         if (distance === 0) exactOccupancy += 1;
-        const localInfluence = distance < proximityProfile.length ? proximityProfile[distance] : 0;
+        const localInfluence = distance <= influenceRadius
+          ? Math.exp(-0.5 * Math.pow(distance / influenceSigma, 2))
+          : 0;
         remaining *= (1 - localInfluence);
       }
 
@@ -195,157 +198,133 @@
     });
   }
 
-  function createRoundedPerimeter(width, height, inset, maxHalfWidth, maxHalfHeight) {
-    const left = inset + maxHalfWidth;
-    const right = width - inset - maxHalfWidth;
-    const top = inset + maxHalfHeight;
-    const bottom = height - inset - maxHalfHeight;
+  function signedPower(value, power) {
+    if (value === 0) return 0;
+    return Math.sign(value) * Math.pow(Math.abs(value), power);
+  }
 
-    const usableWidth = Math.max(80, right - left);
-    const usableHeight = Math.max(80, bottom - top);
-    const radius = clamp(
-      Math.min(usableWidth, usableHeight) * 0.085,
-      18,
-      Math.min(usableWidth, usableHeight) * 0.18
+  function superellipseCoordinate(centerX, centerY, radiusX, radiusY, exponent, t) {
+    const power = 2 / exponent;
+    return {
+      x: centerX + (radiusX * signedPower(Math.cos(t), power)),
+      y: centerY + (radiusY * signedPower(Math.sin(t), power))
+    };
+  }
+
+  function createSmoothPerimeter(width, height, inset, referenceWidth, referenceHeight) {
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const outerRadiusX = Math.max(1, (width / 2) - inset);
+    const outerRadiusY = Math.max(1, (height / 2) - inset);
+    const referenceRadiusX = Math.max(1, outerRadiusX - (referenceWidth / 2));
+    const referenceRadiusY = Math.max(1, outerRadiusY - (referenceHeight / 2));
+
+    // Squircle 계열 곡선. 직선부는 화면 가장자리에 오래 붙고,
+    // 모서리에서는 곡률이 연속적으로 변해서 축 전환이 튀지 않는다.
+    const exponent = clamp(
+      5.6 + ((Math.max(board.columns / MIN_COLUMNS, board.rows / MIN_ROWS) - 1) * 0.35),
+      5.6,
+      7.2
     );
+    const sampleCount = Math.max(1024, board.cellCount * 40);
+    const startT = -Math.PI * 0.75;
+    const samples = [];
+    let perimeter = 0;
+    let previous = null;
 
-    const horizontal = Math.max(1, usableWidth - (radius * 2));
-    const vertical = Math.max(1, usableHeight - (radius * 2));
-    const quarterArc = Math.PI * radius * 0.5;
-    const perimeter = (horizontal * 2) + (vertical * 2) + (quarterArc * 4);
+    for (let index = 0; index <= sampleCount; index += 1) {
+      const t = startT + ((index / sampleCount) * Math.PI * 2);
+      const point = superellipseCoordinate(
+        centerX,
+        centerY,
+        referenceRadiusX,
+        referenceRadiusY,
+        exponent,
+        t
+      );
+
+      if (previous) {
+        perimeter += Math.hypot(point.x - previous.x, point.y - previous.y);
+      }
+
+      samples.push({ t, distance: perimeter });
+      previous = point;
+    }
 
     return {
-      left,
-      right,
-      top,
-      bottom,
-      radius,
-      horizontal,
-      vertical,
-      quarterArc,
+      centerX,
+      centerY,
+      outerRadiusX,
+      outerRadiusY,
+      referenceRadiusX,
+      referenceRadiusY,
+      exponent,
+      samples,
       perimeter
     };
   }
 
-  function roundedPerimeterPoint(path, distance) {
-    const {
-      left,
-      right,
-      top,
-      bottom,
-      radius,
-      horizontal,
-      vertical,
-      quarterArc,
-      perimeter
-    } = path;
+  function parameterAtDistance(path, distance) {
+    const perimeter = Math.max(1, path.perimeter);
+    const normalized = ((distance % perimeter) + perimeter) % perimeter;
+    const samples = path.samples;
 
-    let s = ((distance % perimeter) + perimeter) % perimeter;
+    let low = 0;
+    let high = samples.length - 1;
 
-    if (s < horizontal) {
-      return { x: left + radius + s, y: top, angle: 0, cornerBlend: 0 };
+    while (low + 1 < high) {
+      const mid = (low + high) >> 1;
+      if (samples[mid].distance <= normalized) low = mid;
+      else high = mid;
     }
-    s -= horizontal;
 
-    if (s < quarterArc) {
-      const progress = s / quarterArc;
-      const angle = (-Math.PI / 2) + (progress * Math.PI / 2);
-      return {
-        x: right - radius + (Math.cos(angle) * radius),
-        y: top + radius + (Math.sin(angle) * radius),
-        angle: progress * Math.PI / 2,
-        cornerBlend: Math.sin(progress * Math.PI)
-      };
-    }
-    s -= quarterArc;
+    const a = samples[low];
+    const b = samples[high];
+    const span = Math.max(0.000001, b.distance - a.distance);
+    const mix = clamp((normalized - a.distance) / span, 0, 1);
+    return a.t + ((b.t - a.t) * mix);
+  }
 
-    if (s < vertical) {
-      return { x: right, y: top + radius + s, angle: Math.PI / 2, cornerBlend: 0 };
-    }
-    s -= vertical;
+  function smoothPerimeterPoint(path, distance, cellWidth, cellHeight) {
+    const t = parameterAtDistance(path, distance);
+    const radiusX = Math.max(1, path.outerRadiusX - (cellWidth / 2));
+    const radiusY = Math.max(1, path.outerRadiusY - (cellHeight / 2));
+    const point = superellipseCoordinate(
+      path.centerX,
+      path.centerY,
+      radiusX,
+      radiusY,
+      path.exponent,
+      t
+    );
 
-    if (s < quarterArc) {
-      const progress = s / quarterArc;
-      const angle = progress * Math.PI / 2;
-      return {
-        x: right - radius + (Math.cos(angle) * radius),
-        y: bottom - radius + (Math.sin(angle) * radius),
-        angle: (Math.PI / 2) + (progress * Math.PI / 2),
-        cornerBlend: Math.sin(progress * Math.PI)
-      };
-    }
-    s -= quarterArc;
+    const epsilon = 0.0015;
+    const before = superellipseCoordinate(
+      path.centerX,
+      path.centerY,
+      radiusX,
+      radiusY,
+      path.exponent,
+      t - epsilon
+    );
+    const after = superellipseCoordinate(
+      path.centerX,
+      path.centerY,
+      radiusX,
+      radiusY,
+      path.exponent,
+      t + epsilon
+    );
 
-    if (s < horizontal) {
-      return { x: right - radius - s, y: bottom, angle: Math.PI, cornerBlend: 0 };
-    }
-    s -= horizontal;
-
-    if (s < quarterArc) {
-      const progress = s / quarterArc;
-      const angle = (Math.PI / 2) + (progress * Math.PI / 2);
-      return {
-        x: left + radius + (Math.cos(angle) * radius),
-        y: bottom - radius + (Math.sin(angle) * radius),
-        angle: Math.PI + (progress * Math.PI / 2),
-        cornerBlend: Math.sin(progress * Math.PI)
-      };
-    }
-    s -= quarterArc;
-
-    if (s < vertical) {
-      return { x: left, y: bottom - radius - s, angle: Math.PI * 1.5, cornerBlend: 0 };
-    }
-    s -= vertical;
-
-    const progress = clamp(s / quarterArc, 0, 1);
-    const angle = Math.PI + (progress * Math.PI / 2);
     return {
-      x: left + radius + (Math.cos(angle) * radius),
-      y: top + radius + (Math.sin(angle) * radius),
-      angle: (Math.PI * 1.5) + (progress * Math.PI / 2),
-      cornerBlend: Math.sin(progress * Math.PI)
+      x: point.x,
+      y: point.y,
+      angle: Math.atan2(after.y - before.y, after.x - before.x)
     };
   }
 
   function projectedTangentSize(width, height, angle) {
     return (Math.abs(Math.cos(angle)) * width) + (Math.abs(Math.sin(angle)) * height);
-  }
-
-  function edgeAlignedPoint(point, cellWidth, cellHeight, width, height, inset) {
-    const twoPi = Math.PI * 2;
-    const angle = ((point.angle % twoPi) + twoPi) % twoPi;
-
-    const leftX = inset + (cellWidth / 2);
-    const rightX = width - inset - (cellWidth / 2);
-    const topY = inset + (cellHeight / 2);
-    const bottomY = height - inset - (cellHeight / 2);
-
-    let x = point.x;
-    let y = point.y;
-
-    if (angle <= Math.PI / 2) {
-      const t = angle / (Math.PI / 2);
-      x += (rightX - x) * (t * t);
-      y += (topY - y) * ((1 - t) * (1 - t));
-    } else if (angle <= Math.PI) {
-      const t = (angle - (Math.PI / 2)) / (Math.PI / 2);
-      x += (rightX - x) * ((1 - t) * (1 - t));
-      y += (bottomY - y) * (t * t);
-    } else if (angle <= Math.PI * 1.5) {
-      const t = (angle - Math.PI) / (Math.PI / 2);
-      x += (leftX - x) * (t * t);
-      y += (bottomY - y) * ((1 - t) * (1 - t));
-    } else {
-      const t = (angle - (Math.PI * 1.5)) / (Math.PI / 2);
-      x += (leftX - x) * ((1 - t) * (1 - t));
-      y += (topY - y) * (t * t);
-    }
-
-    return {
-      x: clamp(x, leftX, rightX),
-      y: clamp(y, topY, bottomY)
-    };
   }
 
   function layoutBoardCells() {
@@ -377,9 +356,15 @@
 
     const desiredWidths = scales.map((scale) => baseWidth * scale);
     const desiredHeights = scales.map((scale) => baseHeight * scale);
-    const maxHalfWidth = Math.max(...desiredWidths) * 0.5;
-    const maxHalfHeight = Math.max(...desiredHeights) * 0.5;
-    const path = createRoundedPerimeter(width, height, inset, maxHalfWidth, maxHalfHeight);
+    const referenceWidth = Math.max(1, baseWidth * 0.74);
+    const referenceHeight = Math.max(1, baseHeight * 0.74);
+    const path = createSmoothPerimeter(
+      width,
+      height,
+      inset,
+      referenceWidth,
+      referenceHeight
+    );
 
     let positions = Array.from(
       { length: board.cellCount },
@@ -390,7 +375,9 @@
     let fittedHeights = desiredHeights.slice();
 
     for (let iteration = 0; iteration < 7; iteration += 1) {
-      const points = positions.map((position) => roundedPerimeterPoint(path, position));
+      const points = positions.map((position, index) =>
+        smoothPerimeterPoint(path, position, fittedWidths[index], fittedHeights[index])
+      );
       const projected = points.map((point, index) =>
         projectedTangentSize(fittedWidths[index], fittedHeights[index], point.angle)
       );
@@ -437,37 +424,32 @@
       const cell = cellElements.get(index);
       if (!cell) continue;
 
-      const point = roundedPerimeterPoint(path, positions[index]);
-      const cornerCorrection = 1 - (point.cornerBlend * 0.075);
-      const cellWidth = fittedWidths[index] * cornerCorrection;
-      const cellHeight = fittedHeights[index] * cornerCorrection;
+      const renderedWidth = Math.max(1, fittedWidths[index]);
+      const renderedHeight = Math.max(1, fittedHeights[index]);
+      const point = smoothPerimeterPoint(
+        path,
+        positions[index],
+        renderedWidth,
+        renderedHeight
+      );
       const scale = scales[index];
       const isOccupied = occupancy.has(index);
 
-      const renderedWidth = Math.max(1, cellWidth);
-      const renderedHeight = Math.max(1, cellHeight);
-      const alignedPoint = edgeAlignedPoint(
-        point,
-        renderedWidth,
-        renderedHeight,
-        width,
-        height,
-        inset
-      );
-      const snappedLeft = Math.round((alignedPoint.x - (renderedWidth / 2)) * 2) / 2;
-      const snappedTop = Math.round((alignedPoint.y - (renderedHeight / 2)) * 2) / 2;
-      const snappedWidth = Math.round(renderedWidth * 2) / 2;
-      const snappedHeight = Math.round(renderedHeight * 2) / 2;
+      // 불투명 칸 배경을 사용하므로 저해상도 색상 차이를 피하기 위한
+      // 강한 0.5px 스냅은 제거하고 0.125px만 정리한다.
+      const snappedLeft = Math.round((point.x - (renderedWidth / 2)) * 8) / 8;
+      const snappedTop = Math.round((point.y - (renderedHeight / 2)) * 8) / 8;
+      const snappedWidth = Math.round(renderedWidth * 8) / 8;
+      const snappedHeight = Math.round(renderedHeight * 8) / 8;
 
       cell.style.left = `${snappedLeft}px`;
       cell.style.top = `${snappedTop}px`;
       cell.style.width = `${snappedWidth}px`;
       cell.style.height = `${snappedHeight}px`;
-      cell.style.setProperty("--dock-scale", (scale * cornerCorrection).toFixed(3));
+      cell.style.setProperty("--dock-scale", scale.toFixed(3));
       cell.style.zIndex = String(Math.round(scale * 100) + (isOccupied ? 200 : 0));
       cell.dataset.occupied = String(isOccupied);
       cell.dataset.dockScale = scale.toFixed(3);
-      cell.dataset.cornerBlend = point.cornerBlend.toFixed(3);
       cell.dataset.pathAngle = point.angle.toFixed(3);
     }
   }

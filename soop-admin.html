@@ -103,9 +103,12 @@
             </label>
             <label>일시정지 중 후원
               <select name="pauseDonationMode">
-                <option value="QUEUE" selected>큐에 누적 후 재개 시 순서대로 처리</option>
-                <option value="IGNORE">무시</option>
+                <option value="QUEUE" selected>유예시간 동안 큐에 저장 후 이후 무시</option>
+                <option value="IGNORE">일시정지 즉시 무시</option>
               </select>
+            </label>
+            <label>일시정지 후원 유예(초)
+              <input name="pauseGraceSeconds" type="number" min="0" max="120" step="1" value="10" />
             </label>
           </div>
         </fieldset>
@@ -305,7 +308,7 @@
     </section>
   </main>
   <script src="./soop/admin/soop-admin.js?v=20260917-1" defer></script>
-  <script src="./soop/admin/board-room-admin.js?v=20260925-4" defer></script>
+  <script src="./soop/admin/board-room-admin.js?v=20260925-5" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       const setupPanel = document.getElementById("setupPanel");

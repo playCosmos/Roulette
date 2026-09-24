@@ -312,6 +312,42 @@
     return (Math.abs(Math.cos(angle)) * width) + (Math.abs(Math.sin(angle)) * height);
   }
 
+  function edgeAlignedPoint(point, cellWidth, cellHeight, width, height, inset) {
+    const twoPi = Math.PI * 2;
+    const angle = ((point.angle % twoPi) + twoPi) % twoPi;
+
+    const leftX = inset + (cellWidth / 2);
+    const rightX = width - inset - (cellWidth / 2);
+    const topY = inset + (cellHeight / 2);
+    const bottomY = height - inset - (cellHeight / 2);
+
+    let x = point.x;
+    let y = point.y;
+
+    if (angle <= Math.PI / 2) {
+      const t = angle / (Math.PI / 2);
+      x += (rightX - x) * (t * t);
+      y += (topY - y) * ((1 - t) * (1 - t));
+    } else if (angle <= Math.PI) {
+      const t = (angle - (Math.PI / 2)) / (Math.PI / 2);
+      x += (rightX - x) * ((1 - t) * (1 - t));
+      y += (bottomY - y) * (t * t);
+    } else if (angle <= Math.PI * 1.5) {
+      const t = (angle - Math.PI) / (Math.PI / 2);
+      x += (leftX - x) * (t * t);
+      y += (bottomY - y) * ((1 - t) * (1 - t));
+    } else {
+      const t = (angle - (Math.PI * 1.5)) / (Math.PI / 2);
+      x += (leftX - x) * ((1 - t) * (1 - t));
+      y += (topY - y) * (t * t);
+    }
+
+    return {
+      x: clamp(x, leftX, rightX),
+      y: clamp(y, topY, bottomY)
+    };
+  }
+
   function layoutBoardCells() {
     if (!refs.boardStage || !cellElements.size) return;
 
@@ -410,8 +446,16 @@
 
       const renderedWidth = Math.max(1, cellWidth);
       const renderedHeight = Math.max(1, cellHeight);
-      const snappedLeft = Math.round((point.x - (renderedWidth / 2)) * 2) / 2;
-      const snappedTop = Math.round((point.y - (renderedHeight / 2)) * 2) / 2;
+      const alignedPoint = edgeAlignedPoint(
+        point,
+        renderedWidth,
+        renderedHeight,
+        width,
+        height,
+        inset
+      );
+      const snappedLeft = Math.round((alignedPoint.x - (renderedWidth / 2)) * 2) / 2;
+      const snappedTop = Math.round((alignedPoint.y - (renderedHeight / 2)) * 2) / 2;
       const snappedWidth = Math.round(renderedWidth * 2) / 2;
       const snappedHeight = Math.round(renderedHeight * 2) / 2;
 

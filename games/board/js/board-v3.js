@@ -301,21 +301,284 @@
     };
   }
 
-  function applyCellGeometry(index, point, cellWidth, cellHeight, weight, occupied) {
+  function rectangleCorners(centerX, centerY, width, height, angle) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const halfWidth = width * 0.5;
+    const halfHeight = height * 0.5;
+
+    return [
+      [-halfWidth, -halfHeight],
+      [halfWidth, -halfHeight],
+      [halfWidth, halfHeight],
+      [-halfWidth, halfHeight]
+    ].map(([x, y]) => ({
+      x: centerX + (x * cos) - (y * sin),
+      y: centerY + (x * sin) + (y * cos)
+    }));
+  }
+
+  function projectPolygon(points, axisX, axisY) {
+    let min = Infinity;
+    let max = -Infinity;
+
+    for (const point of points) {
+      const value = (point.x * axisX) + (point.y * axisY);
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    }
+
+    return { min, max };
+  }
+
+  function polygonsOverlap(a, b) {
+    for (const polygon of [a, b]) {
+      for (let index = 0; index < polygon.length; index += 1) {
+        const p0 = polygon[index];
+        const p1 = polygon[(index + 1) % polygon.length];
+        const edgeX = p1.x - p0.x;
+        const edgeY = p1.y - p0.y;
+        const length = Math.hypot(edgeX, edgeY);
+        if (length <= 0.0001) continue;
+
+        const axisX = -edgeY / length;
+        const axisY = edgeX / length;
+        const projectionA = projectPolygon(a, axisX, axisY);
+        const projectionB = projectPolygon(b, axisX, axisY);
+
+        if (
+          projectionA.max <= projectionB.min ||
+          projectionB.max <= projectionA.min
+        ) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  function pointSegmentDistance(point, a, b) {
+    const edgeX = b.x - a.x;
+    const edgeY = b.y - a.y;
+    const lengthSquared = (edgeX * edgeX) + (edgeY * edgeY);
+
+    if (lengthSquared <= 0.0001) {
+      return Math.hypot(point.x - a.x, point.y - a.y);
+    }
+
+    const ratio = clamp(
+      (((point.x - a.x) * edgeX) + ((point.y - a.y) * edgeY)) / lengthSquared,
+      0,
+      1
+    );
+    const closestX = a.x + (edgeX * ratio);
+    const closestY = a.y + (edgeY * ratio);
+
+    return Math.hypot(point.x - closestX, point.y - closestY);
+  }
+
+  function polygonDistance(a, b) {
+    if (polygonsOverlap(a, b)) return 0;
+
+    let distance = Infinity;
+
+    for (const point of a) {
+      for (let index = 0; index < b.length; index += 1) {
+        distance = Math.min(
+          distance,
+          pointSegmentDistance(point, b[index], b[(index + 1) % b.length])
+        );
+      }
+    }
+
+    for (const point of b) {
+      for (let index = 0; index < a.length; index += 1) {
+        distance = Math.min(
+          distance,
+          pointSegmentDistance(point, a[index], a[(index + 1) % a.length])
+        );
+      }
+    }
+
+    return distance;
+  }
+
+  function cellGeometry(path, distance, cellWidth, cellHeight) {
+    const point = loopPoint(path, distance);
+    const inwardX = -Math.sin(point.angle);
+    const inwardY = Math.cos(point.angle);
+
+    let centerX = point.x + (inwardX * cellHeight * 0.5);
+    let centerY = point.y + (inwardY * cellHeight * 0.5);
+    let corners = rectangleCorners(
+      centerX,
+      centerY,
+      cellWidth,
+      cellHeight,
+      point.angle
+    );
+
+    // 직선부는 margin 끝에 정확히 붙고, 코너/코너 주변에서만
+    // 회전된 직사각형의 꼭짓점이 화면 밖으로 나가지 않도록
+    // 보드 안쪽으로 필요한 만큼만 추가 이동한다.
+    let extraInset = 0;
+
+    for (const corner of corners) {
+      if (corner.x < path.left && inwardX > 0.0001) {
+        extraInset = Math.max(extraInset, (path.left - corner.x) / inwardX);
+      }
+      if (corner.x > path.right && inwardX < -0.0001) {
+        extraInset = Math.max(extraInset, (corner.x - path.right) / -inwardX);
+      }
+      if (corner.y < path.top && inwardY > 0.0001) {
+        extraInset = Math.max(extraInset, (path.top - corner.y) / inwardY);
+      }
+      if (corner.y > path.bottom && inwardY < -0.0001) {
+        extraInset = Math.max(extraInset, (corner.y - path.bottom) / -inwardY);
+      }
+    }
+
+    if (extraInset > 0) {
+      centerX += inwardX * (extraInset + 0.25);
+      centerY += inwardY * (extraInset + 0.25);
+      corners = rectangleCorners(
+        centerX,
+        centerY,
+        cellWidth,
+        cellHeight,
+        point.angle
+      );
+    }
+
+    return {
+      distance,
+      point,
+      centerX,
+      centerY,
+      width: cellWidth,
+      height: cellHeight,
+      corners
+    };
+  }
+
+  function findNextGeometry(path, previous, previousDistance, width, height, gap) {
+    const step = Math.max(
+      gap,
+      width,
+      height,
+      previous.width,
+      previous.height
+    ) * 0.75 + gap;
+
+    let low = previousDistance;
+    let high = previousDistance + step;
+    let candidate = cellGeometry(path, high, width, height);
+
+    for (let guard = 0; guard < 12; guard += 1) {
+      if (polygonDistance(previous.corners, candidate.corners) >= gap) break;
+      high += step;
+      candidate = cellGeometry(path, high, width, height);
+    }
+
+    for (let iteration = 0; iteration < 15; iteration += 1) {
+      const middle = (low + high) * 0.5;
+      const middleGeometry = cellGeometry(path, middle, width, height);
+      const distance = polygonDistance(previous.corners, middleGeometry.corners);
+
+      if (distance >= gap) {
+        high = middle;
+        candidate = middleGeometry;
+      } else {
+        low = middle;
+      }
+    }
+
+    return {
+      distance: high,
+      geometry: candidate
+    };
+  }
+
+  function placeLoop(path, baseWidth, aspect, weights, gap) {
+    const widths = weights.map((weight) => baseWidth * weight);
+    const heights = widths.map((width) => width / Math.max(0.01, aspect));
+
+    const placements = new Array(board.cellCount);
+    let currentDistance = 0;
+    let current = cellGeometry(
+      path,
+      currentDistance,
+      widths[0],
+      heights[0]
+    );
+    placements[0] = current;
+
+    for (let index = 1; index < board.cellCount; index += 1) {
+      const next = findNextGeometry(
+        path,
+        current,
+        currentDistance,
+        widths[index],
+        heights[index],
+        gap
+      );
+
+      currentDistance = next.distance;
+      current = next.geometry;
+      placements[index] = current;
+    }
+
+    const closure = findNextGeometry(
+      path,
+      current,
+      currentDistance,
+      widths[0],
+      heights[0],
+      gap
+    );
+
+    return {
+      placements,
+      requiredPerimeter: closure.distance
+    };
+  }
+
+  function solveLoop(path, aspect, weights, gap) {
+    const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+    let baseWidth = Math.max(
+      1,
+      (path.perimeter - (gap * board.cellCount)) / Math.max(1, weightTotal)
+    );
+
+    // 실제 직사각형 외곽 간 gap을 기준으로 한 바퀴가 정확히 닫히도록
+    // baseWidth 하나만 보정한다. 모든 비강조 칸은 이 값으로 동일하다.
+    for (let iteration = 0; iteration < 5; iteration += 1) {
+      const trial = placeLoop(path, baseWidth, aspect, weights, gap);
+      const correction = clamp(
+        path.perimeter / Math.max(1, trial.requiredPerimeter),
+        0.80,
+        1.20
+      );
+      baseWidth *= correction;
+    }
+
+    return {
+      baseWidth,
+      ...placeLoop(path, baseWidth, aspect, weights, gap)
+    };
+  }
+
+  function applyCellGeometry(index, geometry, weight, occupied) {
     const cell = cellElements.get(index);
     if (!cell) return;
 
-    // Clockwise path의 오른쪽 방향이 보드 내부 방향이다.
-    const inwardX = -Math.sin(point.angle);
-    const inwardY = Math.cos(point.angle);
-    const centerX = point.x + (inwardX * cellHeight * 0.5);
-    const centerY = point.y + (inwardY * cellHeight * 0.5);
-    const left = centerX - (cellWidth * 0.5);
-    const top = centerY - (cellHeight * 0.5);
-    const angleDeg = point.angle * (180 / Math.PI);
+    const left = geometry.centerX - (geometry.width * 0.5);
+    const top = geometry.centerY - (geometry.height * 0.5);
+    const angleDeg = geometry.point.angle * (180 / Math.PI);
 
-    const typographyBasis = Math.sqrt(cellWidth * cellHeight);
-    const tokenBasis = Math.min(cellWidth, cellHeight);
+    const typographyBasis = Math.sqrt(geometry.width * geometry.height);
+    const tokenBasis = Math.min(geometry.width, geometry.height);
     const indexFontSize = clamp(typographyBasis * 0.135, 8, 16);
     const labelFontSize = clamp(typographyBasis * 0.105, 7, 14);
     const tokenSize = clamp(tokenBasis * 0.42, 18, 58);
@@ -323,8 +586,8 @@
 
     cell.style.left = left.toFixed(3) + "px";
     cell.style.top = top.toFixed(3) + "px";
-    cell.style.width = cellWidth.toFixed(3) + "px";
-    cell.style.height = cellHeight.toFixed(3) + "px";
+    cell.style.width = geometry.width.toFixed(3) + "px";
+    cell.style.height = geometry.height.toFixed(3) + "px";
     cell.style.transform = "rotate(" + angleDeg.toFixed(3) + "deg)";
     cell.style.setProperty("--cell-index-font", indexFontSize.toFixed(3) + "px");
     cell.style.setProperty("--cell-label-font", labelFontSize.toFixed(3) + "px");
@@ -335,8 +598,8 @@
 
     cell.dataset.occupied = String(occupied);
     cell.dataset.dockScale = weight.toFixed(3);
-    cell.dataset.curved = String(point.curved);
-    cell.dataset.pathAngle = point.angle.toFixed(4);
+    cell.dataset.curved = String(geometry.point.curved);
+    cell.dataset.pathAngle = geometry.point.angle.toFixed(4);
   }
 
   function layoutNow() {
@@ -358,49 +621,31 @@
     const nominalCell = Math.min(nominalWidth, nominalHeight);
     const gap = clamp(nominalCell * 0.075, 3, 11);
     const cornerRadius = clamp(
-      nominalCell * 1.65,
+      nominalCell * 1.90,
       gap * 3,
-      Math.min(width - (margin * 2), height - (margin * 2)) * 0.18
+      Math.min(width - (margin * 2), height - (margin * 2)) * 0.28
     );
 
     const path = createRoundedLoop(width, height, margin, cornerRadius);
-    const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
-    const spaceForCells = Math.max(
-      board.cellCount,
-      path.perimeter - (gap * board.cellCount)
-    );
-
-    // 강조 칸의 가중치를 먼저 확보한 뒤 남은 둘레 길이를
-    // 모든 비강조 칸의 동일 baseWidth로 환산한다.
-    const baseWidth = spaceForCells / Math.max(1, weightTotal);
-    const baseHeight = baseWidth / Math.max(0.01, aspect);
-
-    let cursor = 0;
+    const solved = solveLoop(path, aspect, weights, gap);
 
     for (let index = 0; index < board.cellCount; index += 1) {
-      const weight = weights[index];
-      const cellWidth = baseWidth * weight;
-      const cellHeight = baseHeight * weight;
-      const centerDistance = cursor + (cellWidth * 0.5);
-      const point = loopPoint(path, centerDistance);
-
       applyCellGeometry(
         index,
-        point,
-        cellWidth,
-        cellHeight,
-        weight,
+        solved.placements[index],
+        weights[index],
         occupancy.has(index)
       );
-
-      cursor += cellWidth + gap;
     }
 
     refs.boardGrid.dataset.pathPerimeter = path.perimeter.toFixed(3);
+    refs.boardGrid.dataset.requiredPerimeter = solved.requiredPerimeter.toFixed(3);
     refs.boardGrid.dataset.cellGap = gap.toFixed(3);
     refs.boardGrid.dataset.cellAspect = aspect.toFixed(6);
-    refs.boardGrid.dataset.baseCellWidth = baseWidth.toFixed(3);
-    refs.boardGrid.dataset.baseCellHeight = baseHeight.toFixed(3);
+    refs.boardGrid.dataset.baseCellWidth = solved.baseWidth.toFixed(3);
+    refs.boardGrid.dataset.baseCellHeight = (
+      solved.baseWidth / Math.max(0.01, aspect)
+    ).toFixed(3);
   }
 
   function scheduleLayout() {

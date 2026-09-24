@@ -15,6 +15,7 @@ import io.github.playcosmos.roulettebridge.operations.SoopUserLookupService;
 import io.github.playcosmos.roulettebridge.operations.WindowsConsoleEncoding;
 import io.github.playcosmos.roulettebridge.recovery.PhaseFProbe;
 import io.github.playcosmos.roulettebridge.recovery.TicketRecoveryService;
+import io.github.playcosmos.roulettebridge.room.BoardGameRuntimeEngine;
 import io.github.playcosmos.roulettebridge.room.RoomHttpHandler;
 import io.github.playcosmos.roulettebridge.room.RoomProbe;
 import io.github.playcosmos.roulettebridge.room.RoomService;
@@ -139,6 +140,11 @@ public final class Main {
             ticketDispatcher,
             pendingTicketCount::addAndGet
         );
+
+        var boardRuntime = new BoardGameRuntimeEngine(
+            database,
+            event -> websocket.broadcastTransient(GSON.toJson(event))
+        );
         var adjustment = new ManualAdjustmentService(
             database,
             config.ticket(),
@@ -154,18 +160,34 @@ public final class Main {
         var channelEvents = new ChannelEventMonitor();
         var soop = new SoopBridgeAdapter(config, soopState, donation -> {
             try {
+                var gameResult = boardRuntime.process(donation);
+                if (gameResult.processedRooms() > 0 || gameResult.duplicateRooms() > 0) {
+                    System.out.println(
+                        "[board-game] donor=" + donation.donorId()
+                            + " balloons=" + donation.balloonCount()
+                            + " matched=" + gameResult.matchedRooms()
+                            + " processed=" + gameResult.processedRooms()
+                            + " duplicates=" + gameResult.duplicateRooms()
+                    );
+                }
+            } catch (Exception error) {
+                System.err.println("[board-game] donation processing failed: " + error.getMessage());
+                error.printStackTrace(System.err);
+            }
+
+            try {
                 var result = issuance.process(donation);
                 if (result.duplicate()) {
                     System.out.println("[issuance] duplicate donation ignored: " + result.eventId());
-                    return;
+                } else {
+                    System.out.println(
+                        "[issuance] " + donation.nickname()
+                            + " total=" + result.totalBalloons()
+                            + " tickets=" + result.allocatedTicketCount()
+                            + " new=" + result.newTicketCount()
+                            + " remainder=" + result.remainderBalloons()
+                    );
                 }
-                System.out.println(
-                    "[issuance] " + donation.nickname()
-                        + " total=" + result.totalBalloons()
-                        + " tickets=" + result.allocatedTicketCount()
-                        + " new=" + result.newTicketCount()
-                        + " remainder=" + result.remainderBalloons()
-                );
             } catch (Exception error) {
                 System.err.println("[issuance] donation processing failed: " + error.getMessage());
                 error.printStackTrace(System.err);
@@ -186,7 +208,7 @@ public final class Main {
         );
 
         var roomService = new RoomService(database);
-        var roomHttp = new RoomHttpHandler(roomService);
+        var roomHttp = new RoomHttpHandler(roomService, boardRuntime);
 
         var http = new BridgeHttpServer(
             config,

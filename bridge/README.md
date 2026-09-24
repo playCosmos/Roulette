@@ -154,6 +154,7 @@ GET  /api/board/rooms/{roomId}/runtime
 POST /api/board/rooms/{roomId}/pause
 POST /api/board/rooms/{roomId}/resume
 POST /api/board/rooms/{roomId}/terminate
+POST /api/board/rooms/{roomId}/extend
 ```
 
 룸 API는 loopback 접근만 허용한다.
@@ -184,6 +185,10 @@ POST /api/board/rooms/{roomId}/terminate
 - DRAFT 룸은 여러 개 저장할 수 있지만 `READY` 활성 룸은 전체 시스템에서 최대 1개
 - 이미 활성 룸이 있으면 다른 DRAFT 룸의 `preview/commit`은 409로 거절되고 해당 룸은 DRAFT 상태를 유지
 - 룸 유지 시간은 생성 시 분 단위로 지정하며 기본값은 240분, 최대값은 480분
+- 수동 시간 연장은 종료까지 **60분 이하**로 남았을 때만 가능하며 1회 **1~120분**까지 추가 가능
+- 수동 연장은 생성 시 480분 상한과 별개이므로 누적 유지시간이 8시간을 넘어도 허용
+- 연장 후 남은 시간이 다시 60분을 초과하면 다음 연장은 잠기며, 다시 종료 60분 이내가 되었을 때 재연장 가능
+- 이미 만료되거나 `TERMINATED` 처리된 룸은 시간 연장으로 되살릴 수 없음
 - 유지 시간은 룸 생성 시각부터 계산하고 만료 시 DRAFT/ACTIVE/PAUSED 여부와 관계없이 `TERMINATED` 처리
 - Bridge 시작 시와 1분 주기 검사에서 만료 룸을 자동 종료하며, API 조회 시에도 만료 상태를 정리
 - 일시정지 기본 후원 정책은 `QUEUE`이며 방송 딜레이 보정용 유예시간 기본값은 10초다. 유예시간은 0~120초 범위에서 설정할 수 있고, 일시정지 직후 유예 구간에 들어온 정확 trigger 후원만 SQLite FIFO 큐에 저장한다. 유예가 끝난 뒤 들어온 후원은 자동 `IGNORED` 처리한다.

@@ -314,3 +314,22 @@
     flex-direction: column;
   }
 }
+
+
+.board-room-overlay-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 9px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.board-room-overlay-row input {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+
+@media (max-width: 640px) {
+  .board-room-overlay-row {
+    grid-template-columns: 1fr;
+  }
+}

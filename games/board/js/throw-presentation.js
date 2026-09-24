@@ -158,11 +158,21 @@
     return piece;
   }
 
-  function renderYut(name) {
+  function normalizeYutFaces(faces, name) {
+    if (Array.isArray(faces) && faces.length === 4) {
+      return faces.map((face, index) => ({
+        face: face?.face === "flat" ? "flat" : "convex",
+        special: Boolean(face?.special) || index === 0 && Boolean(face?.special)
+      }));
+    }
+    return yutFacesFor(name);
+  }
+
+  function renderYut(name, faces = null) {
     const { stage } = ensureRefs();
     stage.innerHTML = "";
     stage.dataset.generator = "yut";
-    yutFacesFor(name).forEach((face, index) => {
+    normalizeYutFaces(faces, name).forEach((face, index) => {
       stage.append(createYutPiece(face, index));
     });
   }
@@ -199,7 +209,7 @@
     if (event.generator === "dice") {
       renderDice(event.dice?.values || [1]);
     } else {
-      renderYut(event.yut?.name || "DO");
+      renderYut(event.yut?.name || "DO", event.yut?.faces || null);
     }
   }
 
@@ -293,7 +303,7 @@
     return {
       generator: "yut",
       name: String(event.yut?.name || "DO").toUpperCase(),
-      faces: yutFacesFor(event.yut?.name || "DO"),
+      faces: normalizeYutFaces(event.yut?.faces || null, event.yut?.name || "DO"),
       text: yutLabel(event.yut?.name || "DO") + " " +
         ((Number(event.yut?.steps) || 0) >= 0 ? "+" : "") +
         String(Number(event.yut?.steps) || 0),

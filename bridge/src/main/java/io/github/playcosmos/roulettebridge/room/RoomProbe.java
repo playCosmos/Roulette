@@ -30,6 +30,7 @@ public final class RoomProbe {
                 ),
                 new BoardInput("cellCount", null, null, 52, "rect"),
                 new MovementInput("dice", 2, true, true, true),
+                new RulesInput("destinationOnly", true, true),
                 List.of(
                     new InstructionInput(
                         "MOVE_FORWARD",
@@ -71,6 +72,18 @@ public final class RoomProbe {
             require(created.config().board().columns() == 16, "52 cells must resolve to 16 columns");
             require(created.config().board().rows() == 12, "52 cells must resolve to 12 rows");
             require("rect".equals(created.config().board().layoutStyle()), "rect layout must persist");
+            require(
+                "destinationOnly".equals(created.config().rules().landingInstructionMode()),
+                "landing instruction mode must be destinationOnly"
+            );
+            require(
+                created.config().rules().resolveLandingBeforeBonusThrow(),
+                "landing instruction must resolve before bonus throw"
+            );
+            require(
+                created.config().rules().skipNextThrowConsumesBonus(),
+                "skip-next-throw must consume pending bonus throw"
+            );
             require(created.preview().cells().size() == 52, "preview cell count mismatch");
 
             var start = created.preview().cells().get(0);

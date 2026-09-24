@@ -70,6 +70,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --room-probe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --board-runtime-probe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build Windows portable app
         working-directory: bridge
@@ -119,6 +121,8 @@ jobs:
           if ($encoding.ExitCode -ne 0) { throw "packaged RouletteBridge.exe encoding test failed: $($encoding.ExitCode)" }
           $roomProbe = Start-Process -FilePath $exe -ArgumentList "--room-probe" -Wait -PassThru
           if ($roomProbe.ExitCode -ne 0) { throw "packaged RouletteBridge.exe room test failed: $($roomProbe.ExitCode)" }
+          $runtimeProbe = Start-Process -FilePath $exe -ArgumentList "--board-runtime-probe" -Wait -PassThru
+          if ($runtimeProbe.ExitCode -ne 0) { throw "packaged RouletteBridge.exe board runtime test failed: $($runtimeProbe.ExitCode)" }
           Write-Host "Packaged EXE: $exe"
           Write-Host "Config: $config"
 

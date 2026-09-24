@@ -858,6 +858,11 @@
     const labelFontSize = clamp(typographyBasis * 0.105, 7, 14);
     const tokenSize = clamp(tokenBasis * 0.42, 18, 58);
     const tokenFontSize = clamp(tokenSize * 0.34, 8, 15);
+    const cellRadius = clamp(
+      Math.min(geometry.width, geometry.height) * 0.09,
+      2,
+      10
+    );
 
     cell.style.left = left.toFixed(3) + "px";
     cell.style.top = top.toFixed(3) + "px";
@@ -867,6 +872,7 @@
     cell.style.setProperty("--cell-label-font", labelFontSize.toFixed(3) + "px");
     cell.style.setProperty("--cell-token-size", tokenSize.toFixed(3) + "px");
     cell.style.setProperty("--cell-token-font", tokenFontSize.toFixed(3) + "px");
+    cell.style.setProperty("--cell-radius", cellRadius.toFixed(3) + "px");
     cell.style.setProperty("--dock-scale", weight.toFixed(3));
     cell.style.zIndex = String(Math.round(weight * 100) + (occupied ? 200 : 0));
 

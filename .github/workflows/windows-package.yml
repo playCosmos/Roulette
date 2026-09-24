@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "bridge/**"
+      - "games/board/**"
       - "assets/**"
       - "soop-overlay.html"
       - "soop-admin.html"

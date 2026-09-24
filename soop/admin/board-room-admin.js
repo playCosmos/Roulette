@@ -201,10 +201,21 @@
         </label>
       `;
       row.dataset.direction = preset.direction;
+    } else if (preset.action === "moveToStart") {
+      root.innerHTML = '<span class="board-room-action-chip">도착 즉시 START로 이동</span>';
     } else if (preset.action === "skipThrow") {
-      root.innerHTML = '<span class="board-room-action-chip">가장 가까운 다음 던지기 1회 취소</span>';
-    } else if (preset.action === "extraThrow") {
-      root.innerHTML = '<span class="board-room-action-chip">현재 칸 처리 후 추가 던지기 1회</span>';
+      root.innerHTML = '<span class="board-room-action-chip">가장 가까운 다음 실제 던지기 1회 무효</span>';
+    } else if (preset.action === "multiplyNextThrow") {
+      root.innerHTML = `
+        <span class="board-room-action-chip">다음 실제 던지기 이동값 배율</span>
+        <label>M
+          <input data-field="multiplierValue" type="number" min="2" max="100" step="1" value="2" />
+        </label>
+      `;
+    } else if (preset.action === "ignoreNextLanding") {
+      root.innerHTML = '<span class="board-room-action-chip">다음 실제 도착 칸의 지시문을 1회 무시</span>';
+    } else if (preset.action === "randomCell") {
+      root.innerHTML = '<span class="board-room-action-chip">랜덤 후보 풀에서 최초/재선정 · 수량 배치만 가능</span>';
     } else {
       root.innerHTML = '<span class="board-room-action-chip">표시/사용자 지시문</span>';
     }
@@ -212,7 +223,7 @@
 
   function syncInstructionRow(row) {
     const allocationMode = row.querySelector('[data-field="allocationMode"]');
-    const randomCell = row.querySelector('[data-field="rerollOnVacate"]').checked;
+    const randomCell = row.dataset.randomPlaceholder === "true";
 
     if (randomCell) {
       allocationMode.value = "count";
@@ -230,7 +241,12 @@
     const poolWeight = row.querySelector('[data-field="poolWeight"]');
     const inherited = randomPoolMode.value === "inheritRatioInstructions";
 
-    if (inherited) {
+    if (randomCell) {
+      poolEnabled.checked = false;
+      poolEnabled.disabled = true;
+      poolWeight.value = "0";
+      poolWeight.disabled = true;
+    } else if (inherited) {
       poolEnabled.checked = mode === "ratio" && Number(value.value) > 0;
       poolEnabled.disabled = true;
       poolWeight.value = mode === "ratio" ? value.value : "0";
@@ -300,10 +316,19 @@
               value: Number(row.querySelector('[data-field="stepsValue"]').value)
             }
       };
+    } else if (actionType === "moveToStart") {
+      action = { type: "moveToStart" };
     } else if (actionType === "skipThrow") {
       action = { type: "skipThrow", count: 1 };
-    } else if (actionType === "extraThrow") {
-      action = { type: "extraThrow", count: 1 };
+    } else if (actionType === "multiplyNextThrow") {
+      action = {
+        type: "multiplyNextThrow",
+        multiplier: Number(row.querySelector('[data-field="multiplierValue"]').value)
+      };
+    } else if (actionType === "ignoreNextLanding") {
+      action = { type: "ignoreNextLanding", count: 1 };
+    } else if (actionType === "randomCell") {
+      action = { type: "randomCell" };
     } else {
       action = { type: "display", text: label };
     }
@@ -315,7 +340,7 @@
         mode: allocationMode,
         value: allocationValue
       },
-      rerollOnVacate: row.querySelector('[data-field="rerollOnVacate"]').checked,
+      rerollOnVacate: row.dataset.randomPlaceholder === "true",
       action
     };
   }

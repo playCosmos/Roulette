@@ -16,7 +16,8 @@ public final class RoomModels {
         List<InstructionInput> instructions,
         RandomPoolInput randomPool,
         Integer retentionMinutes,
-        String pauseDonationMode
+        String pauseDonationMode,
+        Integer pauseGraceSeconds
     ) {
         public CreateRoomRequest(
             String name,

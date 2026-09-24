@@ -125,6 +125,10 @@
   function buildBoard() {
     if (!refs.boardGrid) return;
 
+    if (refs.boardStage) {
+      refs.boardStage.dataset.layoutReady = "false";
+    }
+
     refs.boardGrid.innerHTML = "";
     cellElements.clear();
 
@@ -801,6 +805,13 @@
     refs.boardGrid.dataset.baseCellHeight = (
       solved.baseWidth / Math.max(0.01, aspect)
     ).toFixed(3);
+
+    // 첫 배치는 transition 없이 확정한다.
+    // 모든 셀이 최종 좌표를 받은 뒤에만 이후 이동 애니메이션을 허용한다.
+    if (refs.boardStage.dataset.layoutReady !== "true") {
+      refs.boardStage.getBoundingClientRect();
+      refs.boardStage.dataset.layoutReady = "true";
+    }
   }
 
   function scheduleLayout() {

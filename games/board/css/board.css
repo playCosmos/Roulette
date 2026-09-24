@@ -56,6 +56,8 @@ body {
 
 .board-cell {
   position: absolute;
+  left: 0;
+  top: 0;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,.16);
   border-radius: var(--cell-radius, 6px);
@@ -67,14 +69,12 @@ body {
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.018),
     0 7px 22px rgba(0,0,0,.12);
-  --cell-position-duration: 450ms;
-  --cell-size-duration: 480ms;
+  transform: translate3d(0,0,0) scale(1);
+  transform-origin: center center;
+  backface-visibility: hidden;
+  will-change: transform;
+  contain: layout paint style;
   transition:
-    left var(--cell-position-duration) cubic-bezier(.16,1,.3,1),
-    top var(--cell-position-duration) cubic-bezier(.16,1,.3,1),
-    width var(--cell-size-duration) cubic-bezier(.16,1,.3,1),
-    height var(--cell-size-duration) cubic-bezier(.16,1,.3,1),
-    border-radius var(--cell-position-duration) cubic-bezier(.16,1,.3,1),
     border-color 330ms ease,
     box-shadow 360ms ease;
 }
@@ -84,15 +84,6 @@ body {
   background-color: #1d1b19;
 }
 
-.board-cell[data-motion="approach"] {
-  --cell-position-duration: 360ms;
-  --cell-size-duration: 390ms;
-}
-
-.board-cell[data-motion="release"] {
-  --cell-position-duration: 555ms;
-  --cell-size-duration: 600ms;
-}
 
 .board-cell[data-compact="true"] {
   background-color: #171b23;
@@ -174,8 +165,8 @@ body {
   position: absolute;
   left: 0;
   top: 0;
-  width: var(--token-size, 26px);
-  height: var(--token-size, 26px);
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -187,21 +178,14 @@ body {
   box-shadow:
     0 8px 22px rgba(0,0,0,.46),
     0 0 0 2px rgba(0,0,0,.14);
-  font-size: var(--token-font-size, 10px);
+  font-size: 10px;
   font-weight: 900;
   line-height: 1;
-  transform:
-    translate3d(var(--token-x, 0px), var(--token-y, 0px), 0)
-    translate(-50%, -50%)
-    scale(1);
+  transform: translate3d(0,0,0) scale(1);
   transform-origin: center center;
-  transition:
-    transform 428ms cubic-bezier(.16,1,.3,1),
-    width 390ms cubic-bezier(.16,1,.3,1),
-    height 390ms cubic-bezier(.16,1,.3,1),
-    font-size 360ms cubic-bezier(.16,1,.3,1),
-    box-shadow 330ms ease;
+  backface-visibility: hidden;
   will-change: transform;
+  transition: box-shadow 330ms ease;
 }
 
 .player-token[data-stacked="true"] {

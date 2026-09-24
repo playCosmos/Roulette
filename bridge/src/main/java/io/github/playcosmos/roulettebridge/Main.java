@@ -69,6 +69,10 @@ public final class Main {
             System.exit(EncodingProbe.run());
             return;
         }
+        if (args.length > 0 && "--room-probe".equals(args[0])) {
+            System.exit(RoomProbe.run());
+            return;
+        }
 
         Path workingDirectory = AppPaths.applicationRoot();
         Path configPath = args.length > 0

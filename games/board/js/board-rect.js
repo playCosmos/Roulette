@@ -1420,63 +1420,45 @@
     }
   }
 
-  function tokenLayout(count, baseTokenSize) {
+  function tokenLayout(count, tokenSize, geometry) {
     if (count <= 1) {
       return {
-        tokenSize: baseTokenSize,
-        slots: [{ tangent: 0, depth: 0 }]
-      };
-    }
-
-    const scale =
-      count === 2 ? 0.94 :
-      count === 3 ? 0.88 :
-      count === 4 ? 0.82 :
-      0.74;
-
-    const tokenSize = baseTokenSize * scale;
-    const spacing = tokenSize * 0.92;
-
-    if (count === 2) {
-      return {
         tokenSize,
-        slots: [
-          { tangent: -spacing * 0.5, depth: 0 },
-          { tangent:  spacing * 0.5, depth: 0 }
-        ]
+        slots: [{ tangent: 0 }]
       };
     }
 
-    if (count === 3) {
-      return {
-        tokenSize,
-        slots: [
-          { tangent: -spacing, depth: 0 },
-          { tangent: 0, depth: 0 },
-          { tangent: spacing, depth: 0 }
-        ]
-      };
-    }
+    // 말 크기는 항상 유지한다.
+    // 상/하단 칸은 좌우, 좌/우측 칸은 상하 방향으로 한 줄 배치한다.
+    // 말 지름보다 약간 작은 간격을 사용해 서로 조금씩만 겹치게 한다.
+    const horizontalEdge = geometry.point.segment === undefined
+      ? Math.abs(Math.cos(geometry.point.angle)) >=
+        Math.abs(Math.sin(geometry.point.angle))
+      : geometry.point.segment % 2 === 0;
 
-    // 4~6명은 안쪽 테두리를 따라 최대 3명씩 2열로 펼친다.
-    // 두 번째 열만 셀 중앙 쪽으로 한 칸 내려 지시문 가림을 최소화한다.
-    const firstRowCount = Math.min(3, count);
-    const secondRowCount = count - firstRowCount;
-    const slots = [];
+    const tangentSpan = horizontalEdge
+      ? geometry.width
+      : geometry.height;
 
-    for (let index = 0; index < firstRowCount; index += 1) {
-      slots.push({
-        tangent: (index - ((firstRowCount - 1) * 0.5)) * spacing,
-        depth: 0
-      });
-    }
+    const edgePadding = 4;
+    const availableSpan = Math.max(
+      tokenSize,
+      tangentSpan - (edgePadding * 2)
+    );
 
-    for (let index = 0; index < secondRowCount; index += 1) {
-      slots.push({
-        tangent: (index - ((secondRowCount - 1) * 0.5)) * spacing,
-        depth: -(tokenSize * 0.82)
-      });
-    }
+    const preferredSpacing = tokenSize * 0.78;
+    const fitSpacing = count > 1
+      ? (availableSpan - tokenSize) / (count - 1)
+      : preferredSpacing;
+    const spacing = clamp(
+      Math.min(preferredSpacing, fitSpacing),
+      tokenSize * 0.52,
+      preferredSpacing
+    );
+
+    const slots = Array.from({ length: count }, (_, index) => ({
+      tangent: (index - ((count - 1) * 0.5)) * spacing
+    }));
 
     return { tokenSize, slots };
   }
@@ -1497,18 +1479,22 @@
         18,
         62
       );
-      const layout = tokenLayout(visiblePlayers.length, baseTokenSize);
-      const tokenSize = layout.tokenSize;
+      const tokenSize = baseTokenSize;
+      const layout = tokenLayout(
+        visiblePlayers.length,
+        tokenSize,
+        geometry
+      );
 
       visiblePlayers.forEach((player, index) => {
         const token = playerTokenElements.get(player.id);
         if (!token) return;
 
-        const slot = layout.slots[index] || { tangent: 0, depth: 0 };
+        const slot = layout.slots[index] || { tangent: 0 };
 
         // 지시문/라벨 영역을 최대한 비우기 위해 기본 중심은 셀의
-        // 보드 안쪽 테두리에 붙인다. 여러 명이면 tangent 방향으로 펼치고,
-        // 4~6명은 두 번째 열만 중앙 쪽으로 살짝 이동한다.
+        // 보드 안쪽 테두리에 붙인다. 여러 명이면 tangent 방향으로
+        // 한 줄로 펼쳐 서로 약간만 겹치게 한다.
         const tangentX = Math.cos(geometry.point.angle);
         const tangentY = Math.sin(geometry.point.angle);
         const inwardX = -tangentY;
@@ -1536,11 +1522,11 @@
 
         let centerX =
           geometry.centerX +
-          (inwardX * (inwardOffset + slot.depth)) +
+          (inwardX * inwardOffset) +
           (tangentX * slot.tangent);
         let centerY =
           geometry.centerY +
-          (inwardY * (inwardOffset + slot.depth)) +
+          (inwardY * inwardOffset) +
           (tangentY * slot.tangent);
 
         // 여러 말 배치 오프셋이 있어도 셀 밖으로 튀어나오지 않게 최종 clamp.

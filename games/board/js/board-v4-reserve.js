@@ -1176,7 +1176,7 @@
   function startDemo() {
     seedDemoPlayers(DEMO_PLAYER_COUNT);
     setEventMessage(
-      "Continuous Loop v3 · " +
+      "Reserve First v4 · " +
       board.columns + "×" + board.rows +
       " · 외곽 " + board.cellCount +
       "칸 · 참가자 " + DEMO_PLAYER_COUNT + "명"

@@ -378,21 +378,20 @@
       const requiredTotal = requiredGaps.reduce((sum, value) => sum + value, 0);
       const extra = Math.max(0, path.perimeter - requiredTotal);
 
-      const weights = requiredGaps.map((_, index) => {
-        const nextIndex = (index + 1) % board.cellCount;
-        const localScale = Math.max(scales[index], scales[nextIndex]);
-        const occupiedBoost = occupancy.has(index) || occupancy.has(nextIndex) ? 1.45 * density : 0;
-        return 0.08 + Math.pow(localScale, 2.55) + occupiedBoost;
-      });
-      const weightTotal = weights.reduce((sum, value) => sum + value, 0);
+      // 확대된 칸은 자기 크기만 더 차지한다.
+      // 주변 여백까지 같이 커지지 않도록 남는 경로 길이는 모든 간격에 동일하게 분배한다.
+      // 결과적으로 인접 칸의 edge-to-edge 간격은 가능한 한 일정하게 유지된다.
+      const uniformSlack = extra / board.cellCount;
 
       const nextPositions = new Array(board.cellCount);
       nextPositions[0] = 0;
 
       for (let index = 1; index < board.cellCount; index += 1) {
         const previousGapIndex = index - 1;
-        const slack = extra * (weights[previousGapIndex] / Math.max(1, weightTotal));
-        nextPositions[index] = nextPositions[index - 1] + requiredGaps[previousGapIndex] + slack;
+        nextPositions[index] =
+          nextPositions[index - 1] +
+          requiredGaps[previousGapIndex] +
+          uniformSlack;
       }
 
       positions = nextPositions;

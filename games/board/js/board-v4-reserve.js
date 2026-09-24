@@ -6,7 +6,8 @@
   const MAX_COLUMNS = 64;
   const MAX_ROWS = 48;
   const MAX_PLAYERS = 6;
-  const STEP_DELAY_MS = 220;
+  // 다음 스텝을 이전 전환이 완전히 끝나기 전에 시작해 연속 이동처럼 보이게 한다.
+  const STEP_DELAY_MS = 165;
 
   // P0 geometry contract:
   // 1) every cell uses one shared aspect ratio,
@@ -71,6 +72,7 @@
   };
 
   const cellElements = new Map();
+  const playerTokenElements = new Map();
   let layoutFrame = 0;
 
   function normalizeCell(index) {
@@ -149,15 +151,18 @@
       label.className = "cell-label";
       label.textContent = definition.command || definition.label;
 
-      const tokens = document.createElement("div");
-      tokens.className = "token-stack";
-      tokens.dataset.tokensFor = String(index);
-
-      cell.append(number, label, tokens);
+      cell.append(number, label);
       refs.boardGrid.append(cell);
       cellElements.set(index, cell);
     }
 
+    const playerLayer = document.createElement("div");
+    playerLayer.className = "player-layer";
+    playerLayer.setAttribute("aria-hidden", "true");
+    refs.boardGrid.append(playerLayer);
+    refs.playerLayer = playerLayer;
+
+    playerTokenElements.clear();
     renderPlayers();
   }
 
@@ -1034,6 +1039,8 @@
       );
     }
 
+    layoutPlayerTokens(solved.placements, occupancy);
+
     refs.boardGrid.dataset.pathPerimeter = path.perimeter.toFixed(3);
     refs.boardGrid.dataset.requiredPerimeter = solved.requiredPerimeter.toFixed(3);
     refs.boardGrid.dataset.cellGap = solved.gap.toFixed(3);
@@ -1077,24 +1084,107 @@
     token.dataset.playerId = player.id;
     token.title = player.name;
     token.textContent = player.shortLabel;
+    token.style.setProperty("--token-x", "0px");
+    token.style.setProperty("--token-y", "0px");
+    token.style.setProperty("--token-size", "26px");
+    token.style.setProperty("--token-font-size", "10px");
     return token;
   }
 
-  function renderPlayers() {
-    const occupancy = occupancyByCell();
+  function ensurePlayerTokens() {
+    if (!refs.playerLayer) return;
 
-    cellElements.forEach((cell, index) => {
-      const stack = cell.querySelector(".token-stack");
-      if (!stack) return;
+    const activeIds = new Set();
 
-      stack.innerHTML = "";
-      const players = occupancy.get(index) || [];
+    for (const player of state.players.values()) {
+      activeIds.add(player.id);
 
-      for (const player of players.slice(0, MAX_PLAYERS)) {
-        stack.append(createPlayerToken(player));
+      let token = playerTokenElements.get(player.id);
+      if (!token) {
+        token = createPlayerToken(player);
+        playerTokenElements.set(player.id, token);
+        refs.playerLayer.append(token);
+      } else {
+        token.title = player.name;
+        token.textContent = player.shortLabel;
       }
-    });
+    }
 
+    for (const [playerId, token] of playerTokenElements.entries()) {
+      if (activeIds.has(playerId)) continue;
+      token.remove();
+      playerTokenElements.delete(playerId);
+    }
+  }
+
+  function tokenOffsets(count, tokenSize) {
+    if (count <= 1) return [{ x: 0, y: 0 }];
+
+    const spacing = tokenSize * 0.58;
+
+    if (count === 2) {
+      return [
+        { x: -spacing * 0.5, y: 0 },
+        { x: spacing * 0.5, y: 0 }
+      ];
+    }
+
+    if (count <= 4) {
+      return Array.from({ length: count }, (_, index) => ({
+        x: (index % 2 === 0 ? -1 : 1) * spacing * 0.46,
+        y: (index < 2 ? -1 : 1) * spacing * 0.46
+      }));
+    }
+
+    return Array.from({ length: count }, (_, index) => {
+      const angle = (-Math.PI / 2) + ((Math.PI * 2 * index) / count);
+      return {
+        x: Math.cos(angle) * spacing * 0.72,
+        y: Math.sin(angle) * spacing * 0.72
+      };
+    });
+  }
+
+  function layoutPlayerTokens(placements, occupancy) {
+    ensurePlayerTokens();
+    if (!refs.playerLayer) return;
+
+    for (const [cellIndex, players] of occupancy.entries()) {
+      const geometry = placements[cellIndex];
+      if (!geometry) continue;
+
+      const visiblePlayers = players.slice(0, MAX_PLAYERS);
+      const tokenSize = clamp(
+        Math.min(geometry.width, geometry.height) * 0.46,
+        18,
+        62
+      );
+      const tokenFontSize = clamp(tokenSize * 0.34, 8, 16);
+      const offsets = tokenOffsets(visiblePlayers.length, tokenSize);
+
+      visiblePlayers.forEach((player, index) => {
+        const token = playerTokenElements.get(player.id);
+        if (!token) return;
+
+        const offset = offsets[index] || { x: 0, y: 0 };
+        const x = geometry.centerX + offset.x;
+        const y = geometry.centerY + offset.y;
+
+        token.style.setProperty("--token-x", x.toFixed(3) + "px");
+        token.style.setProperty("--token-y", y.toFixed(3) + "px");
+        token.style.setProperty("--token-size", tokenSize.toFixed(3) + "px");
+        token.style.setProperty(
+          "--token-font-size",
+          tokenFontSize.toFixed(3) + "px"
+        );
+        token.dataset.cellIndex = String(cellIndex);
+        token.dataset.stacked = String(visiblePlayers.length > 1);
+      });
+    }
+  }
+
+  function renderPlayers() {
+    ensurePlayerTokens();
     renderGlobalState();
     scheduleLayout();
   }

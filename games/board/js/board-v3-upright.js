@@ -512,8 +512,12 @@
     const widths = weights.map((weight) => baseWidth * weight);
     const heights = widths.map((width) => width / Math.max(0.01, aspect));
 
+    // START/END seam을 코너에 두지 않는다.
+    // 상단 직선의 중앙을 시작점으로 사용해 0번↔마지막 칸도
+    // 일반 직선 이웃과 동일한 조건으로 닫히게 한다.
+    const startOffset = path.horizontal * 0.5;
     const placements = new Array(board.cellCount);
-    let currentDistance = 0;
+    let currentDistance = startOffset;
     let current = cellGeometry(
       path,
       currentDistance,
@@ -548,7 +552,8 @@
 
     return {
       placements,
-      requiredPerimeter: closure.distance
+      startOffset,
+      requiredPerimeter: closure.distance - startOffset
     };
   }
 
@@ -584,85 +589,134 @@
     };
   }
 
-  function solveLoop(path, aspect, weights, gap) {
-    const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
-    const estimate = Math.max(
-      1,
-      (path.perimeter - (gap * board.cellCount)) / Math.max(1, weightTotal)
-    );
+  function solveGapForBaseWidth(path, aspect, weights, minimumGap, baseWidth) {
+    let lowGap = minimumGap;
+    let lowTrial = placeLoop(path, baseWidth, aspect, weights, lowGap);
 
-    // requiredPerimeter가 실제 loop perimeter와 정확히 일치하도록
-    // baseWidth를 이분 탐색한다. 기존 반복 비율 보정처럼 한 바퀴를
-    // 초과해서 마지막 셀이 시작점 쪽으로 wrap되는 상태를 허용하지 않는다.
-    let low = Math.max(0.5, estimate * 0.35);
-    let high = Math.max(1, estimate * 1.35);
-
-    let lowTrial = placeLoop(path, low, aspect, weights, gap);
-    let highTrial = placeLoop(path, high, aspect, weights, gap);
-
-    for (let guard = 0; guard < 8 && lowTrial.requiredPerimeter > path.perimeter; guard += 1) {
-      high = low;
-      highTrial = lowTrial;
-      low *= 0.70;
-      lowTrial = placeLoop(path, low, aspect, weights, gap);
+    if (lowTrial.requiredPerimeter > path.perimeter) {
+      return null;
     }
 
-    for (let guard = 0; guard < 8 && highTrial.requiredPerimeter < path.perimeter; guard += 1) {
-      low = high;
+    let highGap = Math.max(lowGap + 1, lowGap * 1.35);
+    let highTrial = placeLoop(path, baseWidth, aspect, weights, highGap);
+
+    for (
+      let guard = 0;
+      guard < 20 && highTrial.requiredPerimeter < path.perimeter;
+      guard += 1
+    ) {
+      lowGap = highGap;
       lowTrial = highTrial;
-      high *= 1.25;
-      highTrial = placeLoop(path, high, aspect, weights, gap);
+      highGap = (highGap * 1.35) + 0.5;
+      highTrial = placeLoop(path, baseWidth, aspect, weights, highGap);
     }
 
-    for (let iteration = 0; iteration < 26; iteration += 1) {
-      const middle = (low + high) * 0.5;
-      const trial = placeLoop(path, middle, aspect, weights, gap);
+    if (highTrial.requiredPerimeter < path.perimeter) {
+      return {
+        ...highTrial,
+        gap: highGap
+      };
+    }
+
+    for (let iteration = 0; iteration < 28; iteration += 1) {
+      const middleGap = (lowGap + highGap) * 0.5;
+      const trial = placeLoop(path, baseWidth, aspect, weights, middleGap);
 
       if (trial.requiredPerimeter > path.perimeter) {
-        high = middle;
+        highGap = middleGap;
         highTrial = trial;
       } else {
-        low = middle;
+        lowGap = middleGap;
         lowTrial = trial;
       }
     }
 
-    // low는 한 바퀴를 절대 초과하지 않는 쪽이므로 seam 중첩을 만들지 않는다.
     return {
-      baseWidth: low,
-      ...lowTrial
+      ...lowTrial,
+      gap: lowGap
     };
   }
 
-  function solveCollisionFreeLoop(path, aspect, weights, initialGap, nominalCell) {
-    let gap = initialGap;
-    const maxGap = Math.max(initialGap, nominalCell * 0.24);
-    let best = null;
+  function solveCollisionFreeLoop(path, aspect, weights, initialGap) {
+    const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+    let baseWidth = Math.max(
+      1,
+      (path.perimeter - (initialGap * board.cellCount)) /
+        Math.max(1, weightTotal)
+    );
 
-    // P0 우선: 강조 배율은 유지하고, 충돌이 있으면 모든 칸에 동일한
-    // gap을 늘린다. 그러면 남은 둘레 공간이 줄어 모든 셀의 base size가
-    // 함께 작아지면서도 강조/비강조 비율은 그대로 유지된다.
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      const solved = solveLoop(path, aspect, weights, gap);
-      const validation = validatePlacements(solved.placements, gap);
+    let lastResult = null;
 
-      best = {
+    // P0 hard gate:
+    // 1. 강조/일반 칸 비율은 weights 그대로 유지한다.
+    // 2. base size를 정한 뒤 남는 둘레는 모든 이웃의 동일 gap으로 배분한다.
+    // 3. START↔END를 포함한 모든 셀 쌍이 그 gap 이상 떨어진 경우에만 통과한다.
+    // 충돌이 하나라도 있으면 렌더 크기를 더 줄이고 다시 계산한다.
+    for (let attempt = 0; attempt < 36; attempt += 1) {
+      const solved = solveGapForBaseWidth(
+        path,
+        aspect,
+        weights,
+        initialGap,
+        baseWidth
+      );
+
+      if (!solved) {
+        baseWidth *= 0.94;
+        continue;
+      }
+
+      const validation = validatePlacements(
+        solved.placements,
+        solved.gap
+      );
+
+      lastResult = {
+        baseWidth,
         ...solved,
-        gap,
         validation
       };
 
-      if (validation.valid) return best;
+      if (validation.valid) {
+        return lastResult;
+      }
 
-      gap = Math.min(
-        maxGap,
-        Math.max(gap + 0.75, gap * 1.12)
-      );
-
-      if (gap >= maxGap - 0.001) break;
+      baseWidth *= 0.94;
     }
 
-    return best;
+    // 여기까지 오면 P0를 만족하지 못한 상태이므로 잘못된 레이아웃을
+    // 그대로 보여주지 않는다. 충분히 작은 크기로 한 번 더 강제 축소한다.
+    for (let emergency = 0; emergency < 24; emergency += 1) {
+      baseWidth *= 0.88;
+
+      const solved = solveGapForBaseWidth(
+        path,
+        aspect,
+        weights,
+        initialGap,
+        baseWidth
+      );
+      if (!solved) continue;
+
+      const validation = validatePlacements(
+        solved.placements,
+        solved.gap
+      );
+
+      lastResult = {
+        baseWidth,
+        ...solved,
+        validation
+      };
+
+      if (validation.valid) {
+        return lastResult;
+      }
+    }
+
+    throw new Error(
+      "P0 layout failure: unable to produce a collision-free closed loop"
+    );
   }
 
   function applyCellGeometry(index, geometry, weight, occupied) {
@@ -724,8 +778,7 @@
       path,
       aspect,
       weights,
-      gap,
-      nominalCell
+      gap
     );
 
     for (let index = 0; index < board.cellCount; index += 1) {

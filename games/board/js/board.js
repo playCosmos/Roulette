@@ -321,8 +321,19 @@
     if (width <= 0 || height <= 0) return;
 
     const density = Math.sqrt(board.cellCount / 24);
+    const axisDensity = Math.max(board.columns / MIN_COLUMNS, board.rows / MIN_ROWS);
+    const gapDensity = Math.max(density, axisDensity);
     const inset = clamp(width * 0.0105, 10, 22);
-    const minGap = clamp((width * 0.0045) / Math.pow(density, 0.38), 4, 12);
+
+    // 칸 수가 증가하면 확대할 공간을 확보하기 위해 기본 간격도 함께 줄인다.
+    // 8×6에서는 기존 여백을 유지하고, 16×12에서는 대략 절반 수준,
+    // 그 이상에서는 완만하게 2px까지 축소된다.
+    const minGap = clamp(
+      (width * 0.0048) / Math.pow(gapDensity, 0.92),
+      2,
+      12
+    );
+
     const baseWidth = Math.max(1, (width - (inset * 2)) / board.columns);
     const baseHeight = Math.max(1, (height - (inset * 2)) / board.rows);
     const scales = dockScales();

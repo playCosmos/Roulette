@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class BridgeDatabase {
-    private static final int CURRENT_SCHEMA_VERSION = 8;
+    private static final int CURRENT_SCHEMA_VERSION = 9;
     private final Path databasePath;
     private final String jdbcUrl;
 
@@ -141,6 +141,12 @@ public final class BridgeDatabase {
             applyMigration(connection, "/db/migration/V8__room_lifecycle_pause_and_effects.sql");
             setVersion(connection, 8);
             version = 8;
+        }
+
+        if (version < 9) {
+            applyMigration(connection, "/db/migration/V9__pause_broadcast_grace.sql");
+            setVersion(connection, 9);
+            version = 9;
         }
 
         if (version != CURRENT_SCHEMA_VERSION) {

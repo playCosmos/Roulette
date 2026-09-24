@@ -141,7 +141,7 @@ POST /api/admin/test-ticket
 
 ## 보드게임 룸 서버 기초
 
-보드게임 룸 설정은 전역 `config.json`과 분리하여 SQLite에 저장한다. DB schema v5는 `board_room`, `board_room_player`와 참가자별 방송 상태 snapshot을 사용한다.
+보드게임 룸 설정은 전역 `config.json`과 분리하여 SQLite에 저장한다. DB schema v6는 룸/참가자 설정과 참가자 방송 상태뿐 아니라 보드 런타임 상태·플레이어 위치·처리 이벤트까지 영속화한다.
 
 현재 구현된 룸 API:
 
@@ -150,6 +150,7 @@ POST /api/board/rooms
 GET  /api/board/rooms/{roomId}
 POST /api/board/rooms/{roomId}/preview/reroll
 POST /api/board/rooms/{roomId}/preview/commit
+GET  /api/board/rooms/{roomId}/runtime
 ```
 
 룸 API는 loopback 접근만 허용한다.
@@ -178,7 +179,27 @@ POST /api/board/rooms/{roomId}/preview/commit
 
 현재 룰 기본값은 이동 중 경유 칸 지시문을 실행하지 않는 `destinationOnly`이다. 최종 도착 칸 지시문을 먼저 모두 처리한 뒤 보너스 던지기를 진행하며, `다음 던지기 스킵`은 아직 실행하지 않은 가장 가까운 던지기 1회를 소비하므로 더블/윷/모로 생긴 즉시 보너스 던지기도 취소할 수 있다.
 
-현재 단계는 **룸 생성·프리뷰·영속화 기반**까지 구현된 상태다. SOOP 후원 이벤트를 룸별 정확 trigger와 연결해 실제 throw/move 상태를 진행시키는 런타임 엔진은 다음 단계다.
+룸을 READY로 확정한 뒤 SOOP `SEND_BALLOON`이 들어오면 참가자 SOOP ID와 별풍선 수가 모두 정확히 일치하는 READY 룸을 찾는다. 서버가 주사위/윷 결과를 먼저 확정하고 SQLite에 `board.turn` 이벤트, 플레이어 위치, skip 카운터, 동적 보드 상태를 원자적으로 저장한 뒤 WebSocket으로 방송한다.
+
+런타임 처리 순서:
+
+```text
+SEND_BALLOON
+→ READY 룸에서 참가자 SOOP ID + 정확 balloonTrigger 매칭
+→ SOOP event id 우선 중복 방지, event id 미노출 시 raw fingerprint fallback
+→ 서버 RNG로 주사위/윷 결과 확정
+→ 최종 도착 칸으로 이동
+→ 경유 칸 지시문은 실행하지 않음
+→ 최종 도착 칸 지시문 처리
+→ skip/extra-throw 상태 반영
+→ 남은 보너스 던지기가 있을 때만 다음 throw 확정
+→ 전체 turn을 DB commit
+→ board.turn WebSocket 전송
+```
+
+더블/윷/모의 추가 던지기는 현재 이동과 최종 도착 칸 지시문 처리가 끝나기 전에 실행되지 않는다. 도착 칸의 `다음 던지기 스킵`이 대기 중 보너스 던지기를 소비하면 해당 추가 던지기는 생성되지 않는다. 동적 칸은 실제 점유가 1명 이상에서 0명으로 바뀔 때만 랜덤 후보 풀에서 다시 선택하며 START는 제외된다.
+
+보드 OBS 주소는 READY 확정 후 관리자 화면에서 복사하거나 새 창으로 열 수 있다. 보드 클라이언트는 서버의 `board.turn` 순번대로 재생하고 클라이언트에서 결과를 재추첨하지 않는다. WebSocket 재연결 시 `/runtime`을 다시 읽어 현재 플레이어 위치와 동적 보드 상태로 복구한다.
 
 ## OBS 오버레이
 
@@ -267,6 +288,7 @@ java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-e-probe
 java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-f-probe
 java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --encoding-probe
 java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --room-probe
+java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --board-runtime-probe
 ```
 
 SOOP 연결 probe:
@@ -282,7 +304,7 @@ java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --probe <streamerId>
 ```text
 Admin/Overlay JavaScript syntax check
 → Maven build
-→ Phase D/E/F + encoding + board room self-test
+→ Phase D/E/F + encoding + board room + board runtime self-test
 → jpackage GUI/tray app-image 생성
 → RouletteBridge.exe/config.json/bundled runtime 확인
 → restart-bridge.ps1 포함 확인

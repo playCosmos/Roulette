@@ -229,7 +229,7 @@ public final class BoardGameRuntimeEngine {
                             player.skipNextThrows
                         ));
 
-                        shouldThrow = nextThrowScheduled;
+                        shouldThrow = nextThrowScheduled && !safetyStopped;
                     }
 
                     if (shouldThrow) {

@@ -99,6 +99,18 @@ body {
     0 0 18px rgba(255,255,255,.07);
 }
 
+.board-cell[data-compact="true"][data-occupied="true"] {
+  background-color: #171b23;
+  border-color: rgba(255,255,255,.24);
+  box-shadow: none;
+}
+
+.board-cell[data-kind="start"][data-compact="true"][data-occupied="true"] {
+  background-color: #1d1b19;
+  border-color: rgba(255,211,107,.48);
+  box-shadow: none;
+}
+
 .cell-index {
   position: absolute;
   top: clamp(5px, .5vw, 9px);

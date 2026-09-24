@@ -22,6 +22,9 @@
   const previewMeta = $("boardRoomPreviewMeta");
   const rerollButton = $("boardRoomRerollButton");
   const commitButton = $("boardRoomCommitButton");
+  const pauseButton = $("boardRoomPauseButton");
+  const resumeButton = $("boardRoomResumeButton");
+  const terminateButton = $("boardRoomTerminateButton");
   const createButton = $("boardRoomCreateButton");
   const overlayRow = $("boardRoomOverlayRow");
   const overlayUrl = $("boardRoomOverlayUrl");
@@ -124,10 +127,13 @@
 
   function addInstruction(kind) {
     const presets = {
-      forward: { id: "MOVE_FORWARD", label: "전진", action: "move", direction: "forward" },
-      backward: { id: "MOVE_BACKWARD", label: "후진", action: "move", direction: "backward" },
-      skip: { id: "SKIP_NEXT_THROW", label: "다음 던지기 스킵", action: "skipThrow" },
-      extra: { id: "EXTRA_THROW", label: "한 번 더 던지기", action: "extraThrow" },
+      forward: { id: "MOVE_FORWARD", label: "+N칸 이동", action: "move", direction: "forward" },
+      backward: { id: "MOVE_BACKWARD", label: "-N칸 이동", action: "move", direction: "backward" },
+      start: { id: "MOVE_TO_START", label: "START로 이동", action: "moveToStart" },
+      skip: { id: "SKIP_NEXT_THROW", label: "다음 던지기 무효", action: "skipThrow" },
+      multiplier: { id: "MULTIPLY_NEXT_THROW", label: "다음 던지기 M배", action: "multiplyNextThrow" },
+      ignoreLanding: { id: "IGNORE_NEXT_LANDING", label: "다음 도착 칸 효과 무시", action: "ignoreNextLanding" },
+      random: { id: "RANDOM_CELL", label: "랜덤칸", action: "randomCell", randomCell: true },
       custom: { id: "CUSTOM", label: "사용자 지시문", action: "display" }
     };
     const preset = presets[kind] || presets.custom;
@@ -135,6 +141,7 @@
     const row = document.createElement("div");
     row.className = "board-room-instruction-row";
     row.dataset.actionType = preset.action;
+    row.dataset.randomPlaceholder = preset.randomCell ? "true" : "false";
     row.innerHTML = `
       <div class="board-room-instruction-head">
         <strong>${escapeAttribute(preset.label)}</strong>
@@ -154,11 +161,11 @@
           </select>
         </label>
         <label>배치 값
-          <input data-field="allocationValue" type="number" min="0" max="100" step="1" value="10" required />
+          <input data-field="allocationValue" type="number" min="0" max="100" step="1" value="${preset.randomCell ? 4 : 10}" required />
         </label>
       </div>
       <div class="board-room-instruction-options">
-        <label class="check-label"><input data-field="rerollOnVacate" type="checkbox" />랜덤칸 (점유 0 시 지시문 재선정 · 수량만)</label>
+        <label class="check-label" data-random-cell-toggle ${preset.randomCell ? "" : "hidden"}><input data-field="rerollOnVacate" type="checkbox" ${preset.randomCell ? "checked disabled" : ""} />랜덤칸 위치</label>
         <label class="check-label"><input data-field="poolEnabled" type="checkbox" />랜덤 후보에 포함</label>
         <label class="pool-weight">랜덤 가중치
           <input data-field="poolWeight" type="number" min="0.0001" step="0.1" value="10" />

@@ -105,7 +105,7 @@ public final class RoomModels {
     public record RandomPoolConfig(
         String mode,
         List<RandomPoolEntry> entries,
-        boolean allowSameInstruction
+        Boolean allowSameInstruction
     ) {}
 
     public record BoardPreview(

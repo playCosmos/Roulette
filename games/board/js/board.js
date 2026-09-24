@@ -73,8 +73,17 @@
 
   const cellElements = new Map();
   const playerTokenElements = new Map();
+  const cellMotionStates = new Map();
+  const tokenMotionStates = new Map();
   let layoutFrame = 0;
+  let motionFrame = 0;
+  let lastMotionTime = 0;
   let previousScaleWeights = null;
+  let neutralSolveCache = null;
+
+  const TOKEN_BASE_SIZE = 26;
+  const MOTION_EPSILON = 0.025;
+  const VELOCITY_EPSILON = 0.04;
 
   function normalizeCell(index) {
     const numeric = Number.parseInt(index, 10);
@@ -135,6 +144,15 @@
     refs.boardGrid.innerHTML = "";
     cellElements.clear();
     previousScaleWeights = null;
+    neutralSolveCache = null;
+
+    if (motionFrame) {
+      window.cancelAnimationFrame(motionFrame);
+      motionFrame = 0;
+    }
+    lastMotionTime = 0;
+    cellMotionStates.clear();
+    tokenMotionStates.clear();
 
     for (let index = 0; index < board.cellCount; index += 1) {
       const definition = cellDefinition(index);
@@ -813,7 +831,26 @@
   }
 
   function solveReserveFirstLoop(path, aspect, weights, gap) {
-    const neutral = solveUniformWidth(path, aspect, gap);
+    const neutralKey = [
+      board.cellCount,
+      path.horizontal.toFixed(3),
+      path.vertical.toFixed(3),
+      path.radius.toFixed(3),
+      aspect.toFixed(6),
+      gap.toFixed(3)
+    ].join(":");
+
+    let neutral;
+    if (neutralSolveCache && neutralSolveCache.key === neutralKey) {
+      neutral = neutralSolveCache.value;
+    } else {
+      neutral = solveUniformWidth(path, aspect, gap);
+      neutralSolveCache = {
+        key: neutralKey,
+        value: neutral
+      };
+    }
+
     let emphasisFactor = 1;
 
     // 일반 상황에서는 강조 크기를 100% 예약한다.
@@ -916,34 +953,217 @@
     };
   }
 
-  function applyCellGeometry(index, geometry, weight, occupied, motionMode) {
+  function motionSmoothTime(mode) {
+    if (mode === "approach") return 0.16;
+    if (mode === "release") return 0.28;
+    if (mode === "token") return 0.20;
+    return 0.20;
+  }
+
+  function smoothDamp(current, target, velocity, smoothTime, deltaTime) {
+    const safeTime = Math.max(0.0001, smoothTime);
+    const omega = 2 / safeTime;
+    const x = omega * deltaTime;
+    const decay = 1 / (1 + x + (0.48 * x * x) + (0.235 * x * x * x));
+    const change = current - target;
+    const temp = (velocity + (omega * change)) * deltaTime;
+    const nextVelocity = (velocity - (omega * temp)) * decay;
+    let nextValue = target + ((change + temp) * decay);
+
+    if ((target - current > 0) === (nextValue > target)) {
+      nextValue = target;
+      return { value: nextValue, velocity: 0 };
+    }
+
+    return {
+      value: nextValue,
+      velocity: nextVelocity
+    };
+  }
+
+  function stateNeedsMotion(state) {
+    return (
+      Math.abs(state.x - state.targetX) > MOTION_EPSILON ||
+      Math.abs(state.y - state.targetY) > MOTION_EPSILON ||
+      Math.abs(state.scale - state.targetScale) > 0.001 ||
+      Math.abs(state.vx) > VELOCITY_EPSILON ||
+      Math.abs(state.vy) > VELOCITY_EPSILON ||
+      Math.abs(state.vs) > 0.002
+    );
+  }
+
+  function applyMotionTransform(state) {
+    state.element.style.transform =
+      "translate3d(" +
+      state.x.toFixed(3) + "px," +
+      state.y.toFixed(3) + "px,0) scale(" +
+      state.scale.toFixed(5) + ")";
+  }
+
+  function advanceMotionState(state, deltaTime) {
+    const smoothTime = motionSmoothTime(state.mode);
+    const x = smoothDamp(
+      state.x,
+      state.targetX,
+      state.vx,
+      smoothTime,
+      deltaTime
+    );
+    const y = smoothDamp(
+      state.y,
+      state.targetY,
+      state.vy,
+      smoothTime,
+      deltaTime
+    );
+    const scale = smoothDamp(
+      state.scale,
+      state.targetScale,
+      state.vs,
+      smoothTime,
+      deltaTime
+    );
+
+    state.x = x.value;
+    state.vx = x.velocity;
+    state.y = y.value;
+    state.vy = y.velocity;
+    state.scale = scale.value;
+    state.vs = scale.velocity;
+
+    if (!stateNeedsMotion(state)) {
+      state.x = state.targetX;
+      state.y = state.targetY;
+      state.scale = state.targetScale;
+      state.vx = 0;
+      state.vy = 0;
+      state.vs = 0;
+    }
+
+    applyMotionTransform(state);
+    return stateNeedsMotion(state);
+  }
+
+  function animateMotion(timestamp) {
+    motionFrame = 0;
+
+    const deltaTime = lastMotionTime
+      ? clamp((timestamp - lastMotionTime) / 1000, 1 / 240, 1 / 30)
+      : 1 / 60;
+    lastMotionTime = timestamp;
+
+    let moving = false;
+
+    for (const state of cellMotionStates.values()) {
+      if (!state.element.isConnected) continue;
+      moving = advanceMotionState(state, deltaTime) || moving;
+    }
+
+    for (const state of tokenMotionStates.values()) {
+      if (!state.element.isConnected) continue;
+      moving = advanceMotionState(state, deltaTime) || moving;
+    }
+
+    if (moving) {
+      motionFrame = window.requestAnimationFrame(animateMotion);
+    } else {
+      lastMotionTime = 0;
+    }
+  }
+
+  function scheduleMotion() {
+    if (motionFrame) return;
+
+    let moving = false;
+    for (const state of cellMotionStates.values()) {
+      if (stateNeedsMotion(state)) {
+        moving = true;
+        break;
+      }
+    }
+
+    if (!moving) {
+      for (const state of tokenMotionStates.values()) {
+        if (stateNeedsMotion(state)) {
+          moving = true;
+          break;
+        }
+      }
+    }
+
+    if (moving) {
+      motionFrame = window.requestAnimationFrame(animateMotion);
+    }
+  }
+
+  function setMotionTarget(map, key, element, targetX, targetY, targetScale, mode, snap) {
+    let state = map.get(key);
+
+    if (!state) {
+      state = {
+        element,
+        x: targetX,
+        y: targetY,
+        scale: targetScale,
+        vx: 0,
+        vy: 0,
+        vs: 0,
+        targetX,
+        targetY,
+        targetScale,
+        mode
+      };
+      map.set(key, state);
+      applyMotionTransform(state);
+      return;
+    }
+
+    state.element = element;
+    state.targetX = targetX;
+    state.targetY = targetY;
+    state.targetScale = targetScale;
+    state.mode = mode;
+
+    if (snap) {
+      state.x = targetX;
+      state.y = targetY;
+      state.scale = targetScale;
+      state.vx = 0;
+      state.vy = 0;
+      state.vs = 0;
+      applyMotionTransform(state);
+    }
+  }
+
+  function applyCellGeometry(
+    index,
+    geometry,
+    baseWidth,
+    baseHeight,
+    weight,
+    occupied,
+    motionMode
+  ) {
     const cell = cellElements.get(index);
     if (!cell) return;
 
-    const left = geometry.centerX - (geometry.width * 0.5);
-    const top = geometry.centerY - (geometry.height * 0.5);
-    const typographyBasis = Math.sqrt(geometry.width * geometry.height);
-    const tokenBasis = Math.min(geometry.width, geometry.height);
-    const indexFontSize = clamp(typographyBasis * 0.135, 8, 16);
-    const labelFontSize = clamp(typographyBasis * 0.105, 7, 14);
-    const tokenSize = clamp(tokenBasis * 0.42, 18, 58);
-    const tokenFontSize = clamp(tokenSize * 0.34, 8, 15);
-    const cellRadius = clamp(
-      Math.min(geometry.width, geometry.height) * 0.09,
-      2,
-      10
-    );
+    const baseTypography = Math.sqrt(baseWidth * baseHeight);
+    const indexFontSize = clamp(baseTypography * 0.135, 8, 16);
+    const labelFontSize = clamp(baseTypography * 0.105, 7, 14);
+    const cellRadius = clamp(Math.min(baseWidth, baseHeight) * 0.09, 2, 10);
+    const scale = geometry.width / Math.max(0.01, baseWidth);
+    const targetX = geometry.centerX - (baseWidth * 0.5);
+    const targetY = geometry.centerY - (baseHeight * 0.5);
+    const snap = refs.boardStage.dataset.layoutReady !== "true";
 
-    cell.style.left = left.toFixed(3) + "px";
-    cell.style.top = top.toFixed(3) + "px";
-    cell.style.width = geometry.width.toFixed(3) + "px";
-    cell.style.height = geometry.height.toFixed(3) + "px";
+    const baseWidthText = baseWidth.toFixed(3) + "px";
+    const baseHeightText = baseHeight.toFixed(3) + "px";
+    if (cell.style.width !== baseWidthText) cell.style.width = baseWidthText;
+    if (cell.style.height !== baseHeightText) cell.style.height = baseHeightText;
+
     cell.style.setProperty("--cell-index-font", indexFontSize.toFixed(3) + "px");
     cell.style.setProperty("--cell-label-font", labelFontSize.toFixed(3) + "px");
-    cell.style.setProperty("--cell-token-size", tokenSize.toFixed(3) + "px");
-    cell.style.setProperty("--cell-token-font", tokenFontSize.toFixed(3) + "px");
     cell.style.setProperty("--cell-radius", cellRadius.toFixed(3) + "px");
-    cell.style.setProperty("--dock-scale", weight.toFixed(3));
     cell.style.zIndex = String(Math.round(weight * 100) + (occupied ? 200 : 0));
 
     cell.dataset.occupied = String(occupied);
@@ -954,6 +1174,17 @@
     cell.dataset.dockScale = weight.toFixed(3);
     cell.dataset.curved = String(geometry.point.curved);
     cell.dataset.pathAngle = geometry.point.angle.toFixed(4);
+
+    setMotionTarget(
+      cellMotionStates,
+      index,
+      cell,
+      targetX,
+      targetY,
+      scale,
+      motionMode || "neutral",
+      snap
+    );
   }
 
   function layoutNow() {
@@ -1004,6 +1235,8 @@
       applyCellGeometry(
         index,
         solved.placements[index],
+        solved.neutralWidth,
+        solved.neutralWidth / Math.max(0.01, aspect),
         weights[index],
         occupancy.has(index),
         motionMode
@@ -1012,6 +1245,7 @@
 
     previousScaleWeights = weights.slice();
     layoutPlayerTokens(solved.placements, occupancy);
+    scheduleMotion();
 
     refs.boardGrid.dataset.pathPerimeter = path.perimeter.toFixed(3);
     refs.boardGrid.dataset.requiredPerimeter = solved.requiredPerimeter.toFixed(3);
@@ -1056,10 +1290,6 @@
     token.dataset.playerId = player.id;
     token.title = player.name;
     token.textContent = player.shortLabel;
-    token.style.setProperty("--token-x", "0px");
-    token.style.setProperty("--token-y", "0px");
-    token.style.setProperty("--token-size", "26px");
-    token.style.setProperty("--token-font-size", "10px");
     return token;
   }
 
@@ -1086,6 +1316,7 @@
       if (activeIds.has(playerId)) continue;
       token.remove();
       playerTokenElements.delete(playerId);
+      tokenMotionStates.delete(playerId);
     }
   }
 
@@ -1121,6 +1352,8 @@
     ensurePlayerTokens();
     if (!refs.playerLayer) return;
 
+    const snap = refs.boardStage.dataset.layoutReady !== "true";
+
     for (const [cellIndex, players] of occupancy.entries()) {
       const geometry = placements[cellIndex];
       if (!geometry) continue;
@@ -1131,7 +1364,6 @@
         18,
         62
       );
-      const tokenFontSize = clamp(tokenSize * 0.34, 8, 16);
       const offsets = tokenOffsets(visiblePlayers.length, tokenSize);
 
       visiblePlayers.forEach((player, index) => {
@@ -1139,18 +1371,22 @@
         if (!token) return;
 
         const offset = offsets[index] || { x: 0, y: 0 };
-        const x = geometry.centerX + offset.x;
-        const y = geometry.centerY + offset.y;
+        const centerX = geometry.centerX + offset.x;
+        const centerY = geometry.centerY + offset.y;
 
-        token.style.setProperty("--token-x", x.toFixed(3) + "px");
-        token.style.setProperty("--token-y", y.toFixed(3) + "px");
-        token.style.setProperty("--token-size", tokenSize.toFixed(3) + "px");
-        token.style.setProperty(
-          "--token-font-size",
-          tokenFontSize.toFixed(3) + "px"
-        );
         token.dataset.cellIndex = String(cellIndex);
         token.dataset.stacked = String(visiblePlayers.length > 1);
+
+        setMotionTarget(
+          tokenMotionStates,
+          player.id,
+          token,
+          centerX - (TOKEN_BASE_SIZE * 0.5),
+          centerY - (TOKEN_BASE_SIZE * 0.5),
+          tokenSize / TOKEN_BASE_SIZE,
+          "token",
+          snap
+        );
       });
     }
   }

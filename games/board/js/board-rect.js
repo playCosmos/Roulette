@@ -1384,13 +1384,101 @@
     layoutFrame = window.requestAnimationFrame(layoutNow);
   }
 
+  const BUBBLE_PIP_POSITIONS = {
+    1: ["c"],
+    2: ["tl", "br"],
+    3: ["tl", "c", "br"],
+    4: ["tl", "tr", "bl", "br"],
+    5: ["tl", "tr", "c", "bl", "br"],
+    6: ["tl", "ml", "bl", "tr", "mr", "br"]
+  };
+
   function createPlayerToken(player) {
     const token = document.createElement("span");
     token.className = "player-token";
     token.dataset.playerId = player.id;
     token.title = player.name;
-    token.textContent = player.shortLabel;
+
+    const label = document.createElement("span");
+    label.className = "player-token-label";
+    label.textContent = player.shortLabel;
+
+    const bubble = document.createElement("span");
+    bubble.className = "player-result-bubble";
+    bubble.dataset.visible = "false";
+
+    token.append(label, bubble);
     return token;
+  }
+
+  function updatePlayerToken(token, player) {
+    token.title = player.name;
+    const label = token.querySelector(".player-token-label");
+    if (label) label.textContent = player.shortLabel;
+  }
+
+  function createBubbleDie(value) {
+    const die = document.createElement("span");
+    die.className = "bubble-die";
+    for (const position of BUBBLE_PIP_POSITIONS[value] || []) {
+      const pip = document.createElement("span");
+      pip.className = "bubble-pip";
+      pip.dataset.position = position;
+      die.append(pip);
+    }
+    return die;
+  }
+
+  function showPlayerResultBubble(playerId, event) {
+    const token = playerTokenElements.get(String(playerId));
+    if (!token) return;
+
+    const bubble = token.querySelector(".player-result-bubble");
+    if (!bubble) return;
+    bubble.innerHTML = "";
+
+    const presenter = window.RamyaniThrowPresentation;
+    const data = presenter?.getBubbleData
+      ? presenter.getBubbleData(event)
+      : null;
+
+    if (data?.generator === "dice") {
+      for (const value of data.values) {
+        bubble.append(createBubbleDie(value));
+      }
+    } else if (data?.generator === "yut") {
+      const strip = document.createElement("span");
+      strip.className = "bubble-yut-strip";
+      for (const face of data.faces || []) {
+        const piece = document.createElement("span");
+        piece.className = "bubble-yut";
+        piece.dataset.face = face.face;
+        piece.dataset.special = String(Boolean(face.special));
+        strip.append(piece);
+      }
+      bubble.append(strip);
+    }
+
+    const value = document.createElement("span");
+    value.className = "player-result-bubble-value";
+    value.textContent = data?.text || "";
+    bubble.append(value);
+
+    if (data?.bonus) {
+      const bonus = document.createElement("span");
+      bonus.className = "player-result-bubble-bonus";
+      bonus.textContent = "↻";
+      bonus.title = "한 번 더";
+      bubble.append(bonus);
+    }
+
+    bubble.dataset.visible = "true";
+  }
+
+  function hidePlayerResultBubble(playerId) {
+    const token = playerTokenElements.get(String(playerId));
+    const bubble = token?.querySelector(".player-result-bubble");
+    if (bubble) bubble.dataset.visible = "false";
   }
 
   function ensurePlayerTokens() {
@@ -1407,8 +1495,7 @@
         playerTokenElements.set(player.id, token);
         refs.playerLayer.append(token);
       } else {
-        token.title = player.name;
-        token.textContent = player.shortLabel;
+        updatePlayerToken(token, player);
       }
     }
 
@@ -1562,6 +1649,16 @@
 
         token.dataset.cellIndex = String(cellIndex);
         token.dataset.stacked = String(visiblePlayers.length > 1);
+
+        if (Math.abs(inwardX) >= Math.abs(inwardY)) {
+          token.dataset.bubbleSide = inwardX >= 0 ? "right" : "left";
+        } else {
+          token.dataset.bubbleSide = inwardY >= 0 ? "down" : "up";
+        }
+        token.style.setProperty(
+          "--bubble-inverse-scale",
+          String(TOKEN_BASE_SIZE / Math.max(1, tokenSize))
+        );
 
         setMotionTarget(
           tokenMotionStates,
@@ -1731,14 +1828,21 @@
     const player = state.players.get(String(playerId));
     if (!player) throw new Error("unknown player: " + playerId);
 
-    const distance = Math.max(0, Number.parseInt(steps, 10) || 0);
+    const signedSteps = Number.parseInt(steps, 10) || 0;
+    const direction = signedSteps < 0 ? -1 : 1;
+    const distance = Math.abs(signedSteps);
     if (!distance) return { ...player };
 
     for (let moved = 0; moved < distance; moved += 1) {
       const previous = player.position;
-      player.position = normalizeCell(player.position + 1);
+      player.position = normalizeCell(player.position + direction);
 
-      if (previous === board.cellCount - 1 && player.position === 0) {
+      // 누적 바퀴는 정방향으로 START를 통과한 경우에만 증가한다.
+      if (
+        direction > 0 &&
+        previous === board.cellCount - 1 &&
+        player.position === 0
+      ) {
         player.laps += 1;
         state.totalLaps += 1;
         evaluatePhase();
@@ -1768,36 +1872,148 @@
     return { ...player };
   }
 
-  function enqueueRoll(playerId, diceValue, meta = {}) {
-    const id = String(playerId);
+  function normalizeThrowEvent(input) {
+    const event = input && typeof input === "object" ? input : {};
+    const playerId = String(event.playerId || "").trim();
+    if (!playerId) throw new Error("throw event playerId is required");
+
+    if (event.generator === "dice") {
+      const values = Array.isArray(event.dice?.values)
+        ? event.dice.values.slice(0, 2).map((value) => Number.parseInt(value, 10))
+        : [];
+
+      if (
+        values.length < 1 ||
+        values.some((value) => !Number.isFinite(value) || value < 1 || value > 6)
+      ) {
+        throw new Error("dice values must contain 1~2 d6 results");
+      }
+
+      const total = values.reduce((sum, value) => sum + value, 0);
+      return {
+        eventId: String(event.eventId || "local-" + Date.now()),
+        playerId,
+        generator: "dice",
+        dice: {
+          values,
+          total,
+          isDouble: values.length === 2 && values[0] === values[1]
+        },
+        steps: total,
+        bonusThrow:
+          values.length === 2 &&
+          values[0] === values[1] &&
+          event.bonusThrow !== false
+      };
+    }
+
+    if (event.generator === "yut") {
+      const name = String(event.yut?.name || "").toUpperCase();
+      const stepByName = {
+        BACK_DO: -1,
+        DO: 1,
+        GAE: 2,
+        GEOL: 3,
+        YUT: 4,
+        MO: 5
+      };
+      if (!(name in stepByName)) {
+        throw new Error("unknown yut result: " + name);
+      }
+
+      return {
+        eventId: String(event.eventId || "local-" + Date.now()),
+        playerId,
+        generator: "yut",
+        yut: {
+          name,
+          steps: stepByName[name]
+        },
+        steps: stepByName[name],
+        bonusThrow:
+          (name === "YUT" || name === "MO") &&
+          event.bonusThrow !== false
+      };
+    }
+
+    throw new Error("throw generator must be dice or yut");
+  }
+
+  function enqueueThrowEvent(input, meta = {}) {
+    let event;
+    try {
+      event = normalizeThrowEvent(input);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+
+    const id = event.playerId;
     const player = state.players.get(id);
     if (!player) return Promise.reject(new Error("unknown player: " + id));
 
-    const dice = Math.max(1, Number.parseInt(diceValue, 10) || 1);
     player.pendingRolls += 1;
     renderPlayers();
 
     const previousQueue = state.moveQueues.get(id) || Promise.resolve();
-
     const nextQueue = previousQueue
       .catch(() => undefined)
       .then(async () => {
         player.pendingRolls = Math.max(0, player.pendingRolls - 1);
         renderPlayers();
 
-        window.dispatchEvent(new CustomEvent("ramyani-board:roll", {
-          detail: {
-            playerId: id,
-            dice,
-            source: meta.source || null
-          }
+        // 서버가 이미 확정한 event를 그대로 표현한다.
+        // 클라이언트는 결과를 다시 추첨하지 않는다.
+        const presenter = window.RamyaniThrowPresentation;
+        const presentation = presenter?.present
+          ? presenter.present(event, player)
+          : {
+              reveal: Promise.resolve(),
+              finished: Promise.resolve()
+            };
+
+        window.dispatchEvent(new CustomEvent("ramyani-board:throwstarted", {
+          detail: { event, source: meta.source || null }
         }));
 
-        return movePlayerBy(id, dice, meta);
+        await presentation.reveal;
+
+        showPlayerResultBubble(id, event);
+
+        window.dispatchEvent(new CustomEvent("ramyani-board:throwrevealed", {
+          detail: { event, source: meta.source || null }
+        }));
+
+        const movement = movePlayerBy(id, event.steps, {
+          ...meta,
+          source: meta.source || event.generator
+        });
+
+        try {
+          const [movedPlayer] = await Promise.all([
+            movement,
+            presentation.finished
+          ]);
+          return movedPlayer;
+        } finally {
+          await delay(180);
+          hidePlayerResultBubble(id);
+        }
       });
 
     state.moveQueues.set(id, nextQueue);
     return nextQueue;
+  }
+
+  // 기존 외부 호출 호환용: 단일 d6 결과를 서버 확정 이벤트 형태로 변환한다.
+  function enqueueRoll(playerId, diceValue, meta = {}) {
+    const value = clamp(Number.parseInt(diceValue, 10) || 1, 1, 6);
+    return enqueueThrowEvent({
+      eventId: "legacy-dice-" + Date.now(),
+      playerId: String(playerId),
+      generator: "dice",
+      dice: { values: [value] },
+      bonusThrow: false
+    }, meta);
   }
 
   function getSnapshot() {
@@ -1821,23 +2037,90 @@
     }
   }
 
-  function startDemo() {
+  function resolveDemoDice(playerId) {
+    const values = [
+      1 + Math.floor(Math.random() * 6),
+      1 + Math.floor(Math.random() * 6)
+    ];
+    return {
+      eventId: "demo-dice-" + Date.now() + "-" + playerId,
+      playerId,
+      generator: "dice",
+      dice: { values },
+      bonusThrow: values[0] === values[1]
+    };
+  }
+
+  function resolveDemoYut(playerId) {
+    // 첫 번째 윷이 뒷도 식별용 특수 윷이다.
+    // flat=true인 개수로 도/개/걸/윷/모를 결정하고,
+    // flat이 하나뿐이며 그 하나가 특수 윷이면 뒷도다.
+    const flat = Array.from({ length: 4 }, () => Math.random() < 0.5);
+    const flatCount = flat.filter(Boolean).length;
+
+    let name;
+    if (flatCount === 0) name = "MO";
+    else if (flatCount === 4) name = "YUT";
+    else if (flatCount === 3) name = "GEOL";
+    else if (flatCount === 2) name = "GAE";
+    else name = flat[0] ? "BACK_DO" : "DO";
+
+    return {
+      eventId: "demo-yut-" + Date.now() + "-" + playerId,
+      playerId,
+      generator: "yut",
+      yut: { name },
+      bonusThrow: name === "YUT" || name === "MO"
+    };
+  }
+
+  async function runDemoTurn(player, generator) {
+    let bonus = true;
+    let safety = 0;
+
+    while (bonus && safety < 6) {
+      safety += 1;
+      const event = generator === "yut"
+        ? resolveDemoYut(player.id)
+        : resolveDemoDice(player.id);
+
+      await enqueueThrowEvent(event, { source: "데모" });
+      bonus = event.bonusThrow;
+      if (bonus) await delay(350);
+    }
+  }
+
+  async function startDemo() {
     seedDemoPlayers(DEMO_PLAYER_COUNT);
     setEventMessage(
-      "Rectilinear Compare · " +
+      "통합 Throw Overlay · " +
       board.columns + "×" + board.rows +
       " · 외곽 " + board.cellCount +
       "칸 · 참가자 " + DEMO_PLAYER_COUNT + "명"
     );
 
-    window.setInterval(() => {
+    const requested = String(params.get("throw") || "mixed").toLowerCase();
+
+    while (DEMO_MODE) {
       const players = Array.from(state.players.values());
-      if (!players.length) return;
+      if (!players.length) {
+        await delay(1000);
+        continue;
+      }
 
       const player = players[Math.floor(Math.random() * players.length)];
-      const dice = 1 + Math.floor(Math.random() * 6);
-      enqueueRoll(player.id, dice, { source: "데모" }).catch(() => undefined);
-    }, 2100);
+      const generator =
+        requested === "dice" || requested === "yut"
+          ? requested
+          : (Math.random() < 0.5 ? "dice" : "yut");
+
+      try {
+        await runDemoTurn(player, generator);
+      } catch (_) {
+        // 데모는 다음 턴으로 계속 진행한다.
+      }
+      await delay(650);
+    }
   }
 
   const api = {
@@ -1848,6 +2131,7 @@
     MAX_PLAYERS,
     registerPlayer,
     removePlayer,
+    enqueueThrowEvent,
     enqueueRoll,
     setBoardDimensions,
     getBoardDimensions,

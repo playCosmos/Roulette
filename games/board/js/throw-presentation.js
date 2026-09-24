@@ -194,7 +194,11 @@
       const values = event.dice?.values || [];
       const total = Number(event.dice?.total) ||
         values.reduce((sum, value) => sum + Number(value || 0), 0);
-      const suffix = event.bonusThrow ? " · 더블! 한 번 더" : "";
+      const isDouble = Boolean(event.dice?.isDouble);
+      let suffix = "";
+      if (isDouble && event.bonusThrow) suffix = " · 더블! 한 번 더";
+      else if (isDouble) suffix = " · 더블";
+      else if (event.bonusThrow) suffix = " · 한 번 더";
       return values.join(" + ") + " = " + total + suffix;
     }
 

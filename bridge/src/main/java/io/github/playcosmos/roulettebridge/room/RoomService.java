@@ -26,9 +26,15 @@ public final class RoomService {
 
     private final BridgeDatabase database;
     private final RoomLayoutGenerator layoutGenerator = new RoomLayoutGenerator();
+    private final ParticipantLiveChecker liveChecker;
 
     public RoomService(BridgeDatabase database) {
+        this(database, new SoopParticipantLiveService());
+    }
+
+    public RoomService(BridgeDatabase database, ParticipantLiveChecker liveChecker) {
         this.database = database;
+        this.liveChecker = liveChecker;
     }
 
     public ValidationResult validate(CreateRoomRequest request) {
@@ -39,7 +45,7 @@ public final class RoomService {
         }
 
         String name = normalizeText(request.name(), "Room");
-        List<PlayerInput> players = normalizePlayers(request.players(), errors);
+        List<PlayerConfig> players = normalizePlayers(request.players(), errors);
         BoardConfig board = normalizeBoard(request.board(), errors);
         MovementConfig movement = normalizeMovement(request.movement(), errors);
         RulesConfig rules = normalizeRules(request.rules(), errors);
@@ -76,6 +82,17 @@ public final class RoomService {
         }
 
         var config = validation.config();
+        var checkedPlayers = liveChecker.check(config.players());
+        config = new NormalizedRoomConfig(
+            config.name(),
+            checkedPlayers,
+            config.board(),
+            config.movement(),
+            config.rules(),
+            config.instructions(),
+            config.randomPool()
+        );
+
         String roomId = UUID.randomUUID().toString();
         long seed = nextSeed();
         var preview = layoutGenerator.generate(config, seed);
@@ -229,13 +246,14 @@ public final class RoomService {
     private static void insertPlayers(
         java.sql.Connection connection,
         String roomId,
-        List<PlayerInput> players
+        List<PlayerConfig> players
     ) throws SQLException {
         try (var statement = connection.prepareStatement("""
             INSERT INTO board_room_player(
                 room_id, player_index, soop_id, display_name,
-                profile_image_url, balloon_trigger
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                profile_image_url, balloon_trigger,
+                live_status, live_bno, live_title, live_checked_at, live_check_error
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """)) {
             for (int i = 0; i < players.size(); i++) {
                 var player = players.get(i);
@@ -245,13 +263,18 @@ public final class RoomService {
                 statement.setString(4, player.displayName());
                 statement.setString(5, player.profileImageUrl());
                 statement.setInt(6, player.balloonTrigger());
+                statement.setString(7, player.live() == null ? "NOT_CHECKED" : player.live().status());
+                statement.setString(8, player.live() == null ? null : player.live().bno());
+                statement.setString(9, player.live() == null ? null : player.live().title());
+                statement.setString(10, player.live() == null ? null : player.live().checkedAt());
+                statement.setString(11, player.live() == null ? null : player.live().error());
                 statement.addBatch();
             }
             statement.executeBatch();
         }
     }
 
-    private static List<PlayerInput> normalizePlayers(
+    private static List<PlayerConfig> normalizePlayers(
         List<PlayerInput> source,
         List<ValidationError> errors
     ) {
@@ -260,7 +283,7 @@ public final class RoomService {
             errors.add(new ValidationError("players", "player count must be 1~" + MAX_PLAYERS));
         }
 
-        var normalized = new ArrayList<PlayerInput>();
+        var normalized = new ArrayList<PlayerConfig>();
         var soopIds = new HashSet<String>();
 
         for (int i = 0; i < Math.min(players.size(), MAX_PLAYERS); i++) {
@@ -282,11 +305,12 @@ public final class RoomService {
                 errors.add(new ValidationError(prefix + ".balloonTrigger", "exact balloon trigger must be > 0"));
             }
 
-            normalized.add(new PlayerInput(
+            normalized.add(new PlayerConfig(
                 soopId,
                 normalizeText(player.displayName(), soopId),
                 blankToNull(player.profileImageUrl()),
-                player.balloonTrigger()
+                player.balloonTrigger(),
+                null
             ));
         }
 

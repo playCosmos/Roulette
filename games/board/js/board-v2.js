@@ -242,24 +242,20 @@
     });
   }
 
-  function setCellLayout(index, scale, normalSize, occupied) {
+  function setCellLayout(index, scale, occupied) {
     const cell = cellElements.get(index);
     if (!cell) return;
 
-    const weight = Math.pow(scale, 1.18);
-    cell.style.flexGrow = weight.toFixed(4);
+    // Main-axis share and cross-axis size are driven by the same scale.
+    // With a fixed aspect-ratio this makes every cell grow/shrink uniformly
+    // in both width and height instead of stretching along one axis.
+    cell.style.flexGrow = scale.toFixed(4);
+    cell.style.width = "";
+    cell.style.height = "";
     cell.style.setProperty("--dock-scale", scale.toFixed(3));
     cell.style.zIndex = String(Math.round(scale * 100) + (occupied ? 200 : 0));
     cell.dataset.occupied = String(occupied);
     cell.dataset.dockScale = scale.toFixed(3);
-
-    if (cell.dataset.edge === "top" || cell.dataset.edge === "bottom") {
-      cell.style.height = normalSize.toFixed(3) + "px";
-      cell.style.width = "";
-    } else {
-      cell.style.width = normalSize.toFixed(3) + "px";
-      cell.style.height = "";
-    }
   }
 
   function updateTypography() {
@@ -317,34 +313,61 @@
     const nominalCell = Math.min(nominalWidth, nominalHeight);
     const gap = clamp(nominalCell * 0.075, 2, 12);
 
-    const horizontalBase = Math.max(
+    const usableWidth = Math.max(
       1,
-      (height - (inset * 2) - (gap * (board.rows - 1))) / board.rows
+      width - (inset * 2) - (gap * (board.columns - 1))
     );
-    const verticalBase = Math.max(
+    const usableHeight = Math.max(
       1,
-      (width - (inset * 2) - (gap * (board.columns - 1))) / board.columns
+      height - (inset * 2) - (gap * (board.rows - 1))
     );
-
-    const normalSizes = new Array(board.cellCount);
-    const horizontalIndices = topo.top.concat(topo.bottom);
-    const horizontalSet = new Set(horizontalIndices);
+    const baseWidth = usableWidth / board.columns;
+    const baseHeight = usableHeight / board.rows;
+    const cellAspect = baseWidth / Math.max(1, baseHeight);
 
     for (let index = 0; index < board.cellCount; index += 1) {
-      const scale = scales[index];
-      const normalScale = clamp(1 + ((scale - 1) * 0.38), 0.82, 1.34);
-      const normalSize = (horizontalSet.has(index) ? horizontalBase : verticalBase) * normalScale;
-      normalSizes[index] = normalSize;
-      setCellLayout(index, scale, normalSize, occupancy.has(index));
+      setCellLayout(index, scales[index], occupancy.has(index));
     }
 
-    const topBand = Math.max(...topo.top.map((index) => normalSizes[index]));
-    const bottomBand = Math.max(...topo.bottom.map((index) => normalSizes[index]));
-    const rightBand = Math.max(...topo.right.map((index) => normalSizes[index]));
-    const leftBand = Math.max(...topo.left.map((index) => normalSizes[index]));
+    function horizontalBand(indices) {
+      const available = Math.max(
+        1,
+        width - (inset * 2) - (gap * Math.max(0, indices.length - 1))
+      );
+      const weightTotal = indices.reduce((sum, index) => sum + scales[index], 0);
+      const maxMain = indices.reduce((max, index) => {
+        const size = available * (scales[index] / Math.max(0.0001, weightTotal));
+        return Math.max(max, size);
+      }, 1);
+      return maxMain / Math.max(0.01, cellAspect);
+    }
+
+    const topBand = horizontalBand(topo.topSpatial);
+    const bottomBand = horizontalBand(topo.bottomSpatial);
+    const sideHeight = Math.max(
+      1,
+      height - (inset * 2) - topBand - bottomBand - (gap * 2)
+    );
+
+    function verticalBand(indices) {
+      const available = Math.max(
+        1,
+        sideHeight - (gap * Math.max(0, indices.length - 1))
+      );
+      const weightTotal = indices.reduce((sum, index) => sum + scales[index], 0);
+      const maxMain = indices.reduce((max, index) => {
+        const size = available * (scales[index] / Math.max(0.0001, weightTotal));
+        return Math.max(max, size);
+      }, 1);
+      return maxMain * cellAspect;
+    }
+
+    const rightBand = verticalBand(topo.rightSpatial);
+    const leftBand = verticalBand(topo.leftSpatial);
 
     refs.boardGrid.style.setProperty("--board-inset", inset.toFixed(3) + "px");
     refs.boardGrid.style.setProperty("--board-gap", gap.toFixed(3) + "px");
+    refs.boardGrid.style.setProperty("--cell-aspect", cellAspect.toFixed(6));
     refs.boardGrid.style.setProperty("--top-band", topBand.toFixed(3) + "px");
     refs.boardGrid.style.setProperty("--bottom-band", bottomBand.toFixed(3) + "px");
     refs.boardGrid.style.setProperty("--right-band", rightBand.toFixed(3) + "px");

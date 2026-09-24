@@ -6,12 +6,12 @@
   const MAX_COLUMNS = 64;
   const MAX_ROWS = 48;
   const STEP_DELAY_MS = 220;
-  const MAX_VISIBLE_TOKENS = 4;
+  const MAX_VISIBLE_TOKENS = 6;
 
   const params = new URLSearchParams(window.location.search);
   const DEMO_MODE = params.get("demo") === "1";
   const DEMO_PLAYER_COUNT = Math.min(
-    12,
+    6,
     Math.max(1, Number.parseInt(params.get("players") || "3", 10) || 3)
   );
 
@@ -211,34 +211,27 @@
       return Array.from({ length: board.cellCount }, () => 1);
     }
 
-    const density = Math.sqrt(board.cellCount / 24);
-    const restScale = clamp(0.88 - ((density - 1) * 0.11), 0.62, 0.88);
-    const peakScale = clamp(1.55 + ((density - 1) * 0.42), 1.55, 2.20);
-    const sigma = clamp(1.05 + ((density - 1) * 0.22), 1.05, 1.75);
-    const influenceRadius = Math.ceil(sigma * 3);
+    // 최대 6명 기준: 참가자 수에 따른 전역 감쇠 없이
+    // 가장 가까운 참가자의 국소 영향만 사용한다.
+    const restScale = 0.82;
+    const peakScale = 1.55;
+    const sigma = 1.15;
+    const influenceRadius = 3;
 
     return Array.from({ length: board.cellCount }, (_, cellIndex) => {
       let influence = 0;
-      let exactOccupancy = 0;
 
       for (const position of positions) {
         const distance = circularDistance(cellIndex, position);
-        if (distance === 0) exactOccupancy += 1;
         if (distance > influenceRadius) continue;
 
-        const local = Math.exp(-0.5 * Math.pow(distance / sigma, 2));
-        influence = Math.max(influence, local);
+        influence = Math.max(
+          influence,
+          Math.exp(-0.5 * Math.pow(distance / sigma, 2))
+        );
       }
 
-      const occupancyBoost = exactOccupancy > 1
-        ? Math.min(0.18, Math.log2(exactOccupancy) * 0.05)
-        : 0;
-
-      return clamp(
-        restScale + ((peakScale - restScale) * influence) + occupancyBoost,
-        restScale,
-        peakScale + 0.18
-      );
+      return restScale + ((peakScale - restScale) * influence);
     });
   }
 

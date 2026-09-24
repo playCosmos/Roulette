@@ -152,6 +152,21 @@ public final class RoomProbe {
             require("READY".equals(ready.status()), "commit must change room to READY");
             require(ready.committedBoard() != null, "committed board must be persisted");
 
+            var secondRoom = rooms.create(request);
+            require("DRAFT".equals(secondRoom.status()), "second room may exist only as DRAFT");
+
+            boolean secondCommitBlocked = false;
+            try {
+                rooms.commitPreview(secondRoom.roomId());
+            } catch (IllegalStateException expected) {
+                secondCommitBlocked = true;
+            }
+            require(secondCommitBlocked, "second READY room must be rejected");
+            require(
+                "DRAFT".equals(rooms.find(secondRoom.roomId()).status()),
+                "rejected second room must remain DRAFT"
+            );
+
             boolean blocked = false;
             try {
                 rooms.rerollPreview(created.roomId());

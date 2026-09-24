@@ -5,13 +5,26 @@
   const MIN_ROWS = 6;
   const MAX_COLUMNS = 64;
   const MAX_ROWS = 48;
-  const STEP_DELAY_MS = 220;
+  const MAX_PLAYERS = 6;
+  // 다음 스텝을 이전 전환이 완전히 끝나기 전에 시작해 연속 이동처럼 보이게 한다.
+  const STEP_DELAY_MS = 165;
+
+  // P0 geometry contract:
+  // 1) every cell uses one shared aspect ratio,
+  // 2) every cell scales uniformly in X/Y,
+  // 3) every neighbor gap is one shared path gap,
+  // 4) inactive cells all receive the same remaining-space base size.
+  // 3~4명 중심의 강한 대비 프로파일.
+  // 강조 칸이 둘레 공간을 더 가져가고 나머지 칸의 공통 base size가 줄어든다.
+  const PLAYER_SCALE_PROFILE = [2.00, 1.42, 1.14];
+  const STACKED_PLAYER_BOOST = 0.34;
+  const MAX_STACKED_SCALE = 3.40;
 
   const params = new URLSearchParams(window.location.search);
   const DEMO_MODE = params.get("demo") === "1";
   const DEMO_PLAYER_COUNT = Math.min(
-    12,
-    Math.max(1, Number.parseInt(params.get("players") || "3", 10) || 3)
+    MAX_PLAYERS,
+    Math.max(1, Number.parseInt(params.get("players") || "4", 10) || 4)
   );
 
   function clamp(value, min, max) {
@@ -20,8 +33,7 @@
 
   function normalizeDimension(value, fallback, min, max) {
     const parsed = Number.parseInt(value, 10);
-    if (!Number.isFinite(parsed)) return fallback;
-    return clamp(parsed, min, max);
+    return Number.isFinite(parsed) ? clamp(parsed, min, max) : fallback;
   }
 
   function perimeterCellCount(columns, rows) {
@@ -60,6 +72,8 @@
   };
 
   const cellElements = new Map();
+  const playerTokenElements = new Map();
+  let layoutFrame = 0;
 
   function normalizeCell(index) {
     const numeric = Number.parseInt(index, 10);
@@ -78,9 +92,10 @@
 
   function cellDefinition(index) {
     const phase = currentPhase();
-    const configured = phase?.cells?.[index] || {};
+    const configured = phase && phase.cells ? (phase.cells[index] || {}) : {};
+
     return {
-      label: configured.label || (index === 0 ? "START / LAP" : `칸 ${index + 1}`),
+      label: configured.label || (index === 0 ? "START / LAP" : "칸 " + (index + 1)),
       command: configured.command || null,
       kind: configured.kind || (index === 0 ? "start" : "normal")
     };
@@ -92,22 +107,29 @@
 
   function renderGlobalState() {
     if (!refs.boardStage) return;
+
+    refs.boardStage.dataset.layoutEngine = "reserve-first-loop-v4";
     refs.boardStage.dataset.phase = state.currentPhaseId;
     refs.boardStage.dataset.totalLaps = String(state.totalLaps);
     refs.boardStage.dataset.playerCount = String(state.players.size);
     refs.boardStage.dataset.columns = String(board.columns);
     refs.boardStage.dataset.rows = String(board.rows);
     refs.boardStage.dataset.cellCount = String(board.cellCount);
+
     if (refs.boardGrid) {
       refs.boardGrid.setAttribute(
         "aria-label",
-        `${board.columns}×${board.rows} 외곽 ${board.cellCount}칸 루프 보드`
+        board.columns + "×" + board.rows + " 외곽 " + board.cellCount + "칸 연속 루프 보드"
       );
     }
   }
 
   function buildBoard() {
     if (!refs.boardGrid) return;
+
+    if (refs.boardStage) {
+      refs.boardStage.dataset.layoutReady = "false";
+    }
 
     refs.boardGrid.innerHTML = "";
     cellElements.clear();
@@ -129,113 +151,73 @@
       label.className = "cell-label";
       label.textContent = definition.command || definition.label;
 
-      const tokens = document.createElement("div");
-      tokens.className = "token-stack";
-      tokens.dataset.tokensFor = String(index);
-
-      cell.append(number, label, tokens);
+      cell.append(number, label);
       refs.boardGrid.append(cell);
       cellElements.set(index, cell);
     }
 
+    const playerLayer = document.createElement("div");
+    playerLayer.className = "player-layer";
+    playerLayer.setAttribute("aria-hidden", "true");
+    refs.boardGrid.append(playerLayer);
+    refs.playerLayer = playerLayer;
+
+    playerTokenElements.clear();
     renderPlayers();
   }
 
   function occupancyByCell() {
     const occupancy = new Map();
+
     for (const player of state.players.values()) {
-      occupancy.set(player.position, (occupancy.get(player.position) || 0) + 1);
+      if (!occupancy.has(player.position)) occupancy.set(player.position, []);
+      occupancy.get(player.position).push(player);
     }
+
     return occupancy;
   }
 
-  function dockScales() {
-    const playerPositions = Array.from(state.players.values(), (player) => player.position);
+  function scaleWeights() {
+    const occupancy = occupancyByCell();
+    const positions = Array.from(occupancy.keys());
 
-    if (!playerPositions.length) {
+    if (!positions.length) {
       return Array.from({ length: board.cellCount }, () => 1);
     }
 
-    const playerCount = playerPositions.length;
-    const density = Math.sqrt(board.cellCount / 24);
-    const intensity = clamp(1 / Math.sqrt(Math.max(1, playerCount) * 0.68), 0.52, 1);
-
-    // 칸이 많아질수록 비활성 칸은 더 작게, 현재 칸은 더 크게 잡아서
-    // 16:9 방송 화면에서도 플레이어가 위치한 칸을 충분히 읽을 수 있게 한다.
-    const restScale = clamp(
-      0.70 - ((density - 1) * 0.20) + ((1 - intensity) * 0.08),
-      0.46,
-      0.76
-    );
-    const peakRange = (0.84 + ((density - 1) * 1.12)) * intensity;
-    const maxScale = clamp(1.60 + ((density - 1) * 1.45), 1.60, 2.75);
-    const influenceSigma = clamp(1.02 + ((density - 1) * 0.34), 1.02, 1.62);
-    const influenceRadius = Math.ceil(influenceSigma * 3.0);
-
-    const openStretchTarget = Math.max(
-      influenceRadius + 1,
-      board.cellCount / (2 * Math.max(1, playerCount))
-    );
-    const openStretchLift = clamp(
-      0.11 + ((density - 1) * 0.22),
-      0.11,
-      0.30
-    );
-
     return Array.from({ length: board.cellCount }, (_, cellIndex) => {
-      let remaining = 1;
-      let exactOccupancy = 0;
-      let nearestPlayerDistance = board.cellCount;
+      let weight = 1;
 
-      for (const position of playerPositions) {
+      for (const position of positions) {
         const distance = circularDistance(cellIndex, position);
-        nearestPlayerDistance = Math.min(nearestPlayerDistance, distance);
-        if (distance === 0) exactOccupancy += 1;
-        const localInfluence = distance <= influenceRadius
-          ? Math.exp(-0.5 * Math.pow(distance / influenceSigma, 2))
-          : 0;
-        remaining *= (1 - localInfluence);
+        if (distance >= PLAYER_SCALE_PROFILE.length) continue;
+        weight = Math.max(weight, PLAYER_SCALE_PROFILE[distance]);
       }
 
-      const combinedInfluence = 1 - remaining;
-      const occupancyBoost = exactOccupancy > 1
-        ? Math.min(0.16, Math.log2(exactOccupancy) * 0.045 * density * intensity)
-        : 0;
+      const stackedCount = occupancy.get(cellIndex)?.length || 0;
+      if (stackedCount > 1) {
+        weight = Math.min(
+          MAX_STACKED_SCALE,
+          weight + ((stackedCount - 1) * STACKED_PLAYER_BOOST)
+        );
+      }
 
-      // 플레이어가 없는 긴 구간은 최저 크기로 계속 유지하지 않는다.
-      // 영향권을 벗어난 뒤부터 반대편 빈 구간으로 갈수록 조금씩 다시 커져
-      // 외곽 경로에 큰 공백이 생기는 것을 막는다.
-      const openRatio = smoothstep01(
-        (nearestPlayerDistance - influenceRadius) /
-        Math.max(1, openStretchTarget - influenceRadius)
-      );
-      const openLift = openStretchLift * openRatio;
-
-      return clamp(
-        restScale + (peakRange * combinedInfluence) + occupancyBoost + openLift,
-        restScale,
-        maxScale
-      );
+      return weight;
     });
   }
 
-  function createRoundedPerimeter(width, height, inset, maxHalfWidth, maxHalfHeight) {
-    const left = inset + maxHalfWidth;
-    const right = width - inset - maxHalfWidth;
-    const top = inset + maxHalfHeight;
-    const bottom = height - inset - maxHalfHeight;
+  function createRoundedLoop(width, height, margin, radius) {
+    const left = margin;
+    const right = width - margin;
+    const top = margin;
+    const bottom = height - margin;
 
-    const usableWidth = Math.max(80, right - left);
-    const usableHeight = Math.max(80, bottom - top);
-    const radius = clamp(
-      Math.max(maxHalfWidth, maxHalfHeight) * 1.08,
-      16,
-      Math.min(usableWidth, usableHeight) * 0.095
-    );
-
-    const horizontal = Math.max(1, usableWidth - (radius * 2));
-    const vertical = Math.max(1, usableHeight - (radius * 2));
-    const quarterArc = Math.PI * radius * 0.5;
+    const innerWidth = Math.max(1, right - left);
+    const innerHeight = Math.max(1, bottom - top);
+    const r = clamp(radius, 1, Math.min(innerWidth, innerHeight) * 0.49);
+    const horizontal = Math.max(0, innerWidth - (r * 2));
+    const vertical = Math.max(0, innerHeight - (r * 2));
+    const quarterArc = Math.PI * r * 0.5;
     const perimeter = (horizontal * 2) + (vertical * 2) + (quarterArc * 4);
 
     return {
@@ -243,7 +225,7 @@
       right,
       top,
       bottom,
-      radius,
+      radius: r,
       horizontal,
       vertical,
       quarterArc,
@@ -251,459 +233,946 @@
     };
   }
 
-  function roundedPerimeterPoint(path, distance) {
-    const {
-      left,
-      right,
-      top,
-      bottom,
-      radius,
-      horizontal,
-      vertical,
-      quarterArc,
-      perimeter
-    } = path;
-
-    let s = ((distance % perimeter) + perimeter) % perimeter;
-
-    if (s < horizontal) {
-      return { x: left + radius + s, y: top, angle: 0, cornerBlend: 0 };
-    }
-    s -= horizontal;
-
-    if (s < quarterArc) {
-      const progress = s / quarterArc;
-      const angle = (-Math.PI / 2) + (progress * Math.PI / 2);
-      return {
-        x: right - radius + (Math.cos(angle) * radius),
-        y: top + radius + (Math.sin(angle) * radius),
-        angle: progress * Math.PI / 2,
-        cornerBlend: Math.sin(progress * Math.PI)
-      };
-    }
-    s -= quarterArc;
-
-    if (s < vertical) {
-      return { x: right, y: top + radius + s, angle: Math.PI / 2, cornerBlend: 0 };
-    }
-    s -= vertical;
-
-    if (s < quarterArc) {
-      const progress = s / quarterArc;
-      const angle = progress * Math.PI / 2;
-      return {
-        x: right - radius + (Math.cos(angle) * radius),
-        y: bottom - radius + (Math.sin(angle) * radius),
-        angle: (Math.PI / 2) + (progress * Math.PI / 2),
-        cornerBlend: Math.sin(progress * Math.PI)
-      };
-    }
-    s -= quarterArc;
-
-    if (s < horizontal) {
-      return { x: right - radius - s, y: bottom, angle: Math.PI, cornerBlend: 0 };
-    }
-    s -= horizontal;
-
-    if (s < quarterArc) {
-      const progress = s / quarterArc;
-      const angle = (Math.PI / 2) + (progress * Math.PI / 2);
-      return {
-        x: left + radius + (Math.cos(angle) * radius),
-        y: bottom - radius + (Math.sin(angle) * radius),
-        angle: Math.PI + (progress * Math.PI / 2),
-        cornerBlend: Math.sin(progress * Math.PI)
-      };
-    }
-    s -= quarterArc;
-
-    if (s < vertical) {
-      return { x: left, y: bottom - radius - s, angle: Math.PI * 1.5, cornerBlend: 0 };
-    }
-    s -= vertical;
-
-    const progress = clamp(s / quarterArc, 0, 1);
-    const angle = Math.PI + (progress * Math.PI / 2);
-    return {
-      x: left + radius + (Math.cos(angle) * radius),
-      y: top + radius + (Math.sin(angle) * radius),
-      angle: (Math.PI * 1.5) + (progress * Math.PI / 2),
-      cornerBlend: Math.sin(progress * Math.PI)
-    };
-  }
-
-  function projectedTangentSize(width, height, angle) {
-    return (Math.abs(Math.cos(angle)) * width) + (Math.abs(Math.sin(angle)) * height);
-  }
-
-  function cornerSizeCorrection(point) {
-    return 1 - ((point?.cornerBlend || 0) * 0.018);
-  }
-
-  function smoothstep01(value) {
-    const t = clamp(value, 0, 1);
-    return t * t * (3 - (2 * t));
-  }
-
-  function edgeAlignedPoint(point, cellWidth, cellHeight, width, height, inset) {
+  function loopPoint(path, distance) {
     const twoPi = Math.PI * 2;
-    const angle = ((point.angle % twoPi) + twoPi) % twoPi;
+    let s = ((distance % path.perimeter) + path.perimeter) % path.perimeter;
 
-    const leftX = inset + (cellWidth / 2);
-    const rightX = width - inset - (cellWidth / 2);
-    const topY = inset + (cellHeight / 2);
-    const bottomY = height - inset - (cellHeight / 2);
-
-    let x = point.x;
-    let y = point.y;
-
-    if (angle <= Math.PI / 2) {
-      const mix = smoothstep01(angle / (Math.PI / 2));
-      x = point.x + ((rightX - point.x) * mix);
-      y = topY + ((point.y - topY) * mix);
-    } else if (angle <= Math.PI) {
-      const mix = smoothstep01((angle - (Math.PI / 2)) / (Math.PI / 2));
-      x = rightX + ((point.x - rightX) * mix);
-      y = point.y + ((bottomY - point.y) * mix);
-    } else if (angle <= Math.PI * 1.5) {
-      const mix = smoothstep01((angle - Math.PI) / (Math.PI / 2));
-      x = point.x + ((leftX - point.x) * mix);
-      y = bottomY + ((point.y - bottomY) * mix);
-    } else {
-      const mix = smoothstep01((angle - (Math.PI * 1.5)) / (Math.PI / 2));
-      x = leftX + ((point.x - leftX) * mix);
-      y = point.y + ((topY - point.y) * mix);
+    if (s < path.horizontal) {
+      return {
+        x: path.left + path.radius + s,
+        y: path.top,
+        angle: 0,
+        curved: false
+      };
     }
+    s -= path.horizontal;
 
+    if (s < path.quarterArc) {
+      const t = s / path.quarterArc;
+      const phi = (-Math.PI / 2) + (t * Math.PI / 2);
+      return {
+        x: path.right - path.radius + (Math.cos(phi) * path.radius),
+        y: path.top + path.radius + (Math.sin(phi) * path.radius),
+        angle: phi + (Math.PI / 2),
+        curved: true
+      };
+    }
+    s -= path.quarterArc;
+
+    if (s < path.vertical) {
+      return {
+        x: path.right,
+        y: path.top + path.radius + s,
+        angle: Math.PI / 2,
+        curved: false
+      };
+    }
+    s -= path.vertical;
+
+    if (s < path.quarterArc) {
+      const t = s / path.quarterArc;
+      const phi = t * Math.PI / 2;
+      return {
+        x: path.right - path.radius + (Math.cos(phi) * path.radius),
+        y: path.bottom - path.radius + (Math.sin(phi) * path.radius),
+        angle: phi + (Math.PI / 2),
+        curved: true
+      };
+    }
+    s -= path.quarterArc;
+
+    if (s < path.horizontal) {
+      return {
+        x: path.right - path.radius - s,
+        y: path.bottom,
+        angle: Math.PI,
+        curved: false
+      };
+    }
+    s -= path.horizontal;
+
+    if (s < path.quarterArc) {
+      const t = s / path.quarterArc;
+      const phi = (Math.PI / 2) + (t * Math.PI / 2);
+      return {
+        x: path.left + path.radius + (Math.cos(phi) * path.radius),
+        y: path.bottom - path.radius + (Math.sin(phi) * path.radius),
+        angle: phi + (Math.PI / 2),
+        curved: true
+      };
+    }
+    s -= path.quarterArc;
+
+    if (s < path.vertical) {
+      return {
+        x: path.left,
+        y: path.bottom - path.radius - s,
+        angle: Math.PI * 1.5,
+        curved: false
+      };
+    }
+    s -= path.vertical;
+
+    const t = clamp(s / path.quarterArc, 0, 1);
+    const phi = Math.PI + (t * Math.PI / 2);
     return {
-      x: clamp(x, leftX, rightX),
-      y: clamp(y, topY, bottomY)
+      x: path.left + path.radius + (Math.cos(phi) * path.radius),
+      y: path.top + path.radius + (Math.sin(phi) * path.radius),
+      angle: (phi + (Math.PI / 2)) % twoPi,
+      curved: true
     };
   }
 
-  function growCellsIntoSpareSpace(
-    widths,
-    heights,
-    desiredWidths,
-    desiredHeights,
-    baseWidth,
-    baseHeight,
-    points,
-    scales,
-    occupancy,
-    spare,
-    density
-  ) {
-    if (spare <= 0.5) {
-      return { widths, heights, consumed: 0 };
+  function rectangleCorners(centerX, centerY, width, height) {
+    const halfWidth = width * 0.5;
+    const halfHeight = height * 0.5;
+
+    return [
+      { x: centerX - halfWidth, y: centerY - halfHeight },
+      { x: centerX + halfWidth, y: centerY - halfHeight },
+      { x: centerX + halfWidth, y: centerY + halfHeight },
+      { x: centerX - halfWidth, y: centerY + halfHeight }
+    ];
+  }
+
+  function projectPolygon(points, axisX, axisY) {
+    let min = Infinity;
+    let max = -Infinity;
+
+    for (const point of points) {
+      const value = (point.x * axisX) + (point.y * axisY);
+      min = Math.min(min, value);
+      max = Math.max(max, value);
     }
 
-    const nextWidths = widths.slice();
-    const nextHeights = heights.slice();
+    return { min, max };
+  }
 
-    // 여유 공간은 우선 "간격"이 아니라 작은 칸의 크기로 흡수한다.
-    // Dock 강조는 유지하되, 플레이어 반대편/코너의 축소 칸이 지나치게 작아서
-    // 넓은 빈틈이 생기는 상황을 막기 위해 최소한 기본 칸 크기 근처까지 복원한다.
-    const nominalFill = clamp(1.02 + ((density - 1) * 0.06), 1.02, 1.12);
-    const highlightedFill = clamp(1.08 + ((density - 1) * 0.05), 1.08, 1.16);
-    let remaining = spare * 0.998;
-    let consumedTotal = 0;
+  function polygonsOverlap(a, b) {
+    for (const polygon of [a, b]) {
+      for (let index = 0; index < polygon.length; index += 1) {
+        const p0 = polygon[index];
+        const p1 = polygon[(index + 1) % polygon.length];
+        const edgeX = p1.x - p0.x;
+        const edgeY = p1.y - p0.y;
+        const length = Math.hypot(edgeX, edgeY);
+        if (length <= 0.0001) continue;
 
-    for (let round = 0; round < 7 && remaining > 0.25; round += 1) {
-      const capacities = [];
-      let weightTotal = 0;
+        const axisX = -edgeY / length;
+        const axisY = edgeX / length;
+        const projectionA = projectPolygon(a, axisX, axisY);
+        const projectionB = projectPolygon(b, axisX, axisY);
 
-      for (let index = 0; index < board.cellCount; index += 1) {
-        const point = points[index];
-        const cornerCorrection = cornerSizeCorrection(point);
-        const projected = projectedTangentSize(
-          nextWidths[index] * cornerCorrection,
-          nextHeights[index] * cornerCorrection,
-          point.angle
-        );
-
-        const isOccupied = occupancy.has(index);
-        const targetWidth = isOccupied
-          ? Math.max(desiredWidths[index], desiredWidths[index] * highlightedFill)
-          : Math.max(desiredWidths[index], baseWidth * nominalFill);
-        const targetHeight = isOccupied
-          ? Math.max(desiredHeights[index], desiredHeights[index] * highlightedFill)
-          : Math.max(desiredHeights[index], baseHeight * nominalFill);
-
-        const roomFactor = Math.min(
-          targetWidth / Math.max(1, nextWidths[index]),
-          targetHeight / Math.max(1, nextHeights[index])
-        );
-        const projectedCapacity = Math.max(0, projected * (roomFactor - 1));
-
-        if (projectedCapacity <= 0.01) {
-          capacities.push({ projected, projectedCapacity: 0, weight: 0 });
-          continue;
+        if (
+          projectionA.max <= projectionB.min ||
+          projectionB.max <= projectionA.min
+        ) {
+          return false;
         }
+      }
+    }
 
-        // 작은 칸일수록 더 높은 우선순위로 키운다.
-        // 같은 여유 공간에서 작은 칸들이 먼저 서로 비슷한 크기로 수렴하므로
-        // edge-to-edge 간격 편차가 빠르게 줄어든다.
-        const normalizedSize = projected / Math.max(
-          1,
-          projectedTangentSize(baseWidth, baseHeight, point.angle)
+    return true;
+  }
+
+  function pointSegmentDistance(point, a, b) {
+    const edgeX = b.x - a.x;
+    const edgeY = b.y - a.y;
+    const lengthSquared = (edgeX * edgeX) + (edgeY * edgeY);
+
+    if (lengthSquared <= 0.0001) {
+      return Math.hypot(point.x - a.x, point.y - a.y);
+    }
+
+    const ratio = clamp(
+      (((point.x - a.x) * edgeX) + ((point.y - a.y) * edgeY)) / lengthSquared,
+      0,
+      1
+    );
+    const closestX = a.x + (edgeX * ratio);
+    const closestY = a.y + (edgeY * ratio);
+
+    return Math.hypot(point.x - closestX, point.y - closestY);
+  }
+
+  function polygonDistance(a, b) {
+    if (polygonsOverlap(a, b)) return 0;
+
+    let distance = Infinity;
+
+    for (const point of a) {
+      for (let index = 0; index < b.length; index += 1) {
+        distance = Math.min(
+          distance,
+          pointSegmentDistance(point, b[index], b[(index + 1) % b.length])
         );
-        const equalizeWeight = 1 / Math.pow(Math.max(0.34, normalizedSize), 1.45);
-        const occupiedWeight = isOccupied ? 0.42 : 1;
-        const dockWeight = 1 / Math.pow(Math.max(0.42, scales[index]), 0.34);
-        const weight = projectedCapacity * equalizeWeight * occupiedWeight * dockWeight;
-
-        capacities.push({ projected, projectedCapacity, weight });
-        weightTotal += weight;
       }
+    }
 
-      if (weightTotal <= 0.0001) break;
-
-      let consumedRound = 0;
-
-      for (let index = 0; index < board.cellCount; index += 1) {
-        const item = capacities[index];
-        if (item.weight <= 0 || item.projectedCapacity <= 0) continue;
-
-        const requested = remaining * (item.weight / weightTotal);
-        const increase = Math.min(requested, item.projectedCapacity);
-        if (increase <= 0) continue;
-
-        const factor = 1 + (increase / Math.max(1, item.projected));
-        nextWidths[index] *= factor;
-        nextHeights[index] *= factor;
-        consumedRound += increase;
+    for (const point of b) {
+      for (let index = 0; index < a.length; index += 1) {
+        distance = Math.min(
+          distance,
+          pointSegmentDistance(point, a[index], a[(index + 1) % a.length])
+        );
       }
+    }
 
-      if (consumedRound <= 0.01) break;
-      remaining -= consumedRound;
-      consumedTotal += consumedRound;
+    return distance;
+  }
+
+  function cellGeometry(path, distance, cellWidth, cellHeight) {
+    const point = loopPoint(path, distance);
+    const inwardX = -Math.sin(point.angle);
+    const inwardY = Math.cos(point.angle);
+
+    let centerX = point.x + (inwardX * cellHeight * 0.5);
+    let centerY = point.y + (inwardY * cellHeight * 0.5);
+    // 코너에서도 셀 자체는 회전하지 않는다.
+    // 중심 위치만 둥근 경로를 따라 이동하고 직사각형/텍스트는 항상 정방향을 유지한다.
+    let corners = rectangleCorners(
+      centerX,
+      centerY,
+      cellWidth,
+      cellHeight
+    );
+
+    // 직선부는 margin 끝에 정확히 붙고, 코너/코너 주변에서만
+    // 회전된 직사각형의 꼭짓점이 화면 밖으로 나가지 않도록
+    // 보드 안쪽으로 필요한 만큼만 추가 이동한다.
+    let extraInset = 0;
+
+    for (const corner of corners) {
+      if (corner.x < path.left && inwardX > 0.0001) {
+        extraInset = Math.max(extraInset, (path.left - corner.x) / inwardX);
+      }
+      if (corner.x > path.right && inwardX < -0.0001) {
+        extraInset = Math.max(extraInset, (corner.x - path.right) / -inwardX);
+      }
+      if (corner.y < path.top && inwardY > 0.0001) {
+        extraInset = Math.max(extraInset, (path.top - corner.y) / inwardY);
+      }
+      if (corner.y > path.bottom && inwardY < -0.0001) {
+        extraInset = Math.max(extraInset, (corner.y - path.bottom) / -inwardY);
+      }
+    }
+
+    if (extraInset > 0) {
+      centerX += inwardX * (extraInset + 0.25);
+      centerY += inwardY * (extraInset + 0.25);
+      corners = rectangleCorners(
+        centerX,
+        centerY,
+        cellWidth,
+        cellHeight
+      );
     }
 
     return {
-      widths: nextWidths,
-      heights: nextHeights,
-      consumed: consumedTotal
+      distance,
+      point,
+      centerX,
+      centerY,
+      width: cellWidth,
+      height: cellHeight,
+      corners
     };
   }
 
-  function layoutBoardCells() {
-    if (!refs.boardStage || !cellElements.size) return;
+  function findNextGeometry(path, previous, previousDistance, width, height, gap) {
+    const step = Math.max(
+      gap,
+      width,
+      height,
+      previous.width,
+      previous.height
+    ) * 0.75 + gap;
+
+    let low = previousDistance;
+    let high = previousDistance + step;
+    let candidate = cellGeometry(path, high, width, height);
+
+    for (let guard = 0; guard < 12; guard += 1) {
+      if (polygonDistance(previous.corners, candidate.corners) >= gap) break;
+      high += step;
+      candidate = cellGeometry(path, high, width, height);
+    }
+
+    for (let iteration = 0; iteration < 15; iteration += 1) {
+      const middle = (low + high) * 0.5;
+      const middleGeometry = cellGeometry(path, middle, width, height);
+      const distance = polygonDistance(previous.corners, middleGeometry.corners);
+
+      if (distance >= gap) {
+        high = middle;
+        candidate = middleGeometry;
+      } else {
+        low = middle;
+      }
+    }
+
+    return {
+      distance: high,
+      geometry: candidate
+    };
+  }
+
+  function placeLoopWithWidths(path, widths, aspect, gap) {
+    const heights = widths.map((width) => width / Math.max(0.01, aspect));
+
+    // START/END seam은 상단 직선 중앙에 둔다.
+    const startOffset = path.horizontal * 0.5;
+    const placements = new Array(board.cellCount);
+    let currentDistance = startOffset;
+    let current = cellGeometry(
+      path,
+      currentDistance,
+      widths[0],
+      heights[0]
+    );
+    placements[0] = current;
+
+    for (let index = 1; index < board.cellCount; index += 1) {
+      const next = findNextGeometry(
+        path,
+        current,
+        currentDistance,
+        widths[index],
+        heights[index],
+        gap
+      );
+
+      currentDistance = next.distance;
+      current = next.geometry;
+      placements[index] = current;
+    }
+
+    const closure = findNextGeometry(
+      path,
+      current,
+      currentDistance,
+      widths[0],
+      heights[0],
+      gap
+    );
+
+    return {
+      placements,
+      startOffset,
+      requiredPerimeter: closure.distance - startOffset
+    };
+  }
+
+  function validatePlacements(placements, gap) {
+    // P0: 모든 순환 인접쌍의 실제 외곽 간격이 같은 값이어야 한다.
+    // 허용 오차는 렌더링 소수점/이분 탐색 오차만 허용한다.
+    const gapTolerance = 0.05;
+    const overlapTolerance = 0.08;
+    const adjacentGaps = [];
+
+    let minimumAdjacentGap = Infinity;
+    let maximumAdjacentGap = -Infinity;
+    let maximumGapError = 0;
+    let gapMismatchPair = null;
+    let collisionPair = null;
+
+    for (let index = 0; index < placements.length; index += 1) {
+      const nextIndex = (index + 1) % placements.length;
+      const distance = polygonDistance(
+        placements[index].corners,
+        placements[nextIndex].corners
+      );
+
+      adjacentGaps.push(distance);
+      minimumAdjacentGap = Math.min(minimumAdjacentGap, distance);
+      maximumAdjacentGap = Math.max(maximumAdjacentGap, distance);
+
+      const error = Math.abs(distance - gap);
+      if (error > maximumGapError) {
+        maximumGapError = error;
+      }
+
+      if (error > gapTolerance && gapMismatchPair === null) {
+        gapMismatchPair = [index, nextIndex];
+      }
+    }
+
+    // 인접하지 않은 칸은 동일 gap 대상은 아니지만 절대 겹쳐서는 안 된다.
+    for (let a = 0; a < placements.length; a += 1) {
+      for (let b = a + 1; b < placements.length; b += 1) {
+        const isAdjacent =
+          b === a + 1 ||
+          (a === 0 && b === placements.length - 1);
+
+        if (isAdjacent) continue;
+
+        const distance = polygonDistance(
+          placements[a].corners,
+          placements[b].corners
+        );
+
+        if (distance <= overlapTolerance) {
+          collisionPair = [a, b];
+          break;
+        }
+      }
+
+      if (collisionPair) break;
+    }
+
+    return {
+      valid: gapMismatchPair === null && collisionPair === null,
+      adjacentGaps,
+      minimumAdjacentGap,
+      maximumAdjacentGap,
+      maximumGapError,
+      gapTolerance,
+      gapMismatchPair,
+      collisionPair
+    };
+  }
+
+  function solveUniformWidth(path, aspect, gap) {
+    let low = 0.5;
+    let high = Math.max(
+      2,
+      (path.perimeter - (gap * board.cellCount)) / Math.max(1, board.cellCount)
+    ) * 2;
+
+    const widthsFor = (value) =>
+      Array.from({ length: board.cellCount }, () => value);
+
+    let highTrial = placeLoopWithWidths(
+      path,
+      widthsFor(high),
+      aspect,
+      gap
+    );
+
+    for (
+      let guard = 0;
+      guard < 12 && highTrial.requiredPerimeter < path.perimeter;
+      guard += 1
+    ) {
+      high *= 1.35;
+      highTrial = placeLoopWithWidths(
+        path,
+        widthsFor(high),
+        aspect,
+        gap
+      );
+    }
+
+    let lowTrial = placeLoopWithWidths(
+      path,
+      widthsFor(low),
+      aspect,
+      gap
+    );
+
+    for (let iteration = 0; iteration < 42; iteration += 1) {
+      const middle = (low + high) * 0.5;
+      const trial = placeLoopWithWidths(
+        path,
+        widthsFor(middle),
+        aspect,
+        gap
+      );
+
+      if (trial.requiredPerimeter > path.perimeter) {
+        high = middle;
+      } else {
+        low = middle;
+        lowTrial = trial;
+      }
+    }
+
+    return {
+      width: low,
+      ...lowTrial
+    };
+  }
+
+  function buildReservedWidths(
+    neutralWidth,
+    normalWidth,
+    weights,
+    emphasisFactor = 1
+  ) {
+    return weights.map((weight) => {
+      if (weight <= 1.0001) return normalWidth;
+
+      // 강조 칸은 먼저 neutral 기준 크기를 예약한다.
+      // emphasisFactor는 P0 충돌 시에만 마지막 안전장치로 낮춘다.
+      const effectiveWeight = 1 + ((weight - 1) * emphasisFactor);
+      return neutralWidth * effectiveWeight;
+    });
+  }
+
+  function solveNormalWidth(
+    path,
+    aspect,
+    weights,
+    gap,
+    neutralWidth,
+    emphasisFactor
+  ) {
+    const normalIndices = [];
+    for (let index = 0; index < weights.length; index += 1) {
+      if (weights[index] <= 1.0001) normalIndices.push(index);
+    }
+
+    // 모든 칸이 강조 상태라면 일반 칸 분배가 없으므로
+    // 강조 크기 자체로 폐합 가능한지만 검사한다.
+    if (!normalIndices.length) {
+      const widths = buildReservedWidths(
+        neutralWidth,
+        neutralWidth,
+        weights,
+        emphasisFactor
+      );
+      const trial = placeLoopWithWidths(path, widths, aspect, gap);
+      return {
+        normalWidth: neutralWidth,
+        widths,
+        ...trial
+      };
+    }
+
+    // 사용자가 제안한 계산의 직접적인 초기값:
+    // 전체 루프 - 모든 gap - 먼저 예약한 강조 칸 점유량,
+    // 그 나머지를 일반 칸 수로 균등 분배한다.
+    const reservedWidths = weights
+      .filter((weight) => weight > 1.0001)
+      .map((weight) =>
+        neutralWidth * (1 + ((weight - 1) * emphasisFactor))
+      );
+
+    const reservedTotal = reservedWidths.reduce((sum, width) => sum + width, 0);
+    const gapTotal = gap * board.cellCount;
+    const remainingEstimate = Math.max(
+      0.5 * normalIndices.length,
+      path.perimeter - gapTotal - reservedTotal
+    );
+    const estimatedNormalWidth = Math.max(
+      0.5,
+      remainingEstimate / normalIndices.length
+    );
+
+    let low = 0.5;
+    let high = Math.max(neutralWidth, estimatedNormalWidth * 1.5);
+
+    const trialFor = (normalWidth) => {
+      const widths = buildReservedWidths(
+        neutralWidth,
+        normalWidth,
+        weights,
+        emphasisFactor
+      );
+      return {
+        widths,
+        ...placeLoopWithWidths(path, widths, aspect, gap)
+      };
+    };
+
+    let lowTrial = trialFor(low);
+    if (lowTrial.requiredPerimeter > path.perimeter) {
+      return null;
+    }
+
+    let highTrial = trialFor(high);
+    for (
+      let guard = 0;
+      guard < 14 && highTrial.requiredPerimeter < path.perimeter;
+      guard += 1
+    ) {
+      low = high;
+      lowTrial = highTrial;
+      high *= 1.25;
+      highTrial = trialFor(high);
+    }
+
+    for (let iteration = 0; iteration < 42; iteration += 1) {
+      const middle = (low + high) * 0.5;
+      const trial = trialFor(middle);
+
+      if (trial.requiredPerimeter > path.perimeter) {
+        high = middle;
+      } else {
+        low = middle;
+        lowTrial = trial;
+      }
+    }
+
+    return {
+      normalWidth: low,
+      ...lowTrial
+    };
+  }
+
+  function solveReserveFirstLoop(path, aspect, weights, gap) {
+    const neutral = solveUniformWidth(path, aspect, gap);
+    let emphasisFactor = 1;
+
+    // 일반 상황에서는 강조 크기를 100% 예약한다.
+    // P0 충돌이 실제로 발생하는 경우에만 강조 초과분을 조금씩 낮춘다.
+    for (let attempt = 0; attempt < 18; attempt += 1) {
+      const solved = solveNormalWidth(
+        path,
+        aspect,
+        weights,
+        gap,
+        neutral.width,
+        emphasisFactor
+      );
+
+      if (!solved) {
+        emphasisFactor *= 0.94;
+        continue;
+      }
+
+      const validation = validatePlacements(solved.placements, gap);
+      const result = {
+        neutralWidth: neutral.width,
+        emphasisFactor,
+        gap,
+        validation,
+        ...solved
+      };
+
+      if (validation.valid) return result;
+
+      emphasisFactor *= 0.94;
+    }
+
+    throw new Error(
+      "P0 layout failure: reserve-first layout could not avoid overlap"
+    );
+  }
+
+  function circularPathDistance(a, b, perimeter) {
+    const direct = Math.abs(a - b);
+    return Math.min(direct, perimeter - direct);
+  }
+
+  function buildPhysicalOrder(startSlot) {
+    return Array.from(
+      { length: board.cellCount },
+      (_, physicalIndex) =>
+        normalizeCell(physicalIndex - startSlot)
+    );
+  }
+
+  function remapPlacementsToLogical(physicalPlacements, physicalOrder) {
+    const logicalPlacements = new Array(board.cellCount);
+
+    for (let physicalIndex = 0; physicalIndex < physicalOrder.length; physicalIndex += 1) {
+      const logicalIndex = physicalOrder[physicalIndex];
+      logicalPlacements[logicalIndex] = physicalPlacements[physicalIndex];
+    }
+
+    return logicalPlacements;
+  }
+
+  function solveTopLeftStartLoop(path, aspect, logicalWeights, gap) {
+    // 논리 START의 물리 슬롯은 셀 크기/플레이어 가중치와 무관하게 고정한다.
+    // 플레이어가 이동해 강조 크기가 달라져도 칸 번호 순서는 절대 재매핑하지 않는다.
+    const targetDistance =
+      path.perimeter - (path.quarterArc * 0.5);
+    const relativeTarget =
+      ((targetDistance - (path.horizontal * 0.5)) % path.perimeter +
+        path.perimeter) % path.perimeter;
+
+    const startSlot = normalizeCell(
+      Math.round((relativeTarget / path.perimeter) * board.cellCount)
+    );
+
+    const physicalOrder = buildPhysicalOrder(startSlot);
+    const physicalWeights = physicalOrder.map(
+      (logicalIndex) => logicalWeights[logicalIndex]
+    );
+
+    const solved = solveReserveFirstLoop(
+      path,
+      aspect,
+      physicalWeights,
+      gap
+    );
+
+    const logicalPlacements = remapPlacementsToLogical(
+      solved.placements,
+      physicalOrder
+    );
+
+    return {
+      ...solved,
+      placements: logicalPlacements,
+      physicalPlacements: solved.placements,
+      physicalOrder,
+      startPhysicalSlot: startSlot,
+      startTargetDistance: targetDistance
+    };
+  }
+
+  function applyCellGeometry(index, geometry, weight, occupied) {
+    const cell = cellElements.get(index);
+    if (!cell) return;
+
+    const left = geometry.centerX - (geometry.width * 0.5);
+    const top = geometry.centerY - (geometry.height * 0.5);
+    const typographyBasis = Math.sqrt(geometry.width * geometry.height);
+    const tokenBasis = Math.min(geometry.width, geometry.height);
+    const indexFontSize = clamp(typographyBasis * 0.135, 8, 16);
+    const labelFontSize = clamp(typographyBasis * 0.105, 7, 14);
+    const tokenSize = clamp(tokenBasis * 0.42, 18, 58);
+    const tokenFontSize = clamp(tokenSize * 0.34, 8, 15);
+    const cellRadius = clamp(
+      Math.min(geometry.width, geometry.height) * 0.09,
+      2,
+      10
+    );
+
+    cell.style.left = left.toFixed(3) + "px";
+    cell.style.top = top.toFixed(3) + "px";
+    cell.style.width = geometry.width.toFixed(3) + "px";
+    cell.style.height = geometry.height.toFixed(3) + "px";
+    cell.style.setProperty("--cell-index-font", indexFontSize.toFixed(3) + "px");
+    cell.style.setProperty("--cell-label-font", labelFontSize.toFixed(3) + "px");
+    cell.style.setProperty("--cell-token-size", tokenSize.toFixed(3) + "px");
+    cell.style.setProperty("--cell-token-font", tokenFontSize.toFixed(3) + "px");
+    cell.style.setProperty("--cell-radius", cellRadius.toFixed(3) + "px");
+    cell.style.setProperty("--dock-scale", weight.toFixed(3));
+    cell.style.zIndex = String(Math.round(weight * 100) + (occupied ? 200 : 0));
+
+    cell.dataset.occupied = String(occupied);
+    cell.dataset.compact = String(
+      Math.min(geometry.width, geometry.height) <= 30
+    );
+    cell.dataset.dockScale = weight.toFixed(3);
+    cell.dataset.curved = String(geometry.point.curved);
+    cell.dataset.pathAngle = geometry.point.angle.toFixed(4);
+  }
+
+  function layoutNow() {
+    layoutFrame = 0;
+    if (!refs.boardStage || !refs.boardGrid || !cellElements.size) return;
 
     const rect = refs.boardStage.getBoundingClientRect();
     const width = rect.width;
     const height = rect.height;
     if (width <= 0 || height <= 0) return;
 
-    const density = Math.sqrt(board.cellCount / 24);
-    const axisDensity = Math.max(board.columns / MIN_COLUMNS, board.rows / MIN_ROWS);
-    const gapDensity = Math.max(density, axisDensity);
-    const inset = clamp(width * 0.0105, 10, 22);
-
-    // 칸 수가 증가하면 확대할 공간을 확보하기 위해 기본 간격도 함께 줄인다.
-    // 8×6에서는 기존 여백을 유지하고, 16×12에서는 대략 절반 수준,
-    // 그 이상에서는 완만하게 2px까지 축소된다.
-    const minGap = clamp(
-      (width * 0.0048) / Math.pow(gapDensity, 0.92),
-      2,
-      12
-    );
-
-    const baseWidth = Math.max(1, (width - (inset * 2)) / board.columns);
-    const baseHeight = Math.max(1, (height - (inset * 2)) / board.rows);
-    const scales = dockScales();
+    const weights = scaleWeights();
     const occupancy = occupancyByCell();
 
-    const desiredWidths = scales.map((scale) => baseWidth * scale);
-    const desiredHeights = scales.map((scale) => baseHeight * scale);
-    const maxHalfWidth = Math.max(...desiredWidths) * 0.5;
-    const maxHalfHeight = Math.max(...desiredHeights) * 0.5;
-    const path = createRoundedPerimeter(width, height, inset, maxHalfWidth, maxHalfHeight);
-
-    let positions = Array.from(
-      { length: board.cellCount },
-      (_, index) => (index / board.cellCount) * path.perimeter
+    const margin = clamp(Math.min(width, height) * 0.014, 8, 22);
+    const nominalWidth = Math.max(1, (width - (margin * 2)) / board.columns);
+    const nominalHeight = Math.max(1, (height - (margin * 2)) / board.rows);
+    const aspect = nominalWidth / Math.max(1, nominalHeight);
+    const nominalCell = Math.min(nominalWidth, nominalHeight);
+    const gap = clamp(nominalCell * 0.075, 3, 11);
+    const cornerRadius = clamp(
+      nominalCell * 1.90,
+      gap * 3,
+      Math.min(width - (margin * 2), height - (margin * 2)) * 0.28
     );
 
-    let fittedWidths = desiredWidths.slice();
-    let fittedHeights = desiredHeights.slice();
-
-    for (let iteration = 0; iteration < 8; iteration += 1) {
-      let points = positions.map((position) => roundedPerimeterPoint(path, position));
-      let projected = points.map((point, index) => {
-        const correction = cornerSizeCorrection(point);
-        return projectedTangentSize(
-          fittedWidths[index] * correction,
-          fittedHeights[index] * correction,
-          point.angle
-        );
-      });
-
-      const availableForCells = Math.max(1, path.perimeter - (minGap * board.cellCount));
-      const projectedTotal = projected.reduce((sum, size) => sum + size, 0);
-      const compression = Math.min(1, availableForCells / Math.max(1, projectedTotal));
-
-      if (compression < 0.9999) {
-        fittedWidths = fittedWidths.map((value) => value * compression);
-        fittedHeights = fittedHeights.map((value) => value * compression);
-        projected = points.map((point, index) => {
-          const correction = cornerSizeCorrection(point);
-          return projectedTangentSize(
-            fittedWidths[index] * correction,
-            fittedHeights[index] * correction,
-            point.angle
-          );
-        });
-      }
-
-      let requiredGaps = projected.map((size, index) => {
-        const next = projected[(index + 1) % board.cellCount];
-        return ((size + next) * 0.5) + minGap;
-      });
-      let requiredTotal = requiredGaps.reduce((sum, value) => sum + value, 0);
-      let extra = Math.max(0, path.perimeter - requiredTotal);
-
-      // 남는 공간을 간격으로 벌리기 전에 비활성/작은 칸에 조금씩 되돌려 준다.
-      // 특히 플레이어 반대편 긴 빈 구간이 과도하게 벌어지는 것을 줄인다.
-      if (extra > 0.5) {
-        const grown = growCellsIntoSpareSpace(
-          fittedWidths,
-          fittedHeights,
-          desiredWidths,
-          desiredHeights,
-          baseWidth,
-          baseHeight,
-          points,
-          scales,
-          occupancy,
-          extra,
-          density
-        );
-        fittedWidths = grown.widths;
-        fittedHeights = grown.heights;
-
-        projected = points.map((point, index) => {
-          const correction = cornerSizeCorrection(point);
-          return projectedTangentSize(
-            fittedWidths[index] * correction,
-            fittedHeights[index] * correction,
-            point.angle
-          );
-        });
-        requiredGaps = projected.map((size, index) => {
-          const next = projected[(index + 1) % board.cellCount];
-          return ((size + next) * 0.5) + minGap;
-        });
-        requiredTotal = requiredGaps.reduce((sum, value) => sum + value, 0);
-        extra = Math.max(0, path.perimeter - requiredTotal);
-      }
-
-      // 셀 크기로 최대한 흡수하고도 남는 양만 모든 간격에 동일하게 더한다.
-      // 최종 목표는 "큰 칸 주변도, 작은 칸 주변도 같은 edge-to-edge 간격"이다.
-      const uniformSlack = extra / board.cellCount;
-      const nextPositions = new Array(board.cellCount);
-      nextPositions[0] = 0;
-
-      for (let index = 1; index < board.cellCount; index += 1) {
-        const previousGapIndex = index - 1;
-        nextPositions[index] =
-          nextPositions[index - 1] +
-          requiredGaps[previousGapIndex] +
-          uniformSlack;
-      }
-
-      positions = nextPositions;
-    }
+    const path = createRoundedLoop(width, height, margin, cornerRadius);
+    const solved = solveTopLeftStartLoop(
+      path,
+      aspect,
+      weights,
+      gap
+    );
 
     for (let index = 0; index < board.cellCount; index += 1) {
-      const cell = cellElements.get(index);
-      if (!cell) continue;
-
-      const point = roundedPerimeterPoint(path, positions[index]);
-      const cornerCorrection = cornerSizeCorrection(point);
-      const cellWidth = fittedWidths[index] * cornerCorrection;
-      const cellHeight = fittedHeights[index] * cornerCorrection;
-      const scale = scales[index];
-      const isOccupied = occupancy.has(index);
-
-      const renderedWidth = Math.max(1, cellWidth);
-      const renderedHeight = Math.max(1, cellHeight);
-      const alignedPoint = edgeAlignedPoint(
-        point,
-        renderedWidth,
-        renderedHeight,
-        width,
-        height,
-        inset
+      applyCellGeometry(
+        index,
+        solved.placements[index],
+        weights[index],
+        occupancy.has(index)
       );
-      const snappedLeft = Math.round((alignedPoint.x - (renderedWidth / 2)) * 8) / 8;
-      const snappedTop = Math.round((alignedPoint.y - (renderedHeight / 2)) * 8) / 8;
-      const snappedWidth = Math.round(renderedWidth * 8) / 8;
-      const snappedHeight = Math.round(renderedHeight * 8) / 8;
+    }
 
-      // 글자/말 크기는 원래 dock scale이 아니라 최종 렌더링된 칸 크기에서 계산한다.
-      // 따라서 여유 공간 흡수나 코너 보정 결과가 달라도 실제 칸 크기가 같으면
-      // 내부 텍스트와 말의 표시 크기도 항상 같아진다.
-      const typographyBasis = Math.sqrt(snappedWidth * snappedHeight);
-      const tokenBasis = Math.min(snappedWidth, snappedHeight);
-      const indexFontSize = clamp(typographyBasis * 0.135, 8, 16);
-      const labelFontSize = clamp(typographyBasis * 0.105, 7, 14);
-      const tokenSize = clamp(tokenBasis * 0.42, 18, 58);
-      const tokenFontSize = clamp(tokenSize * 0.34, 8, 15);
+    layoutPlayerTokens(solved.placements, occupancy);
 
-      cell.style.left = `${snappedLeft}px`;
-      cell.style.top = `${snappedTop}px`;
-      cell.style.width = `${snappedWidth}px`;
-      cell.style.height = `${snappedHeight}px`;
-      cell.style.setProperty("--cell-index-font", `${indexFontSize.toFixed(3)}px`);
-      cell.style.setProperty("--cell-label-font", `${labelFontSize.toFixed(3)}px`);
-      cell.style.setProperty("--cell-token-size", `${tokenSize.toFixed(3)}px`);
-      cell.style.setProperty("--cell-token-font", `${tokenFontSize.toFixed(3)}px`);
-      cell.style.setProperty("--dock-scale", (scale * cornerCorrection).toFixed(3));
-      cell.style.zIndex = String(Math.round(scale * 100) + (isOccupied ? 200 : 0));
-      cell.dataset.occupied = String(isOccupied);
-      cell.dataset.dockScale = scale.toFixed(3);
-      cell.dataset.cornerBlend = point.cornerBlend.toFixed(3);
-      cell.dataset.pathAngle = point.angle.toFixed(3);
+    refs.boardGrid.dataset.pathPerimeter = path.perimeter.toFixed(3);
+    refs.boardGrid.dataset.requiredPerimeter = solved.requiredPerimeter.toFixed(3);
+    refs.boardGrid.dataset.cellGap = solved.gap.toFixed(3);
+    refs.boardGrid.dataset.minimumAdjacentGap =
+      solved.validation.minimumAdjacentGap.toFixed(3);
+    refs.boardGrid.dataset.maximumAdjacentGap =
+      solved.validation.maximumAdjacentGap.toFixed(3);
+    refs.boardGrid.dataset.maximumGapError =
+      solved.validation.maximumGapError.toFixed(3);
+    refs.boardGrid.dataset.equalGap = String(
+      solved.validation.gapMismatchPair === null
+    );
+    refs.boardGrid.dataset.collisionFree = String(
+      solved.validation.collisionPair === null
+    );
+    refs.boardGrid.dataset.cellAspect = aspect.toFixed(6);
+    refs.boardGrid.dataset.neutralCellWidth = solved.neutralWidth.toFixed(3);
+    refs.boardGrid.dataset.normalCellWidth = solved.normalWidth.toFixed(3);
+    refs.boardGrid.dataset.emphasisFactor = solved.emphasisFactor.toFixed(4);
+    refs.boardGrid.dataset.startPhysicalSlot = String(solved.startPhysicalSlot);
+    refs.boardGrid.dataset.baseCellHeight = (
+      solved.normalWidth / Math.max(0.01, aspect)
+    ).toFixed(3);
+
+    // 첫 배치는 transition 없이 확정한다.
+    // 모든 셀이 최종 좌표를 받은 뒤에만 이후 이동 애니메이션을 허용한다.
+    if (refs.boardStage.dataset.layoutReady !== "true") {
+      refs.boardStage.getBoundingClientRect();
+      refs.boardStage.dataset.layoutReady = "true";
+    }
+  }
+
+  function scheduleLayout() {
+    if (layoutFrame) return;
+    layoutFrame = window.requestAnimationFrame(layoutNow);
+  }
+
+  function createPlayerToken(player) {
+    const token = document.createElement("span");
+    token.className = "player-token";
+    token.dataset.playerId = player.id;
+    token.title = player.name;
+    token.textContent = player.shortLabel;
+    token.style.setProperty("--token-x", "0px");
+    token.style.setProperty("--token-y", "0px");
+    token.style.setProperty("--token-size", "26px");
+    token.style.setProperty("--token-font-size", "10px");
+    return token;
+  }
+
+  function ensurePlayerTokens() {
+    if (!refs.playerLayer) return;
+
+    const activeIds = new Set();
+
+    for (const player of state.players.values()) {
+      activeIds.add(player.id);
+
+      let token = playerTokenElements.get(player.id);
+      if (!token) {
+        token = createPlayerToken(player);
+        playerTokenElements.set(player.id, token);
+        refs.playerLayer.append(token);
+      } else {
+        token.title = player.name;
+        token.textContent = player.shortLabel;
+      }
+    }
+
+    for (const [playerId, token] of playerTokenElements.entries()) {
+      if (activeIds.has(playerId)) continue;
+      token.remove();
+      playerTokenElements.delete(playerId);
+    }
+  }
+
+  function tokenOffsets(count, tokenSize) {
+    if (count <= 1) return [{ x: 0, y: 0 }];
+
+    const spacing = tokenSize * 0.58;
+
+    if (count === 2) {
+      return [
+        { x: -spacing * 0.5, y: 0 },
+        { x: spacing * 0.5, y: 0 }
+      ];
+    }
+
+    if (count <= 4) {
+      return Array.from({ length: count }, (_, index) => ({
+        x: (index % 2 === 0 ? -1 : 1) * spacing * 0.46,
+        y: (index < 2 ? -1 : 1) * spacing * 0.46
+      }));
+    }
+
+    return Array.from({ length: count }, (_, index) => {
+      const angle = (-Math.PI / 2) + ((Math.PI * 2 * index) / count);
+      return {
+        x: Math.cos(angle) * spacing * 0.72,
+        y: Math.sin(angle) * spacing * 0.72
+      };
+    });
+  }
+
+  function layoutPlayerTokens(placements, occupancy) {
+    ensurePlayerTokens();
+    if (!refs.playerLayer) return;
+
+    for (const [cellIndex, players] of occupancy.entries()) {
+      const geometry = placements[cellIndex];
+      if (!geometry) continue;
+
+      const visiblePlayers = players.slice(0, MAX_PLAYERS);
+      const tokenSize = clamp(
+        Math.min(geometry.width, geometry.height) * 0.46,
+        18,
+        62
+      );
+      const tokenFontSize = clamp(tokenSize * 0.34, 8, 16);
+      const offsets = tokenOffsets(visiblePlayers.length, tokenSize);
+
+      visiblePlayers.forEach((player, index) => {
+        const token = playerTokenElements.get(player.id);
+        if (!token) return;
+
+        const offset = offsets[index] || { x: 0, y: 0 };
+        const x = geometry.centerX + offset.x;
+        const y = geometry.centerY + offset.y;
+
+        token.style.setProperty("--token-x", x.toFixed(3) + "px");
+        token.style.setProperty("--token-y", y.toFixed(3) + "px");
+        token.style.setProperty("--token-size", tokenSize.toFixed(3) + "px");
+        token.style.setProperty(
+          "--token-font-size",
+          tokenFontSize.toFixed(3) + "px"
+        );
+        token.dataset.cellIndex = String(cellIndex);
+        token.dataset.stacked = String(visiblePlayers.length > 1);
+      });
     }
   }
 
   function renderPlayers() {
-    cellElements.forEach((cell) => {
-      const stack = cell.querySelector(".token-stack");
-      if (stack) stack.innerHTML = "";
-    });
-
-    for (const player of state.players.values()) {
-      const cell = cellElements.get(player.position);
-      const stack = cell?.querySelector(".token-stack");
-      if (!stack) continue;
-
-      const token = document.createElement("span");
-      token.className = "player-token";
-      token.dataset.playerId = player.id;
-      token.title = player.name;
-      token.textContent = player.shortLabel;
-      stack.append(token);
-    }
-
+    ensurePlayerTokens();
     renderGlobalState();
-    layoutBoardCells();
+    scheduleLayout();
   }
 
   function registerPlayer(input) {
-    const id = String(input?.id || "").trim();
-    const name = String(input?.name || id || "참가자").trim();
+    const id = String((input && input.id) || "").trim();
+    const name = String((input && input.name) || id || "참가자").trim();
     if (!id) throw new Error("player id is required");
 
     const current = state.players.get(id);
+    if (!current && state.players.size >= MAX_PLAYERS) {
+      throw new Error("maximum players: " + MAX_PLAYERS);
+    }
+
     const player = {
       id,
       name,
-      shortLabel: String(input?.shortLabel || name.slice(0, 2)).trim() || "P",
-      position: normalizeCell(input?.position ?? current?.position ?? 0),
-      laps: Math.max(0, Number.parseInt(input?.laps ?? current?.laps ?? 0, 10) || 0),
-      pendingRolls: current?.pendingRolls || 0
+      shortLabel: String((input && input.shortLabel) || name.slice(0, 2)).trim() || "P",
+      position: normalizeCell(
+        input && input.position !== undefined
+          ? input.position
+          : (current ? current.position : 0)
+      ),
+      laps: Math.max(
+        0,
+        Number.parseInt(
+          input && input.laps !== undefined
+            ? input.laps
+            : (current ? current.laps : 0),
+          10
+        ) || 0
+      ),
+      pendingRolls: current ? current.pendingRolls : 0
     };
 
     state.players.set(id, player);
@@ -716,6 +1185,14 @@
     state.players.delete(id);
     state.moveQueues.delete(id);
     renderPlayers();
+  }
+
+  function getBoardDimensions() {
+    return {
+      columns: board.columns,
+      rows: board.rows,
+      cells: board.cellCount
+    };
   }
 
   function setBoardDimensions(columns, rows) {
@@ -746,7 +1223,7 @@
 
     buildBoard();
     setEventMessage(
-      `보드 크기 변경 · ${board.columns}×${board.rows} · 외곽 ${board.cellCount}칸`
+      "보드 크기 변경 · " + board.columns + "×" + board.rows + " · 외곽 " + board.cellCount + "칸"
     );
 
     window.dispatchEvent(new CustomEvent("ramyani-board:dimensionschange", {
@@ -756,14 +1233,6 @@
     return getBoardDimensions();
   }
 
-  function getBoardDimensions() {
-    return {
-      columns: board.columns,
-      rows: board.rows,
-      cells: board.cellCount
-    };
-  }
-
   function setPhasePlan(plan) {
     if (!Array.isArray(plan) || !plan.length) {
       throw new Error("phase plan must contain at least one phase");
@@ -771,9 +1240,9 @@
 
     state.phasePlan = plan
       .map((phase, index) => ({
-        id: String(phase.id || `phase-${index + 1}`),
-        minTotalLaps: Math.max(0, Number.parseInt(phase.minTotalLaps ?? 0, 10) || 0),
-        label: String(phase.label || `PHASE ${index + 1}`),
+        id: String(phase.id || "phase-" + (index + 1)),
+        minTotalLaps: Math.max(0, Number.parseInt(phase.minTotalLaps || 0, 10) || 0),
+        label: String(phase.label || "PHASE " + (index + 1)),
         description: String(phase.description || ""),
         cells: phase.cells && typeof phase.cells === "object" ? phase.cells : {}
       }))
@@ -798,7 +1267,9 @@
       renderGlobalState();
 
       if (changed) {
-        setEventMessage(`전체 누적 ${state.totalLaps}바퀴 · ${next.label}로 판 전환`);
+        setEventMessage(
+          "전체 누적 " + state.totalLaps + "바퀴 · " + next.label + "로 판 전환"
+        );
         window.dispatchEvent(new CustomEvent("ramyani-board:phasechange", {
           detail: {
             phaseId: next.id,
@@ -813,9 +1284,13 @@
     return cellDefinition(position).command;
   }
 
+  function delay(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
   async function movePlayerBy(playerId, steps, meta = {}) {
     const player = state.players.get(String(playerId));
-    if (!player) throw new Error(`unknown player: ${playerId}`);
+    if (!player) throw new Error("unknown player: " + playerId);
 
     const distance = Math.max(0, Number.parseInt(steps, 10) || 0);
     if (!distance) return { ...player };
@@ -835,10 +1310,10 @@
     }
 
     const command = destinationCommand(player.position);
-    const source = meta.source ? ` · ${meta.source}` : "";
+    const source = meta.source ? " · " + meta.source : "";
 
     if (command) {
-      setEventMessage(`${player.name}: ${command}${source}`);
+      setEventMessage(player.name + ": " + command + source);
       window.dispatchEvent(new CustomEvent("ramyani-board:command", {
         detail: {
           playerId: player.id,
@@ -848,7 +1323,7 @@
         }
       }));
     } else {
-      setEventMessage(`${player.name} → ${player.position + 1}번 칸${source}`);
+      setEventMessage(player.name + " → " + (player.position + 1) + "번 칸" + source);
     }
 
     return { ...player };
@@ -857,7 +1332,7 @@
   function enqueueRoll(playerId, diceValue, meta = {}) {
     const id = String(playerId);
     const player = state.players.get(id);
-    if (!player) return Promise.reject(new Error(`unknown player: ${id}`));
+    if (!player) return Promise.reject(new Error("unknown player: " + id));
 
     const dice = Math.max(1, Number.parseInt(diceValue, 10) || 1);
     player.pendingRolls += 1;
@@ -895,16 +1370,12 @@
     };
   }
 
-  function delay(ms) {
-    return new Promise((resolve) => window.setTimeout(resolve, ms));
-  }
-
   function seedDemoPlayers(count) {
     for (let index = 0; index < count; index += 1) {
       const suffix = String.fromCharCode(65 + index);
       registerPlayer({
-        id: `player-${index + 1}`,
-        name: `참가자 ${suffix}`,
+        id: "player-" + (index + 1),
+        name: "참가자 " + suffix,
         shortLabel: suffix,
         position: Math.floor((index * board.cellCount) / count)
       });
@@ -914,7 +1385,10 @@
   function startDemo() {
     seedDemoPlayers(DEMO_PLAYER_COUNT);
     setEventMessage(
-      `Dock 강조 데모 · ${board.columns}×${board.rows} · 외곽 ${board.cellCount}칸 · 참가자 ${DEMO_PLAYER_COUNT}명`
+      "Reserve First v4 · " +
+      board.columns + "×" + board.rows +
+      " · 외곽 " + board.cellCount +
+      "칸 · 참가자 " + DEMO_PLAYER_COUNT + "명"
     );
 
     window.setInterval(() => {
@@ -932,6 +1406,7 @@
     MIN_ROWS,
     MAX_COLUMNS,
     MAX_ROWS,
+    MAX_PLAYERS,
     registerPlayer,
     removePlayer,
     enqueueRoll,
@@ -939,7 +1414,7 @@
     getBoardDimensions,
     setPhasePlan,
     getSnapshot,
-    layoutBoardCells
+    layoutBoardCells: layoutNow
   };
 
   Object.defineProperties(api, {
@@ -954,16 +1429,18 @@
   renderGlobalState();
 
   if (window.ResizeObserver && refs.boardStage) {
-    new ResizeObserver(layoutBoardCells).observe(refs.boardStage);
+    new ResizeObserver(scheduleLayout).observe(refs.boardStage);
   } else {
-    window.addEventListener("resize", layoutBoardCells);
+    window.addEventListener("resize", scheduleLayout);
   }
 
   if (DEMO_MODE) {
     startDemo();
   } else {
     setEventMessage(
-      `${board.columns}×${board.rows} · 외곽 ${board.cellCount}칸 방송 오버레이 준비 완료`
+      board.columns + "×" + board.rows +
+      " · 외곽 " + board.cellCount +
+      "칸 방송 오버레이 준비 완료"
     );
   }
 })();

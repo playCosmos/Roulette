@@ -59,6 +59,19 @@ public final class BoardGameRuntimeProbe {
                             """)
                     ),
                     new InstructionInput(
+                        "MOVE_FORWARD",
+                        "2칸 전진",
+                        new AllocationInput("count", 0),
+                        false,
+                        JsonParser.parseString("""
+                            {
+                              "type":"move",
+                              "direction":"forward",
+                              "steps":{"mode":"fixed","value":2}
+                            }
+                            """)
+                    ),
+                    new InstructionInput(
                         "SKIP_NEXT_THROW",
                         "다음 던지기 스킵",
                         new AllocationInput("count", 0),
@@ -76,7 +89,8 @@ public final class BoardGameRuntimeProbe {
             require("READY".equals(ready.status()), "probe room must be READY");
 
             // 3+3 from START passes cell 3 and lands on cell 6.
-            // Passing EXTRA_THROW must do nothing; destination SKIP_NEXT_THROW must cancel the double bonus.
+            // Passing EXTRA_THROW must do nothing.
+            // Cell 6 moves +2 to cell 8, then cell 8 SKIP_NEXT_THROW must execute and cancel the double bonus.
             patchCell(
                 database,
                 created.roomId(),
@@ -99,6 +113,26 @@ public final class BoardGameRuntimeProbe {
                 6,
                 new CellState(
                     6,
+                    "INSTRUCTION",
+                    "MOVE_FORWARD",
+                    "2칸 전진",
+                    JsonParser.parseString("""
+                        {
+                          "type":"move",
+                          "direction":"forward",
+                          "steps":{"mode":"fixed","value":2}
+                        }
+                        """),
+                    false,
+                    false
+                )
+            );
+            patchCell(
+                database,
+                created.roomId(),
+                8,
+                new CellState(
+                    8,
                     "INSTRUCTION",
                     "SKIP_NEXT_THROW",
                     "다음 던지기 스킵",
@@ -144,11 +178,15 @@ public final class BoardGameRuntimeProbe {
             require(resolved.dice() != null, "dice result missing");
             require(resolved.dice().values().equals(List.of(3, 3)), "probe must resolve 3+3");
             require(resolved.throwLandingPosition() == 6, "3+3 must land on cell 6");
-            require("SKIP_NEXT_THROW".equals(resolved.landing().instructionId()), "only destination instruction must execute");
+            require("MOVE_FORWARD".equals(resolved.landing().instructionId()), "first destination instruction must execute");
+            require(resolved.landingChain().size() == 2, "move landing must execute the newly reached cell instruction");
+            require("MOVE_FORWARD".equals(resolved.landingChain().get(0).instructionId()), "cell 6 move instruction missing");
+            require(resolved.landingChain().get(0).actionMoveSteps() == 2, "cell 6 must move +2");
+            require("SKIP_NEXT_THROW".equals(resolved.landingChain().get(1).instructionId()), "cell 8 skip instruction must execute");
             require(resolved.bonusGranted(), "3+3 must grant a natural bonus");
             require(resolved.bonusConsumedBySkip(), "destination skip must consume double bonus");
             require(!resolved.nextThrowScheduled(), "bonus throw must disappear after destination skip");
-            require(turn.endPosition() == 6, "player must finish at cell 6");
+            require(turn.endPosition() == 8, "player must finish at chained landing cell 8");
             require(turn.skipNextThrowsAfter() == 0, "skip must be consumed by pending bonus");
             require(dispatched.size() == 1, "board turn must dispatch after commit");
 
@@ -169,7 +207,7 @@ public final class BoardGameRuntimeProbe {
             require(wrongAmount.matchedRooms() == 0, "200 balloons must not match exact trigger 100");
 
             var snapshot = runtime.snapshot(created.roomId());
-            require(snapshot.players().get(0).position() == 6, "runtime position must persist");
+            require(snapshot.players().get(0).position() == 8, "chained runtime position must persist");
             require(snapshot.sequence() == 1, "duplicate/wrong donation must not advance sequence");
 
             System.out.println("[board-runtime-probe] PASS room=" + created.roomId());

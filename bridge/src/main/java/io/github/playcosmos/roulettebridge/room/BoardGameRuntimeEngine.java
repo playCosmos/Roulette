@@ -27,6 +27,7 @@ import static io.github.playcosmos.roulettebridge.room.RoomModels.*;
 public final class BoardGameRuntimeEngine {
     private static final Gson GSON = new Gson();
     private static final int MAX_BONUS_CHAIN = 32;
+    private static final int MAX_LANDING_CHAIN = 64;
 
     private final BridgeDatabase database;
     private final Consumer<BoardTurnEvent> eventSink;
@@ -179,39 +180,16 @@ public final class BoardGameRuntimeEngine {
                         boolean naturalBonus = outcome.bonusThrow();
                         if (naturalBonus) pendingBonusThrows += 1;
 
-                        CellState landingCell = board.cells().get(player.position);
-                        JsonElement landingAction = landingCell.action() == null
-                            ? null
-                            : landingCell.action().deepCopy();
-
-                        Integer actionMoveSteps = null;
-                        String actionType = actionType(landingAction);
-
-                        if ("skipThrow".equals(actionType)) {
-                            player.skipNextThrows += positiveInt(landingAction, "count", 1);
-                        } else if ("extraThrow".equals(actionType)) {
-                            pendingBonusThrows += positiveInt(landingAction, "count", 1);
-                        } else if ("move".equals(actionType)) {
-                            int moveSteps = resolvedMoveSteps(landingAction);
-                            if (moveSteps != 0) {
-                                actionMoveSteps = moveSteps;
-                                int actionOrigin = player.position;
-                                int actionDestination = advancePlayer(
-                                    player,
-                                    moveSteps,
-                                    room.config().board().cellCount()
-                                );
-                                if (actionOrigin != actionDestination) {
-                                    rerollIfVacated(
-                                        room,
-                                        board,
-                                        players,
-                                        actionOrigin,
-                                        updates
-                                    );
-                                }
-                            }
-                        }
+                        var landingChain = resolveLandingChain(
+                            room,
+                            board,
+                            players,
+                            player,
+                            pendingBonusThrows,
+                            updates
+                        );
+                        pendingBonusThrows = landingChain.pendingBonusThrows();
+                        safetyStopped = safetyStopped || landingChain.safetyStopped();
 
                         boolean bonusConsumedBySkip = false;
                         boolean nextThrowScheduled = false;
@@ -243,13 +221,10 @@ public final class BoardGameRuntimeEngine {
                             naturalBonus,
                             nextThrowScheduled,
                             bonusConsumedBySkip,
-                            new LandingResolution(
-                                landingCell.index(),
-                                landingCell.instructionId(),
-                                landingCell.label(),
-                                landingAction,
-                                actionMoveSteps
-                            ),
+                            landingChain.landings().isEmpty()
+                                ? null
+                                : landingChain.landings().get(0),
+                            landingChain.landings(),
                             List.copyOf(updates),
                             player.skipNextThrows
                         ));
@@ -598,6 +573,85 @@ public final class BoardGameRuntimeEngine {
         );
     }
 
+    private LandingChainResult resolveLandingChain(
+        RoomContext room,
+        MutableBoard board,
+        List<MutablePlayer> players,
+        MutablePlayer player,
+        int pendingBonusThrows,
+        List<CellUpdate> updates
+    ) {
+        var landings = new ArrayList<LandingResolution>();
+        boolean safetyStopped = false;
+
+        for (int depth = 0; depth < MAX_LANDING_CHAIN; depth++) {
+            CellState landingCell = board.cells().get(player.position);
+            JsonElement landingAction = landingCell.action() == null
+                ? null
+                : landingCell.action().deepCopy();
+
+            String type = actionType(landingAction);
+            Integer actionMoveSteps = null;
+
+            if ("skipThrow".equals(type)) {
+                player.skipNextThrows += positiveInt(landingAction, "count", 1);
+            } else if ("extraThrow".equals(type)) {
+                pendingBonusThrows += positiveInt(landingAction, "count", 1);
+            } else if ("move".equals(type)) {
+                int moveSteps = resolvedMoveSteps(landingAction);
+                if (moveSteps != 0) actionMoveSteps = moveSteps;
+            }
+
+            landings.add(new LandingResolution(
+                landingCell.index(),
+                landingCell.instructionId(),
+                landingCell.label(),
+                landingAction,
+                actionMoveSteps
+            ));
+
+            if (actionMoveSteps == null) {
+                return new LandingChainResult(
+                    List.copyOf(landings),
+                    pendingBonusThrows,
+                    false
+                );
+            }
+
+            int actionOrigin = player.position;
+            int actionDestination = advancePlayer(
+                player,
+                actionMoveSteps,
+                room.config().board().cellCount()
+            );
+
+            if (actionOrigin != actionDestination) {
+                rerollIfVacated(
+                    room,
+                    board,
+                    players,
+                    actionOrigin,
+                    updates
+                );
+            }
+
+            if (actionOrigin == actionDestination) {
+                return new LandingChainResult(
+                    List.copyOf(landings),
+                    pendingBonusThrows,
+                    false
+                );
+            }
+        }
+
+        safetyStopped = true;
+        return new LandingChainResult(
+            List.copyOf(landings),
+            pendingBonusThrows,
+            safetyStopped
+        );
+    }
+
     private void rerollIfVacated(
         RoomContext room,
         MutableBoard board,
@@ -849,6 +903,12 @@ public final class BoardGameRuntimeEngine {
         YutResult yut
     ) {}
 
+    private record LandingChainResult(
+        List<LandingResolution> landings,
+        int pendingBonusThrows,
+        boolean safetyStopped
+    ) {}
+
     private record MutableBoard(
         long seed,
         int cellCount,
@@ -941,6 +1001,7 @@ public final class BoardGameRuntimeEngine {
         boolean nextThrowScheduled,
         boolean bonusConsumedBySkip,
         LandingResolution landing,
+        List<LandingResolution> landingChain,
         List<CellUpdate> cellUpdates,
         int skipNextThrowsAfter
     ) {}

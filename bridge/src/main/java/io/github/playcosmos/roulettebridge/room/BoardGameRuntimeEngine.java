@@ -70,6 +70,10 @@ public final class BoardGameRuntimeEngine {
                 continue;
             }
 
+            var backlog = drainQueuedDonations(match.roomId());
+            events.addAll(backlog.events());
+            duplicateRooms += backlog.duplicateCount();
+
             if (existsDeferred(match.roomId(), fingerprint)) {
                 duplicateRooms += 1;
                 continue;
@@ -171,6 +175,52 @@ public final class BoardGameRuntimeEngine {
             }
         }
 
+        var drained = drainQueuedDonations(roomId);
+        events.addAll(drained.events());
+        duplicateCount += drained.duplicateCount();
+
+        dispatchEvents(events);
+        return new ResumeResult(
+            roomId,
+            events.size(),
+            duplicateCount,
+            List.copyOf(events)
+        );
+    }
+
+    public synchronized int recoverQueuedDonations() throws SQLException {
+        var roomIds = new ArrayList<String>();
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 SELECT DISTINCT q.room_id
+                 FROM board_game_deferred_donation q
+                 JOIN board_room br ON br.room_id = q.room_id
+                 WHERE q.state = 'QUEUED'
+                   AND br.status = 'READY'
+                   AND br.lifecycle_state = 'ACTIVE'
+                   AND br.expires_at IS NOT NULL
+                   AND datetime(br.expires_at) > datetime('now')
+                 ORDER BY q.room_id
+                 """);
+             var rows = statement.executeQuery()) {
+            while (rows.next()) roomIds.add(rows.getString(1));
+        }
+
+        var events = new ArrayList<BoardTurnEvent>();
+        int processed = 0;
+        for (String roomId : roomIds) {
+            var drained = drainQueuedDonations(roomId);
+            processed += drained.events().size();
+            events.addAll(drained.events());
+        }
+        dispatchEvents(events);
+        return processed;
+    }
+
+    private DrainResult drainQueuedDonations(String roomId) throws SQLException {
+        var events = new ArrayList<BoardTurnEvent>();
+        int duplicateCount = 0;
+
         for (var deferred : loadQueuedDonations(roomId)) {
             var result = processRoom(
                 roomId,
@@ -182,13 +232,7 @@ public final class BoardGameRuntimeEngine {
             deleteDeferredDonation(deferred.id());
         }
 
-        dispatchEvents(events);
-        return new ResumeResult(
-            roomId,
-            events.size(),
-            duplicateCount,
-            List.copyOf(events)
-        );
+        return new DrainResult(List.copyOf(events), duplicateCount);
     }
 
     private void dispatchEvents(List<BoardTurnEvent> events) {
@@ -1222,6 +1266,11 @@ public final class BoardGameRuntimeEngine {
         long id,
         String fingerprint,
         SoopDonation donation
+    ) {}
+
+    private record DrainResult(
+        List<BoardTurnEvent> events,
+        int duplicateCount
     ) {}
 
     private record RoomProcessResult(boolean duplicate, BoardTurnEvent event) {}

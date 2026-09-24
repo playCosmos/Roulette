@@ -379,6 +379,8 @@
 
     return {
       name: form.elements.namedItem("roomName").value.trim() || "Room",
+      retentionMinutes: Number(form.elements.namedItem("retentionMinutes").value) || 240,
+      pauseDonationMode: form.elements.namedItem("pauseDonationMode").value || "QUEUE",
       players: collectPlayers(),
       board,
       movement: {
@@ -490,14 +492,33 @@
       (board.layoutStyle === "rect" ? "직각" : "라운드") +
       " · " + snapshot.status;
 
+    const lifecycle = snapshot.lifecycle || {};
+    const lifecycleState = lifecycle.state || (snapshot.status === "READY" ? "ACTIVE" : "DRAFT");
     const ready = snapshot.status === "READY";
-    rerollButton.disabled = ready;
-    commitButton.disabled = ready;
-    commitButton.textContent = ready ? "배치 확정됨" : "이 배치로 확정";
+    const terminated = lifecycleState === "TERMINATED";
+
+    previewMeta.textContent +=
+      " · " + lifecycleState +
+      " · 유지 " + (lifecycle.retentionMinutes || 240) + "분" +
+      (lifecycle.queuedDonations ? " · 대기 후원 " + lifecycle.queuedDonations + "건" : "");
+
+    rerollButton.disabled = ready || terminated;
+    commitButton.disabled = ready || terminated;
+    commitButton.textContent = ready ? "배치 확정됨" : (terminated ? "종료된 룸" : "이 배치로 확정");
+
+    pauseButton.hidden = lifecycleState !== "ACTIVE";
+    resumeButton.hidden = lifecycleState !== "PAUSED";
+    terminateButton.hidden = terminated;
+
+    const pauseModeField = form.elements.namedItem("pauseDonationMode");
+    if (pauseModeField && lifecycle.pauseDonationMode) {
+      pauseModeField.value = lifecycle.pauseDonationMode;
+    }
 
     if (overlayRow && overlayUrl) {
-      overlayRow.hidden = !ready;
-      overlayUrl.value = ready ? roomOverlayUrl(snapshot) : "";
+      const overlayAvailable = ready && !terminated;
+      overlayRow.hidden = !overlayAvailable;
+      overlayUrl.value = overlayAvailable ? roomOverlayUrl(snapshot) : "";
     }
   }
 
@@ -556,6 +577,70 @@
     }
   }
 
+  async function pauseRoom() {
+    if (!currentRoom) return;
+    pauseButton.disabled = true;
+    showResult("룸을 일시정지하는 중…", "working");
+    try {
+      const snapshot = await fetchJson(
+        "/api/board/rooms/" + encodeURIComponent(currentRoom.roomId) + "/pause",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            donationMode: form.elements.namedItem("pauseDonationMode").value || "QUEUE"
+          })
+        }
+      );
+      renderRoom(snapshot);
+      showResult(
+        snapshot.lifecycle?.pauseDonationMode === "IGNORE"
+          ? "일시정지했습니다. 정지 중 후원은 무시됩니다."
+          : "일시정지했습니다. 정지 중 후원은 큐에 순서대로 누적됩니다.",
+        "success"
+      );
+    } catch (error) {
+      showResult("일시정지 실패: " + error.message, "error-text");
+    } finally {
+      pauseButton.disabled = false;
+    }
+  }
+
+  async function resumeRoom() {
+    if (!currentRoom) return;
+    resumeButton.disabled = true;
+    showResult("대기 후원을 순서대로 처리하며 재개하는 중…", "working");
+    try {
+      const snapshot = await fetchJson(
+        "/api/board/rooms/" + encodeURIComponent(currentRoom.roomId) + "/resume",
+        { method: "POST" }
+      );
+      renderRoom(snapshot);
+      showResult("룸을 재개했습니다. 대기 후원은 수신 순서대로 처리됩니다.", "success");
+    } catch (error) {
+      showResult("재개 실패: " + error.message, "error-text");
+    } finally {
+      resumeButton.disabled = false;
+    }
+  }
+
+  async function terminateRoom() {
+    if (!currentRoom) return;
+    terminateButton.disabled = true;
+    showResult("룸을 종료하는 중…", "working");
+    try {
+      const snapshot = await fetchJson(
+        "/api/board/rooms/" + encodeURIComponent(currentRoom.roomId) + "/terminate",
+        { method: "POST" }
+      );
+      renderRoom(snapshot);
+      showResult("룸을 TERMINATED 처리했습니다.", "success");
+    } catch (error) {
+      showResult("룸 종료 실패: " + error.message, "error-text");
+    } finally {
+      terminateButton.disabled = false;
+    }
+  }
+
   playerCount.addEventListener("change", renderPlayers);
   sizingMode.addEventListener("change", syncBoardSizing);
   generator.addEventListener("change", syncMovement);
@@ -586,6 +671,9 @@
   form.addEventListener("submit", createRoom);
   rerollButton.addEventListener("click", rerollPreview);
   commitButton.addEventListener("click", commitPreview);
+  pauseButton?.addEventListener("click", pauseRoom);
+  resumeButton?.addEventListener("click", resumeRoom);
+  terminateButton?.addEventListener("click", terminateRoom);
 
   copyOverlayButton?.addEventListener("click", async () => {
     if (!overlayUrl?.value) return;

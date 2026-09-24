@@ -7,7 +7,7 @@
   const MAX_ROWS = 48;
   const MAX_PLAYERS = 6;
   // 다음 스텝을 이전 전환이 완전히 끝나기 전에 시작해 연속 이동처럼 보이게 한다.
-  const STEP_DELAY_MS = 165;
+  const STEP_DELAY_MS = 248;
 
   // P0 geometry contract:
   // 1) every cell uses one shared aspect ratio,

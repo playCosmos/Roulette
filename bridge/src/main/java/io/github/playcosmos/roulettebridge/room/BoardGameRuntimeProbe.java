@@ -218,7 +218,7 @@ public final class BoardGameRuntimeProbe {
             require(snapshot.players().get(0).position() == 8, "chained runtime position must persist");
             require(snapshot.sequence() == 1, "duplicate/wrong donation must not advance sequence");
 
-            runtime.pauseRoom(created.roomId(), "QUEUE");
+            runtime.pauseRoom(created.roomId(), "QUEUE", 10);
             var queuedOne = runtime.process(new SoopDonation(
                 "streamer",
                 "soop-a",
@@ -241,6 +241,19 @@ public final class BoardGameRuntimeProbe {
             require(queuedTwo.queuedRooms() == 1, "paused QUEUE mode must defer second donation");
             require(dispatched.size() == 1, "queued donations must not dispatch before resume");
 
+            expirePauseGrace(database, created.roomId());
+            var afterGrace = runtime.process(new SoopDonation(
+                "streamer",
+                "soop-a",
+                "A",
+                100,
+                4,
+                "runtime-probe-after-grace",
+                4_500L
+            ));
+            require(afterGrace.ignoredRooms() == 1, "donation after pause grace must be ignored");
+            require(dispatched.size() == 1, "after-grace donation must not dispatch");
+
             var paused = rooms.find(created.roomId());
             require("PAUSED".equals(paused.lifecycle().state()), "room must report PAUSED");
             require(paused.lifecycle().queuedDonations() == 2, "paused room must report two queued donations");
@@ -252,7 +265,7 @@ public final class BoardGameRuntimeProbe {
             require(resumed.events().get(1).sequence() == 3, "second queued donation must keep FIFO sequence");
             require(dispatched.size() == 3, "resume must dispatch queued turns in order");
 
-            runtime.pauseRoom(created.roomId(), "IGNORE");
+            runtime.pauseRoom(created.roomId(), "IGNORE", 10);
             var ignoredDonation = new SoopDonation(
                 "streamer",
                 "soop-a",
@@ -411,6 +424,21 @@ public final class BoardGameRuntimeProbe {
                     // best effort probe cleanup
                 }
             }
+        }
+    }
+
+    private static void expirePauseGrace(
+        BridgeDatabase database,
+        String roomId
+    ) throws SQLException {
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 UPDATE board_room
+                 SET pause_grace_until = '2000-01-01T00:00:00Z'
+                 WHERE room_id = ?
+                 """)) {
+            statement.setString(1, roomId);
+            statement.executeUpdate();
         }
     }
 

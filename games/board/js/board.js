@@ -409,10 +409,17 @@
       const scale = scales[index];
       const isOccupied = occupancy.has(index);
 
-      cell.style.left = `${point.x}px`;
-      cell.style.top = `${point.y}px`;
-      cell.style.width = `${Math.max(1, cellWidth)}px`;
-      cell.style.height = `${Math.max(1, cellHeight)}px`;
+      const renderedWidth = Math.max(1, cellWidth);
+      const renderedHeight = Math.max(1, cellHeight);
+      const snappedLeft = Math.round((point.x - (renderedWidth / 2)) * 2) / 2;
+      const snappedTop = Math.round((point.y - (renderedHeight / 2)) * 2) / 2;
+      const snappedWidth = Math.round(renderedWidth * 2) / 2;
+      const snappedHeight = Math.round(renderedHeight * 2) / 2;
+
+      cell.style.left = `${snappedLeft}px`;
+      cell.style.top = `${snappedTop}px`;
+      cell.style.width = `${snappedWidth}px`;
+      cell.style.height = `${snappedHeight}px`;
       cell.style.setProperty("--dock-scale", (scale * cornerCorrection).toFixed(3));
       cell.style.zIndex = String(Math.round(scale * 100) + (isOccupied ? 200 : 0));
       cell.dataset.occupied = String(isOccupied);

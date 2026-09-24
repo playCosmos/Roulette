@@ -90,21 +90,26 @@
   width: 100%;
   height: 100%;
   border: 2px solid rgba(255,255,255,.52);
+  border-radius: 22% / 8%;
   box-shadow: 0 15px 30px rgba(0,0,0,.38);
-  transition: transform 180ms ease;
+  transform-origin: 50% 58%;
+  backface-visibility: visible;
+  will-change: transform;
+  transition:
+    transform 180ms ease,
+    background 180ms ease;
 }
 
 .throw-yut-piece[data-face="convex"] .throw-yut-body {
-  border-radius: 52% 52% 40% 40% / 15% 15% 10% 10%;
   background:
-    linear-gradient(90deg, rgba(255,255,255,.08), rgba(255,255,255,.38) 48%, rgba(0,0,0,.14)),
+    radial-gradient(ellipse at 50% 48%, rgba(255,255,255,.28) 0 24%, transparent 58%),
+    linear-gradient(90deg, rgba(0,0,0,.10), rgba(255,255,255,.30) 48%, rgba(0,0,0,.15)),
     #d8bd8e;
 }
 
 .throw-yut-piece[data-face="flat"] .throw-yut-body {
-  border-radius: 18% 18% 10% 10% / 8%;
   background:
-    linear-gradient(90deg, rgba(0,0,0,.10), rgba(255,255,255,.16), rgba(0,0,0,.08)),
+    linear-gradient(90deg, rgba(0,0,0,.10), rgba(255,255,255,.12) 48%, rgba(0,0,0,.10)),
     #c8a876;
 }
 
@@ -124,12 +129,20 @@
   box-shadow: 0 0 0 3px rgba(255,255,255,.22);
 }
 
-.throw-presentation[data-phase="rolling"] .throw-yut-piece:nth-child(odd) .throw-yut-body {
-  animation: throw-yut-flip-a 380ms ease-in-out infinite alternate;
+.throw-presentation[data-phase="rolling"] .throw-yut-piece .throw-yut-body {
+  animation: throw-yut-toss 920ms cubic-bezier(.22,.68,.28,1) infinite;
 }
 
-.throw-presentation[data-phase="rolling"] .throw-yut-piece:nth-child(even) .throw-yut-body {
-  animation: throw-yut-flip-b 420ms ease-in-out infinite alternate;
+.throw-presentation[data-phase="rolling"] .throw-yut-piece:nth-child(2) .throw-yut-body {
+  animation-delay: -160ms;
+}
+
+.throw-presentation[data-phase="rolling"] .throw-yut-piece:nth-child(3) .throw-yut-body {
+  animation-delay: -310ms;
+}
+
+.throw-presentation[data-phase="rolling"] .throw-yut-piece:nth-child(4) .throw-yut-body {
+  animation-delay: -470ms;
 }
 
 .player-token-label {
@@ -228,7 +241,7 @@
 }
 
 .bubble-yut[data-face="flat"] {
-  border-radius: 2px;
+  border-radius: 4px;
   background: #c8a876;
 }
 
@@ -252,14 +265,22 @@
   to   { transform: translate3d(8px,5px,0) rotate(12deg) scale(1.04); }
 }
 
-@keyframes throw-yut-flip-a {
-  from { transform: translate3d(-4px,-7px,0) rotate(-8deg) rotateY(0deg); }
-  to   { transform: translate3d(5px,5px,0) rotate(8deg) rotateY(65deg); }
-}
-
-@keyframes throw-yut-flip-b {
-  from { transform: translate3d(5px,-5px,0) rotate(8deg) rotateY(60deg); }
-  to   { transform: translate3d(-5px,6px,0) rotate(-7deg) rotateY(0deg); }
+@keyframes throw-yut-toss {
+  0% {
+    transform: translate3d(0, 6px, 0) rotateZ(-3deg) rotateX(0deg) rotateY(0deg);
+  }
+  24% {
+    transform: translate3d(-7px, -28px, 0) rotateZ(5deg) rotateX(145deg) rotateY(70deg);
+  }
+  52% {
+    transform: translate3d(5px, -40px, 0) rotateZ(-5deg) rotateX(310deg) rotateY(155deg);
+  }
+  78% {
+    transform: translate3d(-3px, -13px, 0) rotateZ(3deg) rotateX(485deg) rotateY(235deg);
+  }
+  100% {
+    transform: translate3d(0, 6px, 0) rotateZ(0deg) rotateX(720deg) rotateY(360deg);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

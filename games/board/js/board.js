@@ -177,9 +177,9 @@
       board.cellCount / (2 * Math.max(1, playerCount))
     );
     const openStretchLift = clamp(
-      0.07 + ((density - 1) * 0.15),
-      0.07,
-      0.24
+      0.11 + ((density - 1) * 0.22),
+      0.11,
+      0.30
     );
 
     return Array.from({ length: board.cellCount }, (_, cellIndex) => {
@@ -336,6 +336,10 @@
     return (Math.abs(Math.cos(angle)) * width) + (Math.abs(Math.sin(angle)) * height);
   }
 
+  function cornerSizeCorrection(point) {
+    return 1 - ((point?.cornerBlend || 0) * 0.018);
+  }
+
   function smoothstep01(value) {
     const t = clamp(value, 0, 1);
     return t * t * (3 - (2 * t));
@@ -394,8 +398,8 @@
 
     const nextWidths = widths.slice();
     const nextHeights = heights.slice();
-    const fillCap = clamp(1.18 + ((density - 1) * 0.10), 1.18, 1.34);
-    let remaining = spare * 0.92;
+    const fillCap = clamp(1.38 + ((density - 1) * 0.24), 1.38, 1.62);
+    let remaining = spare * 0.985;
     let consumedTotal = 0;
 
     for (let round = 0; round < 4 && remaining > 0.5; round += 1) {
@@ -404,9 +408,10 @@
 
       for (let index = 0; index < board.cellCount; index += 1) {
         const point = points[index];
+        const cornerCorrection = cornerSizeCorrection(point);
         const projected = projectedTangentSize(
-          nextWidths[index],
-          nextHeights[index],
+          nextWidths[index] * cornerCorrection,
+          nextHeights[index] * cornerCorrection,
           point.angle
         );
         const maxWidth = desiredWidths[index] * fillCap;
@@ -422,8 +427,8 @@
           continue;
         }
 
-        const occupiedWeight = occupancy.has(index) ? 0.08 : 1;
-        const sizeWeight = 1 / Math.pow(Math.max(0.42, scales[index]), 1.55);
+        const occupiedWeight = occupancy.has(index) ? 0.18 : 1;
+        const sizeWeight = 1 / Math.pow(Math.max(0.42, scales[index]), 1.28);
         const weight = projectedCapacity * occupiedWeight * sizeWeight;
         capacities.push({ projected, projectedCapacity, weight });
         weightTotal += weight;
@@ -502,9 +507,14 @@
 
     for (let iteration = 0; iteration < 8; iteration += 1) {
       let points = positions.map((position) => roundedPerimeterPoint(path, position));
-      let projected = points.map((point, index) =>
-        projectedTangentSize(fittedWidths[index], fittedHeights[index], point.angle)
-      );
+      let projected = points.map((point, index) => {
+        const correction = cornerSizeCorrection(point);
+        return projectedTangentSize(
+          fittedWidths[index] * correction,
+          fittedHeights[index] * correction,
+          point.angle
+        );
+      });
 
       const availableForCells = Math.max(1, path.perimeter - (minGap * board.cellCount));
       const projectedTotal = projected.reduce((sum, size) => sum + size, 0);
@@ -513,9 +523,14 @@
       if (compression < 0.9999) {
         fittedWidths = fittedWidths.map((value) => value * compression);
         fittedHeights = fittedHeights.map((value) => value * compression);
-        projected = points.map((point, index) =>
-          projectedTangentSize(fittedWidths[index], fittedHeights[index], point.angle)
-        );
+        projected = points.map((point, index) => {
+          const correction = cornerSizeCorrection(point);
+          return projectedTangentSize(
+            fittedWidths[index] * correction,
+            fittedHeights[index] * correction,
+            point.angle
+          );
+        });
       }
 
       let requiredGaps = projected.map((size, index) => {
@@ -542,9 +557,14 @@
         fittedWidths = grown.widths;
         fittedHeights = grown.heights;
 
-        projected = points.map((point, index) =>
-          projectedTangentSize(fittedWidths[index], fittedHeights[index], point.angle)
-        );
+        projected = points.map((point, index) => {
+          const correction = cornerSizeCorrection(point);
+          return projectedTangentSize(
+            fittedWidths[index] * correction,
+            fittedHeights[index] * correction,
+            point.angle
+          );
+        });
         requiredGaps = projected.map((size, index) => {
           const next = projected[(index + 1) % board.cellCount];
           return ((size + next) * 0.5) + minGap;
@@ -574,7 +594,7 @@
       if (!cell) continue;
 
       const point = roundedPerimeterPoint(path, positions[index]);
-      const cornerCorrection = 1 - (point.cornerBlend * 0.028);
+      const cornerCorrection = cornerSizeCorrection(point);
       const cellWidth = fittedWidths[index] * cornerCorrection;
       const cellHeight = fittedHeights[index] * cornerCorrection;
       const scale = scales[index];

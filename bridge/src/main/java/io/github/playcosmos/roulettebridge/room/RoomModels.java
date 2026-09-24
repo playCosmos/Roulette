@@ -25,6 +25,31 @@ public final class RoomModels {
             MovementInput movement,
             RulesInput rules,
             List<InstructionInput> instructions,
+            RandomPoolInput randomPool,
+            Integer retentionMinutes,
+            String pauseDonationMode
+        ) {
+            this(
+                name,
+                players,
+                board,
+                movement,
+                rules,
+                instructions,
+                randomPool,
+                retentionMinutes,
+                pauseDonationMode,
+                null
+            );
+        }
+
+        public CreateRoomRequest(
+            String name,
+            List<PlayerInput> players,
+            BoardInput board,
+            MovementInput movement,
+            RulesInput rules,
+            List<InstructionInput> instructions,
             RandomPoolInput randomPool
         ) {
             this(

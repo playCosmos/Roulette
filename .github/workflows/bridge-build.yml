@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "bridge/**"
+      - "games/board/**"
       - "soop-overlay.html"
       - "soop/**"
       - "soop-channel.html"

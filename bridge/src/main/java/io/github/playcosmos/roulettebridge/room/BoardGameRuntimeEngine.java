@@ -53,13 +53,23 @@ public final class BoardGameRuntimeEngine {
     public synchronized ProcessResult process(SoopDonation donation) throws SQLException {
         validateDonation(donation);
         String fingerprint = fingerprint(donation);
-        var roomIds = findMatchingRooms(donation.donorId(), donation.balloonCount());
+        var matches = findMatchingRooms(donation.donorId(), donation.balloonCount());
 
         var events = new ArrayList<BoardTurnEvent>();
         int duplicateRooms = 0;
+        int queuedRooms = 0;
+        int ignoredRooms = 0;
 
-        for (String roomId : roomIds) {
-            var result = processRoom(roomId, donation, fingerprint);
+        for (var match : matches) {
+            if ("PAUSED".equals(match.lifecycleState())) {
+                var deferred = deferPausedDonation(match, donation, fingerprint);
+                if ("DUPLICATE".equals(deferred)) duplicateRooms += 1;
+                else if ("QUEUED".equals(deferred)) queuedRooms += 1;
+                else if ("IGNORED".equals(deferred)) ignoredRooms += 1;
+                continue;
+            }
+
+            var result = processRoom(match.roomId(), donation, fingerprint);
             if (result.duplicate()) {
                 duplicateRooms += 1;
             } else if (result.event() != null) {
@@ -67,6 +77,61 @@ public final class BoardGameRuntimeEngine {
             }
         }
 
+        dispatchEvents(events);
+
+        return new ProcessResult(
+            matches.size(),
+            events.size(),
+            duplicateRooms,
+            queuedRooms,
+            ignoredRooms,
+            List.copyOf(events)
+        );
+    }
+
+    public synchronized ResumeResult resumeRoom(String roomId) throws SQLException {
+        var events = new ArrayList<BoardTurnEvent>();
+        int duplicateCount = 0;
+
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 UPDATE board_room
+                 SET lifecycle_state = 'ACTIVE',
+                     updated_at = ?
+                 WHERE room_id = ?
+                   AND status = 'READY'
+                   AND lifecycle_state = 'PAUSED'
+                   AND expires_at IS NOT NULL
+                   AND datetime(expires_at) > datetime('now')
+                 """)) {
+            statement.setString(1, Instant.now().toString());
+            statement.setString(2, roomId);
+            if (statement.executeUpdate() != 1) {
+                throw new IllegalStateException("room is not resumable or has expired");
+            }
+        }
+
+        for (var deferred : loadQueuedDonations(roomId)) {
+            var result = processRoom(
+                roomId,
+                deferred.donation(),
+                deferred.fingerprint()
+            );
+            if (result.duplicate()) duplicateCount += 1;
+            else if (result.event() != null) events.add(result.event());
+            deleteDeferredDonation(deferred.id());
+        }
+
+        dispatchEvents(events);
+        return new ResumeResult(
+            roomId,
+            events.size(),
+            duplicateCount,
+            List.copyOf(events)
+        );
+    }
+
+    private void dispatchEvents(List<BoardTurnEvent> events) {
         for (var event : events) {
             try {
                 eventSink.accept(event);
@@ -78,13 +143,6 @@ public final class BoardGameRuntimeEngine {
                 );
             }
         }
-
-        return new ProcessResult(
-            roomIds.size(),
-            events.size(),
-            duplicateRooms,
-            List.copyOf(events)
-        );
     }
 
     public synchronized RuntimeSnapshot snapshot(String roomId) throws SQLException {
@@ -294,14 +352,20 @@ public final class BoardGameRuntimeEngine {
         }
     }
 
-    private List<String> findMatchingRooms(String soopId, int balloonCount) throws SQLException {
-        var roomIds = new ArrayList<String>();
+    private List<RoomMatch> findMatchingRooms(
+        String soopId,
+        int balloonCount
+    ) throws SQLException {
+        var rooms = new ArrayList<RoomMatch>();
         try (var connection = database.open();
              var statement = connection.prepareStatement("""
-                 SELECT br.room_id
+                 SELECT br.room_id, br.lifecycle_state, br.pause_donation_mode
                  FROM board_room br
                  JOIN board_room_player p ON p.room_id = br.room_id
                  WHERE br.status = 'READY'
+                   AND br.lifecycle_state IN ('ACTIVE', 'PAUSED')
+                   AND br.expires_at IS NOT NULL
+                   AND datetime(br.expires_at) > datetime('now')
                    AND p.soop_id = ?
                    AND p.balloon_trigger = ?
                  ORDER BY br.updated_at DESC, br.created_at DESC
@@ -310,10 +374,126 @@ public final class BoardGameRuntimeEngine {
             statement.setString(1, soopId);
             statement.setInt(2, balloonCount);
             try (var rows = statement.executeQuery()) {
-                while (rows.next()) roomIds.add(rows.getString(1));
+                while (rows.next()) {
+                    rooms.add(new RoomMatch(
+                        rows.getString("room_id"),
+                        rows.getString("lifecycle_state"),
+                        rows.getString("pause_donation_mode")
+                    ));
+                }
             }
         }
-        return roomIds;
+        return rooms;
+    }
+
+    private String deferPausedDonation(
+        RoomMatch room,
+        SoopDonation donation,
+        String fingerprint
+    ) throws SQLException {
+        try (var connection = database.open()) {
+            if (existsProcessedOrDeferred(connection, room.roomId(), fingerprint)) {
+                return "DUPLICATE";
+            }
+
+            String state = "IGNORE".equals(room.pauseDonationMode())
+                ? "IGNORED"
+                : "QUEUED";
+
+            try (var statement = connection.prepareStatement("""
+                INSERT INTO board_game_deferred_donation(
+                    room_id, source_fingerprint, state, streamer_id,
+                    donor_id, nickname, balloon_count, fan_order,
+                    raw_payload, received_at_epoch_ms, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """)) {
+                statement.setString(1, room.roomId());
+                statement.setString(2, fingerprint);
+                statement.setString(3, state);
+                statement.setString(4, donation.streamerId());
+                statement.setString(5, donation.donorId());
+                statement.setString(6, donation.nickname());
+                statement.setInt(7, donation.balloonCount());
+                statement.setInt(8, donation.fanOrder());
+                statement.setString(9, donation.rawPayload());
+                statement.setLong(10, donation.receivedAtEpochMs());
+                statement.setString(11, Instant.now().toString());
+                statement.executeUpdate();
+            }
+
+            return state;
+        }
+    }
+
+    private static boolean existsProcessedOrDeferred(
+        Connection connection,
+        String roomId,
+        String fingerprint
+    ) throws SQLException {
+        try (var statement = connection.prepareStatement("""
+            SELECT 1
+            FROM (
+                SELECT source_fingerprint
+                FROM board_game_event
+                WHERE room_id = ? AND source_fingerprint = ?
+                UNION ALL
+                SELECT source_fingerprint
+                FROM board_game_deferred_donation
+                WHERE room_id = ? AND source_fingerprint = ?
+            )
+            LIMIT 1
+            """)) {
+            statement.setString(1, roomId);
+            statement.setString(2, fingerprint);
+            statement.setString(3, roomId);
+            statement.setString(4, fingerprint);
+            try (var rows = statement.executeQuery()) {
+                return rows.next();
+            }
+        }
+    }
+
+    private List<DeferredDonation> loadQueuedDonations(String roomId) throws SQLException {
+        var result = new ArrayList<DeferredDonation>();
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 SELECT id, source_fingerprint, streamer_id, donor_id,
+                        nickname, balloon_count, fan_order, raw_payload,
+                        received_at_epoch_ms
+                 FROM board_game_deferred_donation
+                 WHERE room_id = ? AND state = 'QUEUED'
+                 ORDER BY id ASC
+                 """)) {
+            statement.setString(1, roomId);
+            try (var rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    result.add(new DeferredDonation(
+                        rows.getLong("id"),
+                        rows.getString("source_fingerprint"),
+                        new SoopDonation(
+                            rows.getString("streamer_id"),
+                            rows.getString("donor_id"),
+                            rows.getString("nickname"),
+                            rows.getInt("balloon_count"),
+                            rows.getInt("fan_order"),
+                            rows.getString("raw_payload"),
+                            rows.getLong("received_at_epoch_ms")
+                        )
+                    ));
+                }
+            }
+        }
+        return result;
+    }
+
+    private void deleteDeferredDonation(long id) throws SQLException {
+        try (var connection = database.open();
+             var statement = connection.prepareStatement(
+                 "DELETE FROM board_game_deferred_donation WHERE id = ?"
+             )) {
+            statement.setLong(1, id);
+            statement.executeUpdate();
+        }
     }
 
     private static RoomContext loadRoom(Connection connection, String roomId) throws SQLException {
@@ -895,6 +1075,18 @@ public final class BoardGameRuntimeEngine {
         BoardPreview committedBoard
     ) {}
 
+    private record RoomMatch(
+        String roomId,
+        String lifecycleState,
+        String pauseDonationMode
+    ) {}
+
+    private record DeferredDonation(
+        long id,
+        String fingerprint,
+        SoopDonation donation
+    ) {}
+
     private record RoomProcessResult(boolean duplicate, BoardTurnEvent event) {}
 
     private record ThrowOutcome(
@@ -1049,6 +1241,15 @@ public final class BoardGameRuntimeEngine {
         int matchedRooms,
         int processedRooms,
         int duplicateRooms,
+        int queuedRooms,
+        int ignoredRooms,
+        List<BoardTurnEvent> events
+    ) {}
+
+    public record ResumeResult(
+        String roomId,
+        int processedQueuedDonations,
+        int duplicateQueuedDonations,
         List<BoardTurnEvent> events
     ) {}
 }

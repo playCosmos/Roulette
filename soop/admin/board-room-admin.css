@@ -1,0 +1,316 @@
+.board-room-form {
+  display: grid;
+  gap: 12px;
+}
+
+.board-room-form fieldset {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid #282e36;
+  border-radius: 11px;
+}
+
+.board-room-form legend {
+  padding: 0 7px;
+  color: #c7ced8;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.board-room-form label {
+  color: #a5adb8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.board-room-form label input,
+.board-room-form label select {
+  display: block;
+  margin-top: 6px;
+}
+
+.board-room-basic-grid,
+.board-room-board-grid,
+.board-room-movement-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.board-room-player-list {
+  display: grid;
+  gap: 8px;
+}
+
+.board-room-player-row {
+  display: grid;
+  grid-template-columns: 44px minmax(160px, 1fr) minmax(150px, 1fr) minmax(110px, .65fr) minmax(86px, auto);
+  gap: 9px;
+  align-items: end;
+  padding: 10px;
+  border: 1px solid #252b32;
+  border-radius: 10px;
+  background: #0d1014;
+}
+
+.board-room-player-index {
+  align-self: center;
+  color: #d3d8df;
+  font-weight: 900;
+  text-align: center;
+}
+
+.board-room-inline-status {
+  align-self: center;
+  justify-self: end;
+  padding: 6px 9px;
+  border: 1px solid #343a43;
+  border-radius: 999px;
+  color: #8993a0;
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.board-room-inline-status[data-status="live"] { color: #8bd5a4; border-color: #29653c; background: #12251a; }
+.board-room-inline-status[data-status="offline"] { color: #c0b67d; border-color: #5b5536; background: #221f12; }
+.board-room-inline-status[data-status="failed"] { color: #e28c8f; border-color: #713839; background: #2b1516; }
+
+.board-room-field-cluster {
+  display: contents;
+}
+
+.board-room-instruction-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.board-room-small-button {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.board-room-instruction-list {
+  display: grid;
+  gap: 10px;
+}
+
+.board-room-instruction-row {
+  padding: 12px;
+  border: 1px solid #292f37;
+  border-radius: 10px;
+  background: #0d1014;
+}
+
+.board-room-instruction-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.board-room-instruction-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1.4fr .75fr .7fr;
+  gap: 9px;
+}
+
+.board-room-instruction-options,
+.board-room-action-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  margin-top: 10px;
+}
+
+.board-room-instruction-options .check-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+}
+
+.board-room-instruction-options .check-label input {
+  width: auto;
+  margin: 0;
+}
+
+.board-room-instruction-options .pool-weight {
+  width: 140px;
+}
+
+.board-room-action-options label {
+  min-width: 110px;
+}
+
+.board-room-action-chip {
+  align-self: center;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: #181d24;
+  color: #b7c0cb;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.board-room-random-row {
+  display: grid;
+  grid-template-columns: minmax(220px, .8fr) 1fr;
+  gap: 12px;
+  align-items: end;
+  margin-top: 12px;
+}
+
+.board-room-rule-note {
+  color: #8e99a8;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.board-room-create-actions,
+.board-room-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.board-room-live-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.board-room-live-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 12px;
+  border: 1px solid #2b3139;
+  border-radius: 10px;
+  background: #0d1014;
+}
+
+.board-room-live-card > div:first-child {
+  min-width: 0;
+}
+
+.board-room-live-card strong,
+.board-room-live-card span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.board-room-live-card > div:first-child span,
+.board-room-live-state span {
+  margin-top: 3px;
+  color: #85909e;
+  font-size: 11px;
+}
+
+.board-room-live-state {
+  min-width: 130px;
+  text-align: right;
+}
+
+.board-room-live-card.live .board-room-live-state b { color: #8bd5a4; }
+.board-room-live-card.offline .board-room-live-state b { color: #c9bd77; }
+.board-room-live-card.failed .board-room-live-state b { color: #e28c8f; }
+
+.board-room-preview-panel {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #272c33;
+}
+
+.board-room-preview-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.board-room-preview-meta {
+  color: #9da7b4;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.board-room-preview-shell {
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid #2a3038;
+  border-radius: 12px;
+  background:
+    linear-gradient(45deg, #101319 25%, transparent 25%),
+    linear-gradient(-45deg, #101319 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #101319 75%),
+    linear-gradient(-45deg, transparent 75%, #101319 75%),
+    #0b0d10;
+  background-size: 18px 18px;
+  background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+}
+
+.board-room-preview-shell iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
+
+.board-room-preview-actions {
+  margin-top: 10px;
+}
+
+@media (max-width: 900px) {
+  .board-room-basic-grid,
+  .board-room-board-grid,
+  .board-room-movement-grid,
+  .board-room-instruction-grid,
+  .board-room-random-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .board-room-player-row {
+    grid-template-columns: 38px 1fr 1fr;
+  }
+
+  .board-room-inline-status {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 640px) {
+  .board-room-basic-grid,
+  .board-room-board-grid,
+  .board-room-movement-grid,
+  .board-room-instruction-grid,
+  .board-room-random-row,
+  .board-room-live-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .board-room-player-row {
+    grid-template-columns: 34px 1fr;
+  }
+
+  .board-room-player-row label {
+    grid-column: 2;
+  }
+
+  .board-room-inline-status {
+    grid-column: 2;
+  }
+
+  .board-room-preview-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

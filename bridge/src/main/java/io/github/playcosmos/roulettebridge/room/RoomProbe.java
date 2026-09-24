@@ -121,8 +121,30 @@ public final class RoomProbe {
                 null
             );
 
+            var invalidRetention = new CreateRoomRequest(
+                request.name(),
+                request.players(),
+                request.board(),
+                request.movement(),
+                request.rules(),
+                request.instructions(),
+                request.randomPool(),
+                481,
+                "QUEUE"
+            );
+            require(
+                rooms.validate(invalidRetention).errors().stream()
+                    .anyMatch(error -> "retentionMinutes".equals(error.field())),
+                "retention above 480 minutes must be rejected"
+            );
+
             var created = rooms.create(request);
             require("DRAFT".equals(created.status()), "room must start as DRAFT");
+            require(created.lifecycle() != null, "room lifecycle must be returned");
+            require("DRAFT".equals(created.lifecycle().state()), "new room lifecycle must start DRAFT");
+            require(created.lifecycle().retentionMinutes() == 240, "default retention must be 240 minutes");
+            require("QUEUE".equals(created.lifecycle().pauseDonationMode()), "pause donation default must be QUEUE");
+            require(created.lifecycle().expiresAt() != null, "room expiry timestamp must be persisted");
             require(created.config().board().columns() == 16, "52 cells must resolve to 16 columns");
             require(created.config().board().rows() == 12, "52 cells must resolve to 12 rows");
             require("rect".equals(created.config().board().layoutStyle()), "rect layout must persist");
@@ -207,6 +229,13 @@ public final class RoomProbe {
                 "rejected second room must remain DRAFT"
             );
 
+            expireRoom(database, secondRoom.roomId());
+            require(rooms.terminateExpiredRooms() >= 1, "expired room must auto-terminate");
+            require(
+                "TERMINATED".equals(rooms.find(secondRoom.roomId()).lifecycle().state()),
+                "expired room lifecycle must be TERMINATED"
+            );
+
             boolean blocked = false;
             try {
                 rooms.rerollPreview(created.roomId());
@@ -243,6 +272,21 @@ public final class RoomProbe {
                     // best effort probe cleanup
                 }
             }
+        }
+    }
+
+    private static void expireRoom(
+        BridgeDatabase database,
+        String roomId
+    ) throws Exception {
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 UPDATE board_room
+                 SET expires_at = '2000-01-01T00:00:00Z'
+                 WHERE room_id = ?
+                 """)) {
+            statement.setString(1, roomId);
+            statement.executeUpdate();
         }
     }
 

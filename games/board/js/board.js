@@ -1434,13 +1434,23 @@
     if (count <= 1) {
       return {
         tokenSize,
-        slots: [{ tangent: 0 }]
+        slots: [{ tangent: 0, depth: 0 }]
       };
     }
 
-    // 말 크기는 항상 유지한다.
-    // 상/하단 칸은 좌우, 좌/우측 칸은 상하 방향으로 한 줄 배치한다.
-    // 말 지름보다 약간 작은 간격을 사용해 서로 조금씩만 겹치게 한다.
+    // 말 크기는 유지하고 인원 수별로 1~2줄에 배치한다.
+    // 2명: 2
+    // 3명: 2 + 1
+    // 4명: 2 + 2
+    // 5명: 3 + 2
+    // 6명: 3 + 3
+    const rows =
+      count === 2 ? [2] :
+      count === 3 ? [2, 1] :
+      count === 4 ? [2, 2] :
+      count === 5 ? [3, 2] :
+      [3, 3];
+
     const horizontalEdge = geometry.point.segment === undefined
       ? Math.abs(Math.cos(geometry.point.angle)) >=
         Math.abs(Math.sin(geometry.point.angle))
@@ -1451,14 +1461,14 @@
       : geometry.height;
 
     const edgePadding = 4;
+    const maxRowCount = Math.max(...rows);
     const availableSpan = Math.max(
       tokenSize,
       tangentSpan - (edgePadding * 2)
     );
-
     const preferredSpacing = tokenSize * 0.78;
-    const fitSpacing = count > 1
-      ? (availableSpan - tokenSize) / (count - 1)
+    const fitSpacing = maxRowCount > 1
+      ? (availableSpan - tokenSize) / (maxRowCount - 1)
       : preferredSpacing;
     const spacing = clamp(
       Math.min(preferredSpacing, fitSpacing),
@@ -1466,9 +1476,19 @@
       preferredSpacing
     );
 
-    const slots = Array.from({ length: count }, (_, index) => ({
-      tangent: (index - ((count - 1) * 0.5)) * spacing
-    }));
+    // 두 번째 줄은 테두리에서 셀 중앙 쪽으로 이동한다.
+    // 말끼리는 약간 겹치도록 지름보다 작은 깊이 간격을 사용한다.
+    const rowDepth = tokenSize * 0.72;
+    const slots = [];
+
+    rows.forEach((rowCount, rowIndex) => {
+      for (let index = 0; index < rowCount; index += 1) {
+        slots.push({
+          tangent: (index - ((rowCount - 1) * 0.5)) * spacing,
+          depth: -(rowIndex * rowDepth)
+        });
+      }
+    });
 
     return { tokenSize, slots };
   }
@@ -1500,11 +1520,10 @@
         const token = playerTokenElements.get(player.id);
         if (!token) return;
 
-        const slot = layout.slots[index] || { tangent: 0 };
+        const slot = layout.slots[index] || { tangent: 0, depth: 0 };
 
-        // 지시문/라벨 영역을 최대한 비우기 위해 기본 중심은 셀의
-        // 보드 안쪽 테두리에 붙인다. 여러 명이면 tangent 방향으로
-        // 한 줄로 펼쳐 서로 약간만 겹치게 한다.
+        // 첫 줄은 보드 안쪽 테두리에 붙이고, 두 번째 줄은 셀 중앙 쪽으로
+        // 한 줄만 이동한다. tangent 방향으로 펼쳐 각 말의 식별성을 유지한다.
         const tangentX = Math.cos(geometry.point.angle);
         const tangentY = Math.sin(geometry.point.angle);
         const inwardX = -tangentY;
@@ -1532,11 +1551,11 @@
 
         let centerX =
           geometry.centerX +
-          (inwardX * inwardOffset) +
+          (inwardX * (inwardOffset + slot.depth)) +
           (tangentX * slot.tangent);
         let centerY =
           geometry.centerY +
-          (inwardY * inwardOffset) +
+          (inwardY * (inwardOffset + slot.depth)) +
           (tangentY * slot.tangent);
 
         // 여러 말 배치 오프셋이 있어도 셀 밖으로 튀어나오지 않게 최종 clamp.

@@ -12,6 +12,7 @@ import java.security.SecureRandom;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -149,7 +150,7 @@ public final class BoardGameRuntimeEngine {
         try (var connection = database.open()) {
             connection.setAutoCommit(false);
             try {
-                var room = loadRoom(connection, roomId);
+                var room = loadRoom(connection, roomId, false);
                 ensureRuntimeState(connection, room);
                 var board = loadRuntimeBoard(connection, roomId);
                 var players = loadPlayerStates(connection, roomId);
@@ -185,7 +186,7 @@ public final class BoardGameRuntimeEngine {
                     return new RoomProcessResult(true, duplicate);
                 }
 
-                var room = loadRoom(connection, roomId);
+                var room = loadRoom(connection, roomId, true);
                 ensureRuntimeState(connection, room);
 
                 var board = mutableBoard(loadRuntimeBoard(connection, roomId));
@@ -501,9 +502,14 @@ public final class BoardGameRuntimeEngine {
         }
     }
 
-    private static RoomContext loadRoom(Connection connection, String roomId) throws SQLException {
+    private static RoomContext loadRoom(
+        Connection connection,
+        String roomId,
+        boolean requireActive
+    ) throws SQLException {
         try (var statement = connection.prepareStatement("""
-            SELECT status, config_json, committed_board_json
+            SELECT status, lifecycle_state, expires_at,
+                   config_json, committed_board_json
             FROM board_room
             WHERE room_id = ?
             """)) {
@@ -513,6 +519,26 @@ public final class BoardGameRuntimeEngine {
                 if (!"READY".equals(rows.getString("status"))) {
                     throw new SQLException("room is not READY: " + roomId);
                 }
+
+                String lifecycleState = rows.getString("lifecycle_state");
+                if ("TERMINATED".equals(lifecycleState)) {
+                    throw new SQLException("room is terminated: " + roomId);
+                }
+                if (requireActive && !"ACTIVE".equals(lifecycleState)) {
+                    throw new SQLException("room is not active: " + roomId);
+                }
+
+                String expiresAt = rows.getString("expires_at");
+                if (expiresAt != null) {
+                    try {
+                        if (!OffsetDateTime.parse(expiresAt).isAfter(OffsetDateTime.now())) {
+                            throw new SQLException("room has expired: " + roomId);
+                        }
+                    } catch (java.time.format.DateTimeParseException ignored) {
+                        // Legacy migration values may be SQLite datetime strings.
+                    }
+                }
+
                 String committed = rows.getString("committed_board_json");
                 if (committed == null || committed.isBlank()) {
                     throw new SQLException("room committed board is missing: " + roomId);

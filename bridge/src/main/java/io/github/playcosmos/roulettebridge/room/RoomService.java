@@ -28,6 +28,8 @@ public final class RoomService {
     public static final int MAX_RETENTION_MINUTES = 480;
     public static final int DEFAULT_PAUSE_GRACE_SECONDS = 10;
     public static final int MAX_PAUSE_GRACE_SECONDS = 120;
+    public static final int EXTENSION_WINDOW_MINUTES = 60;
+    public static final int MAX_EXTENSION_MINUTES = 120;
     private static final int MAX_SAFE_LAYOUT_ATTEMPTS = 256;
     private static final double TARGET_GRID_RATIO = 4.0d / 3.0d;
 
@@ -363,8 +365,13 @@ public final class RoomService {
         String roomId,
         int additionalMinutes
     ) throws SQLException {
-        if (additionalMinutes <= 0) {
-            throw new IllegalArgumentException("additionalMinutes must be positive");
+        if (
+            additionalMinutes < 1
+            || additionalMinutes > MAX_EXTENSION_MINUTES
+        ) {
+            throw new IllegalArgumentException(
+                "additionalMinutes must be 1~" + MAX_EXTENSION_MINUTES
+            );
         }
 
         var current = find(roomId);
@@ -375,25 +382,44 @@ public final class RoomService {
             throw new IllegalStateException("terminated room cannot be extended");
         }
 
-        String now = OffsetDateTime.now().toString();
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime expiresAt = parseStoredDateTime(
+            current.lifecycle().expiresAt()
+        );
+        if (expiresAt == null || !expiresAt.isAfter(now)) {
+            throw new IllegalStateException("expired room cannot be extended");
+        }
+        if (expiresAt.isAfter(now.plusMinutes(EXTENSION_WINDOW_MINUTES))) {
+            throw new IllegalStateException(
+                "room lifetime can be extended only within "
+                    + EXTENSION_WINDOW_MINUTES + " minutes of expiry"
+            );
+        }
+
+        OffsetDateTime extendedExpiresAt = expiresAt.plusMinutes(additionalMinutes);
+        String updatedAt = now.toString();
+
         try (var connection = database.open();
              var statement = connection.prepareStatement("""
                  UPDATE board_room
                  SET retention_minutes = retention_minutes + ?,
-                     expires_at = datetime(expires_at, '+' || ? || ' minutes'),
+                     expires_at = ?,
                      updated_at = ?
                  WHERE room_id = ?
                    AND lifecycle_state <> 'TERMINATED'
                    AND expires_at IS NOT NULL
                    AND datetime(expires_at) > datetime('now')
+                   AND datetime(expires_at) <= datetime('now', '+60 minutes')
                  """)) {
             statement.setInt(1, additionalMinutes);
-            statement.setInt(2, additionalMinutes);
-            statement.setString(3, now);
+            statement.setString(2, extendedExpiresAt.toString());
+            statement.setString(3, updatedAt);
             statement.setString(4, roomId);
             if (statement.executeUpdate() != 1) {
                 throw new IllegalStateException(
-                    "room cannot be extended because it is terminated or expired"
+                    "room lifetime can be extended only within "
+                        + EXTENSION_WINDOW_MINUTES
+                        + " minutes of expiry"
                 );
             }
         }
@@ -1015,6 +1041,22 @@ public final class RoomService {
             return Math.max(1, Math.min(MAX_RETENTION_MINUTES, value));
         }
         return value;
+    }
+
+    private static OffsetDateTime parseStoredDateTime(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return OffsetDateTime.parse(value);
+        } catch (java.time.format.DateTimeParseException ignored) {
+            try {
+                return java.time.LocalDateTime.parse(
+                    value,
+                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                ).atOffset(java.time.ZoneOffset.UTC);
+            } catch (java.time.format.DateTimeParseException ignoredAgain) {
+                return null;
+            }
+        }
     }
 
     private static int normalizePauseGraceSeconds(

@@ -76,6 +76,12 @@ $SoopSourceRoot = Join-Path $RepoRoot "soop"
 if (-not (Test-Path $SoopSourceRoot)) { throw "Required grouped SOOP source missing: $SoopSourceRoot" }
 Copy-Item $SoopSourceRoot (Join-Path $WebRoot "soop") -Recurse -Force
 
+$BoardSourceRoot = Join-Path $RepoRoot "games\board"
+if (-not (Test-Path $BoardSourceRoot)) { throw "Required board game source missing: $BoardSourceRoot" }
+$GamesWebRoot = Join-Path $WebRoot "games"
+New-Item -ItemType Directory -Path $GamesWebRoot -Force | Out-Null
+Copy-Item $BoardSourceRoot (Join-Path $GamesWebRoot "board") -Recurse -Force
+
 Copy-Item (Join-Path $RepoRoot "assets") (Join-Path $WebRoot "assets") -Recurse -Force
 
 @("data", "tickets", "backups") | ForEach-Object {
@@ -92,10 +98,11 @@ RouletteBridge Windows x64
 4. The admin page waits while the bridge restarts and reconnects to the new process automatically.
 5. Double-click the tray icon, or use "관리자 페이지 열기", to reopen the local admin page.
 6. The admin page shows the OBS Browser Source URL and provides an address copy button.
-7. Use soop-channel.html from the admin page to inspect the current channel event stream, including chat, donation, moderation, and connection events.
-8. An already-open overlay reconnects silently when the bridge restarts.
-9. Runtime data is stored in data/, tickets/, and backups/. Internal logs are kept separately by the app.
-10. Do not delete the runtime data folders or your existing config.json when updating.
+7. Use the board room section in the admin page to configure participants, live status, board rules, and preview/commit the board.
+8. Use soop-channel.html from the admin page to inspect the current channel event stream, including chat, donation, moderation, and connection events.
+9. An already-open overlay reconnects silently when the bridge restarts.
+10. Runtime data is stored in data/, tickets/, and backups/. Internal logs are kept separately by the app.
+11. Do not delete the runtime data folders or your existing config.json when updating.
 
 This distribution contains its own Java runtime. A separate Java installation is not required.
 "@

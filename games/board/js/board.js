@@ -94,8 +94,8 @@
   const directTokenAnimations = new Set();
 
   const TOKEN_BASE_SIZE = 26;
-  const INSTRUCTION_ZONE_RATIO = 0.70;
-  const PLAYER_ZONE_RATIO = 0.30;
+  const INSTRUCTION_ZONE_RATIO = 0.50;
+  const PLAYER_ZONE_RATIO = 0.50;
   const OCCUPIED_HORIZONTAL_INSTRUCTION_ZONE_RATIO = 0.50;
   const OCCUPIED_HORIZONTAL_PLAYER_ZONE_RATIO = 0.50;
   const PLAYER_EDGE_PADDING = 5;
@@ -1317,10 +1317,7 @@
     let maxX = left + geometry.width;
     let minY = top;
     let maxY = top + geometry.height;
-    const instructionRatio =
-      edge === "top" || edge === "bottom"
-        ? OCCUPIED_HORIZONTAL_INSTRUCTION_ZONE_RATIO
-        : INSTRUCTION_ZONE_RATIO;
+    const instructionRatio = 0.50;
 
     if (edge === "top") {
       minY += geometry.height * instructionRatio;

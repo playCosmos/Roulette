@@ -56,7 +56,7 @@ Ramyani Games(라먀니 게임즈)는 SOOP 방송 연동 게임을 한 저장소
 - P0: `END→START`를 포함한 모든 순환 인접 칸의 실제 외곽 간격은 하나의 동일 gap으로 유지하며, 겹침을 허용하지 않는다
 - 참가자별 진행은 독립적이며 공용 턴 없음
 - 참가자별 이동 큐를 별도로 처리
-- 보드 레이아웃/Dock 계산과 셀 스프링 구현은 변경하지 않는다. 기존 `20260925-34` 이동 구현은 `movePlayerByPreservedV34`로 코드 안에 보존하고 현재 호출에서는 제외한다. 새 이동 엔진은 각 스텝 시작 전에 이동 말을 공유 token spring에서 먼저 잠그고 실제 출발 좌표를 캡처한 뒤 논리 위치를 1칸 변경한다. 기존 layout rAF가 목적지 토큰 좌표를 계산하면 고정된 출발 좌표에서 최신 목적지까지 `STEP_DELAY_MS` 동안 독립 보간하며, 목적지 준비는 약 140ms bounded wait + 기존 `layoutNow()` 1회 fallback만 사용한다. rAF가 멈춰도 스텝 애니메이션은 제한 시간 후 최신 목표에 확정되어 무한대기하지 않는다.
+- 보드 레이아웃/Dock 계산과 셀 스프링 구현은 변경하지 않는다. `20260925-34`와 `20260925-35` 이동 구현은 각각 `movePlayerByPreservedV34`, `movePlayerByPreservedV35`로 보존한다. 현재 V3 이동 코어는 **목적지 좌표가 실제로 준비된 스텝만 진행**한다. 목적지는 정상 rAF → 기존 `layoutNow()` 1회 동기 재시도 → 마지막 rAF의 bounded 3단계로 확보하며, 끝까지 확보하지 못하면 stale target으로 화면 이동을 계속하지 않고 논리 위치를 이전 칸으로 롤백한 뒤 해당 턴을 실패 처리한다. 지시문 이동은 public `movePlayerBy()`를 다시 중첩 호출하지 않고 같은 `movePlayerStepsCoreV3()`를 직접 사용한다. 데모 이동 지시문 배치는 생성 시 순환 그래프를 검사해 cycle-free로 만들며, 지시문 연쇄도 bounded depth 안에서만 처리한다.
 - 강조 칸 크기를 먼저 예약하고 남은 루프 공간을 일반 칸에 균등 분배하는 reserve-first 레이아웃을 사용
 - 셀/말 이동은 `left/top/width/height` transition 대신 `requestAnimationFrame` 기반 critically-damped spring과 `translate3d + scale` 합성으로 처리
 - 셀 최종 배치는 START를 고정 앵커로 두고 진행/역방향으로 나누어 배치한 뒤 반대편에서 폐합한다. 한쪽 방향으로 전체 칸 위치 오차가 누적되는 현상을 줄이면서 동일 gap P0를 유지한다.

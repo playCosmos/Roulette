@@ -93,6 +93,8 @@
   const TOKEN_BASE_SIZE = 26;
   const INSTRUCTION_ZONE_RATIO = 0.70;
   const PLAYER_ZONE_RATIO = 0.30;
+  const OCCUPIED_HORIZONTAL_INSTRUCTION_ZONE_RATIO = 0.50;
+  const OCCUPIED_HORIZONTAL_PLAYER_ZONE_RATIO = 0.50;
   const MOTION_EPSILON = 0.025;
   const VELOCITY_EPSILON = 0.04;
 
@@ -1274,15 +1276,19 @@
     let maxX = left + geometry.width;
     let minY = top;
     let maxY = top + geometry.height;
+    const instructionRatio =
+      edge === "top" || edge === "bottom"
+        ? OCCUPIED_HORIZONTAL_INSTRUCTION_ZONE_RATIO
+        : INSTRUCTION_ZONE_RATIO;
 
     if (edge === "top") {
-      minY += geometry.height * INSTRUCTION_ZONE_RATIO;
+      minY += geometry.height * instructionRatio;
     } else if (edge === "bottom") {
-      maxY -= geometry.height * INSTRUCTION_ZONE_RATIO;
+      maxY -= geometry.height * instructionRatio;
     } else if (edge === "left") {
-      minX += geometry.width * INSTRUCTION_ZONE_RATIO;
+      minX += geometry.width * instructionRatio;
     } else {
-      maxX -= geometry.width * INSTRUCTION_ZONE_RATIO;
+      maxX -= geometry.width * instructionRatio;
     }
 
     return {
@@ -1312,7 +1318,7 @@
     if (!cell) return;
 
     const baseTypography = Math.sqrt(baseWidth * baseHeight);
-    const labelFontSize = clamp(baseTypography * 0.105, 7, 14);
+    const labelFontSize = clamp(baseTypography * 0.115, 7.5, 15.5);
     const cellRadius = clamp(Math.min(baseWidth, baseHeight) * 0.09, 2, 10);
     const scale = geometry.width / Math.max(0.01, baseWidth);
     const targetX = geometry.centerX - (baseWidth * 0.5);
@@ -1347,6 +1353,10 @@
     cell.style.setProperty(
       "--player-zone-ratio",
       (PLAYER_ZONE_RATIO * 100).toFixed(2) + "%"
+    );
+    cell.style.setProperty(
+      "--occupied-horizontal-player-zone-ratio",
+      (OCCUPIED_HORIZONTAL_PLAYER_ZONE_RATIO * 100).toFixed(2) + "%"
     );
 
     setMotionTarget(

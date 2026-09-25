@@ -132,7 +132,7 @@ body {
   left: 0;
   right: 0;
   top: 0;
-  height: calc(var(--instruction-zone-ratio, .35) * 100%);
+  height: var(--instruction-zone-ratio, 35%);
   border-bottom: 1px solid rgba(255,255,255,.07);
 }
 
@@ -140,7 +140,7 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  height: calc(var(--instruction-zone-ratio, .35) * 100%);
+  height: var(--instruction-zone-ratio, 35%);
   border-top: 1px solid rgba(255,255,255,.07);
 }
 
@@ -148,7 +148,7 @@ body {
   left: 0;
   top: 0;
   bottom: 0;
-  width: calc(var(--instruction-zone-ratio, .35) * 100%);
+  width: var(--instruction-zone-ratio, 35%);
   border-right: 1px solid rgba(255,255,255,.07);
 }
 
@@ -156,7 +156,7 @@ body {
   right: 0;
   top: 0;
   bottom: 0;
-  width: calc(var(--instruction-zone-ratio, .35) * 100%);
+  width: var(--instruction-zone-ratio, 35%);
   border-left: 1px solid rgba(255,255,255,.07);
 }
 

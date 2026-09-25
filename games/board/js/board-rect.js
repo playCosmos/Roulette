@@ -1121,6 +1121,22 @@
       state.x.toFixed(3) + "px," +
       state.y.toFixed(3) + "px,0) scale(" +
       state.scale.toFixed(5) + ")";
+
+    if (state.element.classList.contains("board-cell")) {
+      const inverseScale = 1 / Math.max(0.01, state.scale);
+      state.element.style.setProperty(
+        "--cell-content-inverse-scale",
+        inverseScale.toFixed(6)
+      );
+      state.element.style.setProperty(
+        "--cell-index-top",
+        (4 * inverseScale).toFixed(3) + "px"
+      );
+      state.element.style.setProperty(
+        "--cell-index-left",
+        (5 * inverseScale).toFixed(3) + "px"
+      );
+    }
   }
 
   function advanceMotionState(state, deltaTime) {
@@ -1329,10 +1345,6 @@
     if (cell.style.height !== baseHeightText) cell.style.height = baseHeightText;
 
     cell.style.setProperty("--cell-label-font", labelFontSize.toFixed(3) + "px");
-    cell.style.setProperty(
-      "--cell-content-inverse-scale",
-      (1 / Math.max(0.01, scale)).toFixed(6)
-    );
     cell.style.setProperty("--cell-radius", cellRadius.toFixed(3) + "px");
     cell.style.zIndex = String(Math.round(weight * 100) + (occupied ? 200 : 0));
 

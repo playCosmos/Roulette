@@ -117,7 +117,9 @@
     return {
       label: configured.label || (index === 0 ? "START / LAP" : "칸 " + (index + 1)),
       command: configured.command || null,
-      kind: configured.kind || (index === 0 ? "start" : "normal")
+      kind: configured.kind || (index === 0 ? "start" : "normal"),
+      instructionType: configured.instructionType || (index === 0 ? "start" : "normal"),
+      randomCell: Boolean(configured.randomCell)
     };
   }
 
@@ -171,7 +173,10 @@
       cell.className = "board-cell";
       cell.dataset.cellIndex = String(index);
       cell.dataset.kind = definition.kind;
+      cell.dataset.instructionType = definition.instructionType;
+      cell.dataset.randomCell = String(definition.randomCell);
       cell.dataset.occupied = "false";
+      cell.dataset.playerState = "normal";
 
       const number = document.createElement("span");
       number.className = "cell-index";
@@ -1334,6 +1339,9 @@
     cell.style.zIndex = String(Math.round(weight * 100) + (occupied ? 200 : 0));
 
     cell.dataset.occupied = String(occupied);
+    cell.dataset.playerState = occupied
+      ? "occupied"
+      : (weight > 1.0001 ? "adjacent" : "normal");
     cell.dataset.motion = motionMode || "neutral";
     cell.dataset.compact = String(
       Math.min(geometry.width, geometry.height) <= 30
@@ -2290,22 +2298,49 @@
   function roomCellLabel(cell) {
     if (!cell) return "";
     if (cell.index === 0 || cell.type === "START") return "START";
-    if (cell.label) return cell.label;
 
     const action = cell.action;
-    if (!action || typeof action !== "object") return cell.instructionId || "";
+    if (action && typeof action === "object") {
+      if (action.type === "move") {
+        const resolved = Number(action.resolvedSteps);
+        const fixed = Number(action.steps?.value);
+        const steps = Number.isFinite(resolved) ? resolved : fixed;
+        if (Number.isFinite(steps)) {
+          return Math.abs(steps) + "칸 " +
+            (action.direction === "backward" ? "뒤로" : "앞으로");
+        }
+      }
+      if (action.type === "skipThrow") return "다음 주사위 무효";
+      if (action.type === "multiplyNextThrow") {
+        const multiplier = Math.max(2, Number(action.multiplier) || 2);
+        return "다음 주사위 " + multiplier + "배";
+      }
+      if (action.type === "ignoreNextLanding") return "다음 칸 무효화";
+      if (action.type === "moveToStart") return "START로 이동";
+      if (action.type === "extraThrow") return "한 번 더";
+    }
+
+    if (cell.label) return cell.label;
+    return cell.instructionId || "";
+  }
+
+  function roomCellInstructionType(cell) {
+    if (!cell || cell.index === 0 || cell.type === "START") return "start";
+
+    const action = cell.action;
+    if (!action || typeof action !== "object") {
+      return cell.type === "NORMAL" ? "normal" : "custom";
+    }
 
     if (action.type === "move") {
-      const resolved = Number(action.resolvedSteps);
-      const fixed = Number(action.steps?.value);
-      const steps = Number.isFinite(resolved) ? resolved : fixed;
-      if (Number.isFinite(steps)) {
-        return (action.direction === "backward" ? "-" : "+") + Math.abs(steps);
-      }
+      return action.direction === "backward" ? "backward" : "forward";
     }
-    if (action.type === "skipThrow") return "다음 던지기 스킵";
-    if (action.type === "extraThrow") return "한 번 더";
-    return cell.instructionId || "";
+    if (action.type === "skipThrow") return "skip";
+    if (action.type === "multiplyNextThrow") return "multiplier";
+    if (action.type === "ignoreNextLanding") return "ignore";
+    if (action.type === "moveToStart") return "start-move";
+    if (action.type === "extraThrow") return "extra";
+    return cell.type === "NORMAL" ? "normal" : "custom";
   }
 
   async function loadRoomBoard(roomId) {
@@ -2377,7 +2412,9 @@
       cells[index] = {
         label: roomCellLabel(cell),
         command: roomCellLabel(cell),
-        kind: index === 0 ? "start" : (cell.type === "NORMAL" ? "normal" : "instruction")
+        kind: index === 0 ? "start" : (cell.type === "NORMAL" ? "normal" : "instruction"),
+        instructionType: roomCellInstructionType(cell),
+        randomCell: Boolean(cell.rerollOnVacate)
       };
     }
 
@@ -2421,7 +2458,9 @@
       command: roomCellLabel(cell),
       kind: cell?.index === 0
         ? "start"
-        : (cell?.type === "NORMAL" ? "normal" : "instruction")
+        : (cell?.type === "NORMAL" ? "normal" : "instruction"),
+      instructionType: roomCellInstructionType(cell),
+      randomCell: Boolean(cell?.rerollOnVacate)
     };
   }
 
@@ -2438,6 +2477,8 @@
     if (!element) return;
     const definition = cellDefinition(index);
     element.dataset.kind = definition.kind;
+    element.dataset.instructionType = definition.instructionType;
+    element.dataset.randomCell = String(definition.randomCell);
     const label = element.querySelector(".cell-label");
     if (label) label.textContent = definition.command || definition.label;
   }

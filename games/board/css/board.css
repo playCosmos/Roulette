@@ -187,8 +187,8 @@ body {
 
 .cell-index {
   position: absolute;
-  top: var(--cell-index-top, 4px);
-  left: var(--cell-index-left, 5px);
+  top: 0;
+  left: 0;
   z-index: 3;
   color: rgba(255,255,255,.46);
   font-size: 8px;
@@ -196,8 +196,9 @@ body {
   line-height: 1;
   letter-spacing: .02em;
   pointer-events: none;
-  transform: scale(var(--cell-content-inverse-scale, 1));
+  transform: translate3d(5px, 4px, 0) scale(1);
   transform-origin: top left;
+  will-change: transform;
   transition: color 180ms ease;
 }
 

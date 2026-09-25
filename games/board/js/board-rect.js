@@ -188,9 +188,10 @@
 
       const instructionZone = document.createElement("span");
       instructionZone.className = "cell-instruction-zone";
-      instructionZone.append(number, label);
+      instructionZone.append(label);
 
-      cell.append(instructionZone);
+      // 칸 번호는 지시문 영역 방향과 무관하게 셀 자체의 좌상단을 기준으로 고정한다.
+      cell.append(number, instructionZone);
       refs.boardGrid.append(cell);
       cellElements.set(index, cell);
     }

@@ -178,10 +178,6 @@
       cell.dataset.occupied = "false";
       cell.dataset.playerState = "normal";
 
-      const number = document.createElement("span");
-      number.className = "cell-index";
-      number.textContent = String(index + 1).padStart(2, "0");
-
       const label = document.createElement("span");
       label.className = "cell-label";
       label.textContent = definition.command || definition.label;
@@ -190,8 +186,7 @@
       instructionZone.className = "cell-instruction-zone";
       instructionZone.append(label);
 
-      // 칸 번호는 지시문 영역 방향과 무관하게 셀 자체의 좌상단을 기준으로 고정한다.
-      cell.append(number, instructionZone);
+      cell.append(instructionZone);
       refs.boardGrid.append(cell);
       cellElements.set(index, cell);
     }
@@ -1126,30 +1121,6 @@
       state.x.toFixed(3) + "px," +
       state.y.toFixed(3) + "px,0) scale(" +
       state.scale.toFixed(5) + ")";
-
-    if (state.element.classList.contains("board-cell")) {
-      const inverseScale = 1 / Math.max(0.01, state.scale);
-      const visualRadius =
-        Math.max(0, Number(state.baseRadius) || 0) * state.scale;
-      const cornerInset =
-        visualRadius * (1 - Math.SQRT1_2);
-      const screenTop = Math.max(4, cornerInset);
-      const screenLeft = Math.max(5, cornerInset);
-      const localTop = screenTop * inverseScale;
-      const localLeft = screenLeft * inverseScale;
-
-      if (!state.indexElement || !state.indexElement.isConnected) {
-        state.indexElement = state.element.querySelector(".cell-index");
-      }
-
-      if (state.indexElement) {
-        state.indexElement.style.transform =
-          "translate3d(" +
-          localLeft.toFixed(3) + "px," +
-          localTop.toFixed(3) + "px,0) scale(" +
-          inverseScale.toFixed(6) + ")";
-      }
-    }
   }
 
   function advanceMotionState(state, deltaTime) {
@@ -1248,17 +1219,7 @@
     }
   }
 
-  function setMotionTarget(
-    map,
-    key,
-    element,
-    targetX,
-    targetY,
-    targetScale,
-    mode,
-    snap,
-    baseRadius = null
-  ) {
+  function setMotionTarget(map, key, element, targetX, targetY, targetScale, mode, snap) {
     let state = map.get(key);
 
     if (!state) {
@@ -1273,9 +1234,7 @@
         targetX,
         targetY,
         targetScale,
-        mode,
-        baseRadius: Number.isFinite(baseRadius) ? baseRadius : null,
-        indexElement: null
+        mode
       };
       map.set(key, state);
       applyMotionTransform(state);
@@ -1287,9 +1246,6 @@
     state.targetY = targetY;
     state.targetScale = targetScale;
     state.mode = mode;
-    if (Number.isFinite(baseRadius)) {
-      state.baseRadius = baseRadius;
-    }
 
     if (snap) {
       state.x = targetX;
@@ -1405,8 +1361,7 @@
       targetY,
       scale,
       motionMode || "neutral",
-      snap,
-      cellRadius
+      snap
     );
   }
 

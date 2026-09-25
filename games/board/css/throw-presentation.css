@@ -197,6 +197,23 @@
   transform-origin: center left;
 }
 
+/* 대기 효과 배지가 있으면 결과 말풍선은 같은 안쪽 방향에서 한 단계 더 멀리 둔다. */
+.player-token[data-has-effects="true"][data-bubble-side="down"] .player-result-bubble {
+  top: calc(100% + 34px);
+}
+
+.player-token[data-has-effects="true"][data-bubble-side="up"] .player-result-bubble {
+  bottom: calc(100% + 34px);
+}
+
+.player-token[data-has-effects="true"][data-bubble-side="left"] .player-result-bubble {
+  right: calc(100% + 42px);
+}
+
+.player-token[data-has-effects="true"][data-bubble-side="right"] .player-result-bubble {
+  left: calc(100% + 42px);
+}
+
 .player-result-bubble[data-visible="true"] {
   display: flex;
 }

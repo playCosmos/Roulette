@@ -3356,12 +3356,14 @@
       }
     }
 
+    const event = normalizeThrowEvent({
+      ...rawEvent,
+      resolvedSteps: effectiveSteps,
+      appliedMultiplier
+    });
+
     return {
-      event: {
-        ...rawEvent,
-        resolvedSteps: effectiveSteps,
-        appliedMultiplier
-      },
+      event,
       throwStart,
       throwLanding,
       effectiveSteps,

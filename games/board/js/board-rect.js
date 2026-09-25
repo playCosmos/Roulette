@@ -2780,6 +2780,99 @@
       : movePlayerStepsCoreV5(playerId, steps);
   }
 
+  function movementFallbackTargetFromCurrentCell(playerId, cellIndex) {
+    const id = String(playerId);
+    const cell = cellElements.get(Number(cellIndex));
+    const cellMotion = cellMotionStates.get(Number(cellIndex));
+    if (!cell || !cellMotion || !cellMotion.element.isConnected) return null;
+
+    const baseWidth = Number.parseFloat(cell.style.width) || 0;
+    const baseHeight = Number.parseFloat(cell.style.height) || 0;
+    if (baseWidth <= 0 || baseHeight <= 0) return null;
+
+    // 마지막 정상 레이아웃에서 현재 화면에 보이는 셀 geometry를 재사용한다.
+    // 전체 보드 solver가 실패해도 목적지 칸 자체의 화면 위치는 이미 존재한다.
+    const geometry = {
+      centerX: cellMotion.x + (baseWidth * 0.5),
+      centerY: cellMotion.y + (baseHeight * 0.5),
+      width: baseWidth * cellMotion.scale,
+      height: baseHeight * cellMotion.scale,
+      point: {
+        angle: Number.parseFloat(cell.dataset.pathAngle) || 0,
+        curved: cell.dataset.curved === "true"
+      }
+    };
+
+    const occupancy = occupancyByCell();
+    const players = (occupancy.get(Number(cellIndex)) || []).slice(0, MAX_PLAYERS);
+    const playerIndex = players.findIndex((player) => String(player.id) === id);
+    if (playerIndex < 0) return null;
+
+    const playerZone = playerZoneForGeometry(geometry);
+    const allowOverflow = players.length >= 3;
+    const tokenSize = clamp(
+      Math.min(geometry.width, geometry.height) * 0.46,
+      18,
+      62
+    );
+    const layout = tokenLayout(
+      players.length,
+      tokenSize,
+      allowOverflow ? geometry : playerZone,
+      allowOverflow
+    );
+    const slot = layout.slots[playerIndex] || { tangent: 0, depth: 0 };
+
+    const tangentX = Math.cos(geometry.point.angle);
+    const tangentY = Math.sin(geometry.point.angle);
+    const inwardX = -tangentY;
+    const inwardY = tangentX;
+    const tokenRadius = tokenSize * 0.5;
+    const edgePadding = PLAYER_EDGE_PADDING;
+    const zoneDepth =
+      playerZone.edge === "top" || playerZone.edge === "bottom"
+        ? playerZone.height
+        : playerZone.width;
+    const boundaryX =
+      playerZone.centerX - (inwardX * zoneDepth * 0.5);
+    const boundaryY =
+      playerZone.centerY - (inwardY * zoneDepth * 0.5);
+    const inwardOffset = tokenRadius + edgePadding;
+
+    let centerX =
+      boundaryX +
+      (inwardX * (inwardOffset + slot.depth)) +
+      (tangentX * slot.tangent);
+    let centerY =
+      boundaryY +
+      (inwardY * (inwardOffset + slot.depth)) +
+      (tangentY * slot.tangent);
+
+    if (!allowOverflow) {
+      const cellMinX = geometry.centerX - (geometry.width * 0.5);
+      const cellMaxX = geometry.centerX + (geometry.width * 0.5);
+      const cellMinY = geometry.centerY - (geometry.height * 0.5);
+      const cellMaxY = geometry.centerY + (geometry.height * 0.5);
+
+      centerX = clamp(
+        centerX,
+        cellMinX + tokenRadius + edgePadding,
+        cellMaxX - tokenRadius - edgePadding
+      );
+      centerY = clamp(
+        centerY,
+        cellMinY + tokenRadius + edgePadding,
+        cellMaxY - tokenRadius - edgePadding
+      );
+    }
+
+    return {
+      x: centerX - (TOKEN_BASE_SIZE * 0.5),
+      y: centerY - (TOKEN_BASE_SIZE * 0.5),
+      scale: tokenSize / TOKEN_BASE_SIZE
+    };
+  }
+
   function animateTokenStepV5(
     playerId,
     targetX,
@@ -2887,28 +2980,70 @@
       ensurePlayerTokens();
       renderGlobalState();
 
-      // 기존 레이아웃 계산식을 즉시 한 번 실행해 이 스텝의 좌표를 확정한다.
-      // 별도의 ready/wait/retry 판정은 하지 않는다.
-      layoutNow();
-
-      const motion = tokenMotionStates.get(id);
-      if (!motion || !motion.element.isConnected) {
-        releaseDirectTokenLock(id);
-        throw new Error("player token motion state missing: " + id);
+      // 레이아웃 재계산 실패는 시각 배치 실패일 뿐 이동량을 취소하지 않는다.
+      // 성공하면 새 solver target을 사용하고, 실패하면 마지막 정상 레이아웃에서
+      // 목적지 칸의 현재 화면 위치를 계산해 이동을 계속한다.
+      let layoutSucceeded = true;
+      try {
+        layoutNow();
+      } catch (error) {
+        layoutSucceeded = false;
+        console.error("movement layout step failed; continuing movement", {
+          playerId: id,
+          from: previous,
+          to: next,
+          moved,
+          distance,
+          error
+        });
+        if (refs.boardStage) {
+          const current = Number.parseInt(
+            refs.boardStage.dataset.movementLayoutFallbackCount || "0",
+            10
+          ) || 0;
+          refs.boardStage.dataset.movementLayoutFallbackCount =
+            String(current + 1);
+        }
       }
 
-      const targetX = motion.targetX;
-      const targetY = motion.targetY;
-      const targetScale = motion.targetScale;
+      const motion = tokenMotionStates.get(id);
+      const fallbackTarget = movementFallbackTargetFromCurrentCell(id, next);
+      const target =
+        layoutSucceeded &&
+        motion &&
+        motion.element.isConnected &&
+        Number.isFinite(motion.targetX) &&
+        Number.isFinite(motion.targetY) &&
+        Number.isFinite(motion.targetScale)
+          ? {
+              x: motion.targetX,
+              y: motion.targetY,
+              scale: motion.targetScale
+            }
+          : fallbackTarget;
 
-      await animateTokenStepV5(
-        id,
-        targetX,
-        targetY,
-        targetScale,
-        visualStart,
-        STEP_DELAY_MS
-      );
+      if (!target) {
+        // DOM 자체가 사라진 비정상 상태에서도 논리 이동 루프는 끊지 않는다.
+        // 토큰을 다시 만든 뒤 일반 레이아웃을 예약하고 다음 스텝까지 진행한다.
+        ensurePlayerTokens();
+        scheduleLayout();
+        releaseDirectTokenLock(id);
+        await delay(STEP_DELAY_MS);
+      } else {
+        await animateTokenStepV5(
+          id,
+          target.x,
+          target.y,
+          target.scale,
+          visualStart,
+          STEP_DELAY_MS
+        );
+      }
+
+      if (!layoutSucceeded) {
+        // 실패한 보드 재배치는 이동을 막지 않고 다음 rAF에서 다시 시도한다.
+        scheduleLayout();
+      }
 
       if (
         direction > 0 &&

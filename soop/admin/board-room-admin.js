@@ -528,7 +528,7 @@
 
     const board = snapshot.config?.board;
     previewMeta.textContent =
-      snapshot.config?.name + ", " +
+      snapshot.config?.name + " · " +
       board.columns + "×" + board.rows +
       ", " + board.cellCount + "칸, " +
       (board.layoutStyle === "rect" ? "직각" : "라운드") +
@@ -540,7 +540,7 @@
     const terminated = lifecycleState === "TERMINATED";
 
     previewMeta.textContent +=
-      ", " + lifecycleState +
+      " · " + lifecycleState +
       ", 유지 " + (lifecycle.retentionMinutes || 240) + "분" +
       (lifecycle.queuedDonations ? ", 대기 후원 " + lifecycle.queuedDonations + "건" : "");
 

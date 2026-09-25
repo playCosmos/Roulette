@@ -923,11 +923,7 @@
       gap
     );
 
-    for (
-      let iteration = 0;
-      iteration < budget.widthIterations;
-      iteration += 1
-    ) {
+    for (let iteration = 0; iteration < 42; iteration += 1) {
       const middle = (low + high) * 0.5;
       const trial = placeLoopWithWidths(
         path,
@@ -1043,7 +1039,11 @@
       highTrial = trialFor(high);
     }
 
-    for (let iteration = 0; iteration < 42; iteration += 1) {
+    for (
+      let iteration = 0;
+      iteration < budget.widthIterations;
+      iteration += 1
+    ) {
       const middle = (low + high) * 0.5;
       const trial = trialFor(middle);
       const tooLarge =

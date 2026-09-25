@@ -232,8 +232,8 @@ body {
 
 /*
  * 비점유 지시문 칸은 셀 전체를 사용해 중앙 배치한다.
- * 플레이어가 도착하면 위/아래 가로칸은 50:50,
- * 좌/우 세로칸은 70:30으로 지시문/플레이어 공간을 나눈다.
+ * 플레이어가 도착하면 위/아래 가로칸과 좌/우 세로칸 모두
+ * 50:50으로 지시문/플레이어 공간을 나눈다.
  * START도 동일한 점유/비점유 위치 규칙을 따른다.
  */
 .board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"][data-instruction-edge="top"] .cell-instruction-zone {
@@ -245,11 +245,11 @@ body {
 }
 
 .board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"][data-instruction-edge="left"] .cell-instruction-zone {
-  right: var(--player-zone-ratio, 30%);
+  right: var(--player-zone-ratio, 50%);
 }
 
 .board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"][data-instruction-edge="right"] .cell-instruction-zone {
-  left: var(--player-zone-ratio, 30%);
+  left: var(--player-zone-ratio, 50%);
 }
 
 .cell-label {

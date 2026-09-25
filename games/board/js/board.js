@@ -1439,6 +1439,8 @@
       solved.validation.collisionPair === null
     );
     refs.boardGrid.dataset.cellAspect = aspect.toFixed(6);
+    refs.boardGrid.dataset.instructionZoneRatio = INSTRUCTION_ZONE_RATIO.toFixed(2);
+    refs.boardGrid.dataset.playerZoneRatio = PLAYER_ZONE_RATIO.toFixed(2);
     refs.boardGrid.dataset.neutralCellWidth = solved.neutralWidth.toFixed(3);
     refs.boardGrid.dataset.normalCellWidth = solved.normalWidth.toFixed(3);
     refs.boardGrid.dataset.emphasisFactor = solved.emphasisFactor.toFixed(4);

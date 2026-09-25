@@ -171,19 +171,18 @@
               <label class="check-label"><input name="extraThrowOnMo" type="checkbox" checked />모이면 한 번 더</label>
             </span>
           </div>
-          <p class="board-room-rule-note">이동 중 경유 칸은 실행하지 않고 최종 도착 칸 지시문만 처리합니다. 도착 지시문 처리가 끝난 뒤 보너스 던지기를 진행하며, 다음 던지기 스킵은 아직 실행하지 않은 보너스 던지기도 취소합니다.</p>
+          <p class="board-room-rule-note">이동 중 경유 칸은 실행하지 않고 최종 도착 칸 지시문만 처리합니다. 도착 지시문 처리가 끝난 뒤 보너스 던지기를 진행하며, 다음 주사위 무효는 아직 실행하지 않은 보너스 던지기도 취소합니다.</p>
         </fieldset>
 
         <fieldset>
           <legend>지시문 배치</legend>
           <p class="board-room-rule-note">기본 아무 효과 없음 칸은 별도 배치하지 않은 나머지 칸입니다. 아래 기본 칸과 랜덤칸을 필요한 만큼 추가하세요.</p>
           <div class="board-room-instruction-toolbar">
-            <button type="button" class="board-room-small-button" data-add-board-instruction="forward">+N칸 이동</button>
-            <button type="button" class="board-room-small-button" data-add-board-instruction="backward">-N칸 이동</button>
-            <button type="button" class="board-room-small-button" data-add-board-instruction="start">START로 이동</button>
-            <button type="button" class="board-room-small-button" data-add-board-instruction="skip">다음 던지기 무효</button>
-            <button type="button" class="board-room-small-button" data-add-board-instruction="multiplier">다음 던지기 M배</button>
-            <button type="button" class="board-room-small-button" data-add-board-instruction="ignoreLanding">다음 도착 칸 효과 무시</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="forward">n칸 앞으로</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="backward">n칸 뒤로</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="skip">다음 주사위 무효</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="multiplier">다음 주사위 m배</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="ignoreLanding">다음 칸 무효화</button>
             <button type="button" class="board-room-small-button" data-add-board-instruction="random">랜덤칸</button>
             <button type="button" class="board-room-small-button" data-add-board-instruction="custom">사용자 지시문</button>
           </div>
@@ -312,7 +311,7 @@
     </section>
   </main>
   <script src="./soop/admin/soop-admin.js?v=20260917-1" defer></script>
-  <script src="./soop/admin/board-room-admin.js?v=20260925-7" defer></script>
+  <script src="./soop/admin/board-room-admin.js?v=20260925-8" defer></script>
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       const setupPanel = document.getElementById("setupPanel");

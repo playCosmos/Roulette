@@ -210,6 +210,7 @@
     neutralSolveCache = null;
     rectMovementSolveCache.clear();
     lastValidatedRectSolve = null;
+    rectForcePreciseSolve = false;
 
 
     if (motionFrame) {
@@ -1148,42 +1149,31 @@
       };
     }
 
-    let emphasisFactor = 1;
+    // 초기/정지 상태도 이동 중과 동일한 Dock scale 계약을 지킨다.
+    // 데모(기본 16×12, 4명)라고 해서 emphasis를 낮추지 않는다.
+    const solved = solveNormalWidth(
+      path,
+      aspect,
+      weights,
+      gap,
+      neutral.width,
+      1,
+      anchorDistance
+    );
 
-    // 정지/초기 레이아웃은 기존 정밀 solver를 유지한다.
-    for (let attempt = 0; attempt < 18; attempt += 1) {
-      const solved = solveNormalWidth(
-        path,
-        aspect,
-        weights,
-        gap,
-        neutral.width,
-        emphasisFactor,
-        anchorDistance
-      );
+    if (!solved) return null;
 
-      if (!solved) {
-        emphasisFactor *= 0.94;
-        continue;
-      }
+    const validation = validatePlacements(solved.placements, gap);
+    if (!validation.valid) return null;
 
-      const validation = validatePlacements(solved.placements, gap);
-      const result = {
-        neutralWidth: neutral.width,
-        emphasisFactor,
-        gap,
-        validation,
-        layoutFallback:
-          emphasisFactor < 0.9999 ? "reduced-emphasis" : "none",
-        ...solved
-      };
-
-      if (validation.valid) return result;
-
-      emphasisFactor *= 0.94;
-    }
-
-    return null;
+    return {
+      neutralWidth: neutral.width,
+      emphasisFactor: 1,
+      gap,
+      validation,
+      layoutFallback: "none",
+      ...solved
+    };
   }
 
   function circularPathDistance(a, b, perimeter) {

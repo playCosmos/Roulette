@@ -73,11 +73,13 @@
   const refs = {
     boardStage: document.getElementById("boardStage"),
     boardGrid: document.getElementById("boardGrid"),
-    eventMessage: document.getElementById("eventMessage")
+    eventMessage: document.getElementById("eventMessage"),
+    playerLayer: null
   };
 
   const cellElements = new Map();
   const playerZoneElements = new Map();
+  const playerMarkerElements = new Map();
   const playerTokenElements = new Map();
   const cellMotionStates = new Map();
   const tokenMotionStates = new Map();
@@ -143,7 +145,7 @@
 
     refs.boardStage.dataset.layoutEngine = "reserve-first-loop-v4";
     refs.boardStage.dataset.movementMode =
-      INSTANT_MOVEMENT_MODE ? "instant-cell-reparent" : "cell-reparent-flip-v7";
+      INSTANT_MOVEMENT_MODE ? "instant-marker-overlay-v8" : "marker-overlay-v8";
     refs.boardStage.dataset.phase = state.currentPhaseId;
     refs.boardStage.dataset.totalLaps = String(state.totalLaps);
     refs.boardStage.dataset.playerCount = String(state.players.size);
@@ -159,8 +161,30 @@
     }
   }
 
+  function ensurePlayerLayer() {
+    if (!refs.boardStage) return null;
+    if (refs.playerLayer && refs.playerLayer.isConnected) {
+      return refs.playerLayer;
+    }
+
+    const existing = refs.boardStage.querySelector(".player-token-layer");
+    if (existing) {
+      refs.playerLayer = existing;
+      return existing;
+    }
+
+    const layer = document.createElement("div");
+    layer.className = "player-token-layer";
+    layer.setAttribute("aria-hidden", "true");
+    refs.boardStage.append(layer);
+    refs.playerLayer = layer;
+    return layer;
+  }
+
   function buildBoard() {
     if (!refs.boardGrid) return;
+
+    const playerLayer = ensurePlayerLayer();
 
     if (refs.boardStage) {
       refs.boardStage.dataset.layoutReady = "false";
@@ -169,6 +193,7 @@
     refs.boardGrid.innerHTML = "";
     cellElements.clear();
     playerZoneElements.clear();
+    playerMarkerElements.clear();
     previousScaleWeights = null;
     neutralSolveCache = null;
 
@@ -213,8 +238,9 @@
       playerZoneElements.set(index, playerZone);
     }
 
-    refs.playerLayer = null;
+    if (playerLayer) playerLayer.replaceChildren();
     playerTokenElements.clear();
+    playerMarkerElements.clear();
     renderPlayers();
   }
 
@@ -1197,6 +1223,9 @@
       moving = advanceMotionState(state, deltaTime) || moving;
     }
 
+    // 셀 spring이 움직이는 동안에도 marker의 최신 화면 좌표를 따라간다.
+    syncPlayerOverlayPositions();
+
     if (moving) {
       motionFrame = window.requestAnimationFrame(animateMotion);
     } else {
@@ -1232,6 +1261,8 @@
       motion.vs = 0;
       applyMotionTransform(motion);
     }
+
+    syncPlayerOverlayPositions(true);
   }
 
   function scheduleMotion() {
@@ -1668,6 +1699,14 @@
     return token;
   }
 
+  function createPlayerMarker(player) {
+    const marker = document.createElement("span");
+    marker.className = "player-token-marker";
+    marker.dataset.playerId = player.id;
+    marker.setAttribute("aria-hidden", "true");
+    return marker;
+  }
+
   function updatePlayerToken(token, player) {
     token.title = player.name;
     const label = token.querySelector(".player-token-label");
@@ -1755,18 +1794,20 @@
 
   function moveTokenElementToCell(playerId, cellIndex) {
     const id = String(playerId);
-    const token = playerTokenElements.get(id);
+    const marker = playerMarkerElements.get(id);
     const zone = playerZoneForCell(cellIndex);
-    if (!token || !zone) return false;
+    if (!marker || !zone) return false;
 
-    if (token.parentElement !== zone) {
-      zone.append(token);
+    if (marker.parentElement !== zone) {
+      zone.append(marker);
     }
-    token.dataset.cellIndex = String(normalizeCell(cellIndex));
+    marker.dataset.cellIndex = String(normalizeCell(cellIndex));
     return true;
   }
 
   function syncPlayerTokenParents(occupancy = occupancyByCell()) {
+    // V8: 논리/레이아웃 위치는 투명 marker가 담당하고,
+    // 실제 player-token은 board-stage의 독립 overlay에 계속 남는다.
     updatePlayerZoneMetadata(occupancy);
 
     for (const [cellIndex, players] of occupancy.entries()) {
@@ -1775,14 +1816,20 @@
 
       const visiblePlayers = players.slice(0, MAX_PLAYERS);
       visiblePlayers.forEach((player, playerIndex) => {
-        const token = playerTokenElements.get(player.id);
-        if (!token) return;
-        if (token.parentElement !== zone) zone.append(token);
-        token.dataset.cellIndex = String(cellIndex);
-        token.dataset.stackIndex = String(playerIndex);
-        token.dataset.stackCount = String(visiblePlayers.length);
-        token.dataset.stacked = String(visiblePlayers.length > 1);
-        token.dataset.cellOverflow = String(visiblePlayers.length >= 3);
+        const id = String(player.id);
+        const marker = playerMarkerElements.get(id);
+        const token = playerTokenElements.get(id);
+        if (!marker || !token) return;
+
+        if (marker.parentElement !== zone) zone.append(marker);
+
+        for (const element of [marker, token]) {
+          element.dataset.cellIndex = String(cellIndex);
+          element.dataset.stackIndex = String(playerIndex);
+          element.dataset.stackCount = String(visiblePlayers.length);
+          element.dataset.stacked = String(visiblePlayers.length > 1);
+          element.dataset.cellOverflow = String(visiblePlayers.length >= 3);
+        }
 
         const edge = cellElements.get(cellIndex)?.dataset.instructionEdge || "top";
         token.dataset.bubbleSide =
@@ -1793,26 +1840,78 @@
     }
   }
 
+  function setOverlayTokenViewportCenter(playerId, centerX, centerY) {
+    const id = String(playerId);
+    const token = playerTokenElements.get(id);
+    if (!token || !token.isConnected || !refs.boardStage) return false;
+
+    const stageRect = refs.boardStage.getBoundingClientRect();
+    const x = centerX - stageRect.left - (TOKEN_BASE_SIZE * 0.5);
+    const y = centerY - stageRect.top - (TOKEN_BASE_SIZE * 0.5);
+
+    token.style.transform =
+      "translate3d(" + x.toFixed(3) + "px," +
+      y.toFixed(3) + "px,0)";
+    return true;
+  }
+
+  function syncPlayerOverlayPosition(playerId, force = false) {
+    const id = String(playerId);
+    if (!force && directTokenAnimations.has(id)) return false;
+
+    const marker = playerMarkerElements.get(id);
+    if (!marker || !marker.isConnected) return false;
+
+    const markerRect = marker.getBoundingClientRect();
+    if (markerRect.width <= 0 || markerRect.height <= 0) return false;
+
+    return setOverlayTokenViewportCenter(
+      id,
+      markerRect.left + (markerRect.width * 0.5),
+      markerRect.top + (markerRect.height * 0.5)
+    );
+  }
+
+  function syncPlayerOverlayPositions(force = false) {
+    for (const playerId of playerTokenElements.keys()) {
+      syncPlayerOverlayPosition(playerId, force);
+    }
+  }
+
   function ensurePlayerTokens() {
+    const layer = ensurePlayerLayer();
     const activeIds = new Set();
 
     for (const player of state.players.values()) {
-      activeIds.add(player.id);
+      const id = String(player.id);
+      activeIds.add(id);
 
-      let token = playerTokenElements.get(player.id);
+      let token = playerTokenElements.get(id);
       if (!token) {
         token = createPlayerToken(player);
-        playerTokenElements.set(player.id, token);
+        playerTokenElements.set(id, token);
       } else {
         updatePlayerToken(token, player);
       }
 
-      const zone = playerZoneForCell(player.position);
-      if (zone && token.parentElement !== zone) {
-        zone.append(token);
+      if (layer && token.parentElement !== layer) {
+        layer.append(token);
       }
+
+      let marker = playerMarkerElements.get(id);
+      if (!marker) {
+        marker = createPlayerMarker(player);
+        playerMarkerElements.set(id, marker);
+      }
+
+      const zone = playerZoneForCell(player.position);
+      if (zone && marker.parentElement !== zone) {
+        zone.append(marker);
+      }
+
       token.dataset.cellIndex = String(player.position);
-      renderDemoEffectBadges(player.id);
+      marker.dataset.cellIndex = String(player.position);
+      renderDemoEffectBadges(id);
     }
 
     for (const [playerId, token] of playerTokenElements.entries()) {
@@ -1820,12 +1919,20 @@
       token.remove();
       playerTokenElements.delete(playerId);
       tokenMotionStates.delete(playerId);
+      directTokenAnimations.delete(String(playerId));
+    }
+
+    for (const [playerId, marker] of playerMarkerElements.entries()) {
+      if (activeIds.has(playerId)) continue;
+      marker.remove();
+      playerMarkerElements.delete(playerId);
     }
 
     syncPlayerTokenParents();
+    syncPlayerOverlayPositions();
   }
 
-  function tokenLayout(count, tokenSize, geometry, allowOverflow = false) {
+  function tokenLayout(count, tokenSize, geometry, allowOverflow = false) {  function tokenLayout(count, tokenSize, geometry, allowOverflow = false) {
     if (count <= 1) {
       return {
         tokenSize,
@@ -1891,13 +1998,14 @@
   }
 
   function layoutPlayerTokens(placements, occupancy) {
-    // V6: 토큰은 전역 player-layer 좌표를 계산하지 않는다.
-    // 현재 논리 칸의 .cell-player-zone 자식으로만 유지한다.
+    // V8: cell-player-zone에는 투명 marker만 배치한다.
+    // 실제 말은 board-stage overlay에서 marker의 화면 절대좌표를 추적한다.
     ensurePlayerTokens();
     syncPlayerTokenParents(occupancy);
+    syncPlayerOverlayPositions();
   }
 
-  function renderPlayers() {
+  function renderPlayers() {  function renderPlayers() {
     ensurePlayerTokens();
     renderGlobalState();
     scheduleLayout();
@@ -2703,7 +2811,7 @@
 
     let crossedStart = false;
 
-    // 기존과 동일하게 논리적으로는 한 칸씩 계산하지만 경유 칸은 화면에 표시하지 않는다.
+    // instant 모드는 논리적으로 한 칸씩 계산하되 경유 칸은 화면에 표시하지 않는다.
     for (let moved = 0; moved < distance; moved += 1) {
       const previous = player.position;
       player.position = normalizeCell(player.position + direction);
@@ -2724,6 +2832,8 @@
     }
 
     ensurePlayerTokens();
+    moveTokenElementToCell(player.id, player.position);
+    syncPlayerTokenParents();
     renderGlobalState();
 
     try {
@@ -2734,11 +2844,8 @@
       await waitForRenderFrame();
     }
 
-    // V6 instant: 토큰 DOM은 최종 논리 칸의 player zone으로 직접 이동한다.
-    ensurePlayerTokens();
-    moveTokenElementToCell(player.id, player.position);
-    syncPlayerTokenParents();
     snapAllMotionToTargetsInstant();
+    syncPlayerOverlayPosition(player.id, true);
     await waitForRenderFrame();
 
     return { ...player };
@@ -2747,13 +2854,162 @@
   async function movePlayerStepsActive(playerId, steps) {
     return INSTANT_MOVEMENT_MODE
       ? movePlayerStepsInstant(playerId, steps)
-      : movePlayerStepsCoreV6(playerId, steps);
+      : movePlayerStepsCoreV8(playerId, steps);
   }
 
-  function playerTokenRect(playerId) {
+  function playerTokenRect(playerId) {  function playerTokenRect(playerId) {
     const token = playerTokenElements.get(String(playerId));
     if (!token || !token.isConnected) return null;
     return token.getBoundingClientRect();
+  }
+
+  function animateMarkerTrackedTokenV8(
+    playerId,
+    firstRect,
+    durationMs = STEP_DELAY_MS,
+    isFinalStep = false
+  ) {
+    const id = String(playerId);
+    const token = playerTokenElements.get(id);
+    const marker = playerMarkerElements.get(id);
+
+    if (!token || !token.isConnected || !marker || !marker.isConnected || !firstRect) {
+      directTokenAnimations.delete(id);
+      syncPlayerOverlayPosition(id, true);
+      return delay(durationMs);
+    }
+
+    const startCenterX = firstRect.left + (firstRect.width * 0.5);
+    const startCenterY = firstRect.top + (firstRect.height * 0.5);
+
+    token.dataset.moving = "true";
+    setOverlayTokenViewportCenter(id, startCenterX, startCenterY);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let startedAt = 0;
+      let frameId = 0;
+      let timeoutId = 0;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (frameId) window.cancelAnimationFrame(frameId);
+        if (timeoutId) window.clearTimeout(timeoutId);
+
+        token.dataset.moving = "false";
+        directTokenAnimations.delete(id);
+        syncPlayerOverlayPosition(id, true);
+        scheduleMotion();
+        resolve();
+      };
+
+      const frame = (timestamp) => {
+        if (settled) return;
+        if (!token.isConnected || !marker.isConnected) {
+          finish();
+          return;
+        }
+
+        if (!startedAt) startedAt = timestamp;
+        const progress = clamp(
+          (timestamp - startedAt) / Math.max(1, durationMs),
+          0,
+          1
+        );
+        const eased = isFinalStep
+          ? 1 - Math.pow(1 - progress, 2)
+          : progress;
+
+        // 목적지 marker는 셀 spring과 함께 계속 움직일 수 있으므로
+        // 매 프레임 최신 절대좌표를 읽어 실제 말의 목적지를 갱신한다.
+        const markerRect = marker.getBoundingClientRect();
+        const targetCenterX = markerRect.left + (markerRect.width * 0.5);
+        const targetCenterY = markerRect.top + (markerRect.height * 0.5);
+        const centerX =
+          startCenterX + ((targetCenterX - startCenterX) * eased);
+        const centerY =
+          startCenterY + ((targetCenterY - startCenterY) * eased);
+
+        setOverlayTokenViewportCenter(id, centerX, centerY);
+
+        if (progress >= 1) {
+          finish();
+          return;
+        }
+
+        frameId = window.requestAnimationFrame(frame);
+      };
+
+      frameId = window.requestAnimationFrame(frame);
+      timeoutId = window.setTimeout(
+        finish,
+        Math.max(900, durationMs * 4)
+      );
+    });
+  }
+
+  async function movePlayerStepsCoreV8(playerId, steps) {
+    const player = state.players.get(String(playerId));
+    if (!player) throw new Error("unknown player: " + playerId);
+
+    const signedSteps = Number.parseInt(steps, 10) || 0;
+    const direction = signedSteps < 0 ? -1 : 1;
+    const distance = Math.abs(signedSteps);
+    if (!distance) return { ...player };
+
+    ensurePlayerTokens();
+    syncPlayerOverlayPosition(player.id, true);
+
+    for (let moved = 0; moved < distance; moved += 1) {
+      const id = String(player.id);
+      const previous = player.position;
+      const next = normalizeCell(previous + direction);
+      const firstRect = playerTokenRect(id);
+
+      // 화면 말은 현 위치에 고정하고, 투명 marker만 다음 칸 player-zone으로 옮긴다.
+      // 따라서 논리 경로/reparent는 한 칸씩 유지되면서 렌더링 말은 셀 transform에서 분리된다.
+      directTokenAnimations.add(id);
+      player.position = next;
+      ensurePlayerTokens();
+      moveTokenElementToCell(id, next);
+      syncPlayerTokenParents();
+      renderGlobalState();
+
+      try {
+        layoutNow();
+      } catch (error) {
+        console.error("movement layout step failed; marker remains in destination cell", {
+          playerId: id,
+          from: previous,
+          to: next,
+          moved,
+          distance,
+          error
+        });
+        scheduleLayout();
+      }
+
+      await animateMarkerTrackedTokenV8(
+        id,
+        firstRect,
+        STEP_DELAY_MS,
+        moved === distance - 1
+      );
+
+      if (
+        direction > 0 &&
+        previous === board.cellCount - 1 &&
+        next === 0
+      ) {
+        player.laps += 1;
+        state.totalLaps += 1;
+        evaluatePhase();
+      }
+    }
+
+    syncPlayerOverlayPosition(player.id, true);
+    return { ...player };
   }
 
   function applyScaleAwareTokenPositionV6(

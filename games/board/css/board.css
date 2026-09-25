@@ -336,12 +336,13 @@ body {
 }
 
 .cell-player-zone {
+  --player-edge-padding: var(--player-edge-padding-local, 2.5px);
+  --player-overlap: calc(var(--player-token-local-size, 13px) * .22);
   position: absolute;
   z-index: 4;
   display: flex;
-  align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 0;
   overflow: visible;
   pointer-events: none;
 }
@@ -352,7 +353,9 @@ body {
   top: 50%;
   bottom: 0;
   flex-flow: row wrap;
+  align-items: flex-start;
   align-content: flex-start;
+  padding: var(--player-edge-padding);
 }
 
 .board-cell[data-instruction-edge="bottom"] .cell-player-zone {
@@ -361,7 +364,9 @@ body {
   top: 0;
   bottom: 50%;
   flex-flow: row wrap-reverse;
+  align-items: flex-end;
   align-content: flex-end;
+  padding: var(--player-edge-padding);
 }
 
 .board-cell[data-instruction-edge="left"] .cell-player-zone {
@@ -370,7 +375,9 @@ body {
   top: 0;
   bottom: 0;
   flex-flow: column wrap;
+  align-items: flex-start;
   align-content: flex-start;
+  padding: var(--player-edge-padding);
 }
 
 .board-cell[data-instruction-edge="right"] .cell-player-zone {
@@ -379,7 +386,9 @@ body {
   top: 0;
   bottom: 0;
   flex-flow: column wrap-reverse;
+  align-items: flex-end;
   align-content: flex-end;
+  padding: var(--player-edge-padding);
 }
 
 .cell-player-zone[data-count="0"] {
@@ -391,6 +400,18 @@ body {
   flex-wrap: nowrap;
 }
 
+/* 기존 tokenLayout의 0.78× center spacing을 재현: 두 말은 지름의 약 22% 겹친다. */
+.board-cell:is([data-instruction-edge="top"], [data-instruction-edge="bottom"])
+  .cell-player-zone[data-count="2"] .player-token + .player-token {
+  margin-left: calc(var(--player-overlap) * -1);
+}
+
+.board-cell:is([data-instruction-edge="left"], [data-instruction-edge="right"])
+  .cell-player-zone[data-count="2"] .player-token + .player-token {
+  margin-top: calc(var(--player-overlap) * -1);
+}
+
+/* 3명 이상은 첫 줄의 5px 경계 여백을 유지하면서 보드 안쪽 방향으로 wrap한다. */
 .cell-player-zone[data-overflow="true"] {
   visibility: visible;
 }

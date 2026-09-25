@@ -1945,21 +1945,23 @@
       await delay(STEP_DELAY_MS);
     }
 
-    const command = destinationCommand(player.position);
-    const source = meta.source ? " (" + meta.source + ")" : "";
+    if (!meta.suppressDestinationEvent) {
+      const command = destinationCommand(player.position);
+      const source = meta.source ? " (" + meta.source + ")" : "";
 
-    if (command) {
-      setEventMessage(player.name + ": " + command + source);
-      window.dispatchEvent(new CustomEvent("ramyani-board:command", {
-        detail: {
-          playerId: player.id,
-          position: player.position,
-          command,
-          source: meta.source || null
-        }
-      }));
-    } else {
-      setEventMessage(player.name + " → " + (player.position + 1) + "번 칸" + source);
+      if (command) {
+        setEventMessage(player.name + ": " + command + source);
+        window.dispatchEvent(new CustomEvent("ramyani-board:command", {
+          detail: {
+            playerId: player.id,
+            position: player.position,
+            command,
+            source: meta.source || null
+          }
+        }));
+      } else {
+        setEventMessage(player.name + " → " + (player.position + 1) + "번 칸" + source);
+      }
     }
 
     return { ...player };
@@ -2164,6 +2166,157 @@
     };
   }
 
+  const demoEffectStates = new Map();
+
+  function demoEffectState(playerId) {
+    const id = String(playerId);
+    if (!demoEffectStates.has(id)) {
+      demoEffectStates.set(id, {
+        skipNextThrows: 0,
+        nextThrowMultiplier: 1,
+        ignoreNextLandingEffects: 0
+      });
+    }
+    return demoEffectStates.get(id);
+  }
+
+  function demoRawThrowSteps(event) {
+    if (event.generator === "dice") {
+      return (event.dice?.values || []).reduce(
+        (sum, value) => sum + (Number(value) || 0),
+        0
+      );
+    }
+
+    const stepByName = {
+      BACK_DO: -1,
+      DO: 1,
+      GAE: 2,
+      GEOL: 3,
+      YUT: 4,
+      MO: 5
+    };
+    return stepByName[String(event.yut?.name || "DO").toUpperCase()] || 0;
+  }
+
+  function applyDemoThrowEffects(event) {
+    const effects = demoEffectState(event.playerId);
+    const multiplier = Math.max(1, effects.nextThrowMultiplier || 1);
+    effects.nextThrowMultiplier = 1;
+    const rawSteps = demoRawThrowSteps(event);
+
+    return {
+      ...event,
+      resolvedSteps: rawSteps * multiplier,
+      appliedMultiplier: multiplier
+    };
+  }
+
+  function emitDemoInstruction(player, definition, extra = {}) {
+    const command = definition.command || definition.label || "";
+    window.dispatchEvent(new CustomEvent("ramyani-board:command", {
+      detail: {
+        playerId: player.id,
+        position: player.position,
+        command,
+        source: "데모",
+        ...extra
+      }
+    }));
+  }
+
+  async function resolveDemoLandingChain(player) {
+    const effects = demoEffectState(player.id);
+    const visitedMoves = new Set();
+
+    for (let depth = 0; depth < 64; depth += 1) {
+      const definition = cellDefinition(player.position);
+      const command = definition.command || "";
+
+      if (effects.ignoreNextLandingEffects > 0) {
+        effects.ignoreNextLandingEffects -= 1;
+        setEventMessage(
+          player.name + ": " + (command || "현재 칸") + " 효과 무효"
+        );
+        emitDemoInstruction(player, definition, { effectIgnored: true });
+        return { safetyStopped: false };
+      }
+
+      if (!command) {
+        setEventMessage(player.name + " 이동 완료");
+        return { safetyStopped: false };
+      }
+
+      if (
+        definition.instructionType === "forward" ||
+        definition.instructionType === "backward"
+      ) {
+        const steps = Math.max(1, Number.parseInt(command, 10) || 1);
+        const signedSteps =
+          definition.instructionType === "backward" ? -steps : steps;
+        const visitKey = player.position + ":" + signedSteps;
+
+        if (visitedMoves.has(visitKey)) {
+          setEventMessage(player.name + ": 이동 지시문 순환 중단");
+          emitDemoInstruction(player, definition, { safetyStopped: true });
+          return { safetyStopped: true };
+        }
+        visitedMoves.add(visitKey);
+
+        setEventMessage(player.name + ": " + command);
+        emitDemoInstruction(player, definition, {
+          actionMoveSteps: signedSteps
+        });
+        await delay(180);
+        await movePlayerBy(player.id, signedSteps, {
+          source: "데모 지시문",
+          suppressDestinationEvent: true
+        });
+        continue;
+      }
+
+      if (definition.instructionType === "skip") {
+        effects.skipNextThrows += 1;
+        setEventMessage(player.name + ": 다음 던지기 무효 획득");
+        emitDemoInstruction(player, definition, {
+          skipNextThrows: effects.skipNextThrows
+        });
+        return { safetyStopped: false };
+      }
+
+      if (definition.instructionType === "multiplier") {
+        const match = command.match(/(\d+)배/);
+        effects.nextThrowMultiplier = Math.max(
+          2,
+          Number.parseInt(match?.[1] || "2", 10) || 2
+        );
+        setEventMessage(
+          player.name + ": 다음 던지기 " +
+          effects.nextThrowMultiplier + "배 적용 대기"
+        );
+        emitDemoInstruction(player, definition, {
+          nextThrowMultiplier: effects.nextThrowMultiplier
+        });
+        return { safetyStopped: false };
+      }
+
+      if (definition.instructionType === "ignore") {
+        effects.ignoreNextLandingEffects += 1;
+        setEventMessage(player.name + ": 다음 칸 효과 무효화 대기");
+        emitDemoInstruction(player, definition, {
+          ignoreNextLandingEffects: effects.ignoreNextLandingEffects
+        });
+        return { safetyStopped: false };
+      }
+
+      emitDemoInstruction(player, definition);
+      return { safetyStopped: false };
+    }
+
+    setEventMessage(player.name + ": 지시문 연쇄 안전 제한 도달");
+    return { safetyStopped: true };
+  }
+
   const DEMO_INSTRUCTION_TYPES = [
     "forward",
     "backward",
@@ -2308,22 +2461,52 @@
   }
 
   async function runDemoTurn(player, generator) {
+    const effects = demoEffectState(player.id);
+
+    if (effects.skipNextThrows > 0) {
+      effects.skipNextThrows -= 1;
+      setEventMessage(player.name + ": 다음 던지기 무효 적용");
+      window.dispatchEvent(new CustomEvent("ramyani-board:demoskip", {
+        detail: {
+          playerId: player.id,
+          remainingSkipThrows: effects.skipNextThrows
+        }
+      }));
+      await delay(500);
+      return;
+    }
+
     let bonus = true;
     let safety = 0;
 
     while (bonus && safety < 6) {
       safety += 1;
-      const event = generator === "yut"
+      const rawEvent = generator === "yut"
         ? resolveDemoYut(player.id)
         : resolveDemoDice(player.id);
+      const event = applyDemoThrowEffects(rawEvent);
 
-      await enqueueThrowEvent(event, { source: "데모" });
-      bonus = event.bonusThrow;
+      await enqueueThrowEvent(event, {
+        source: "데모",
+        suppressDestinationEvent: true
+      });
+
+      const landing = await resolveDemoLandingChain(player);
+      if (landing.safetyStopped) return;
+
+      bonus = Boolean(event.bonusThrow);
+      if (bonus && effects.skipNextThrows > 0) {
+        effects.skipNextThrows -= 1;
+        bonus = false;
+        setEventMessage(player.name + ": 보너스 던지기 무효");
+      }
+
       if (bonus) await delay(350);
     }
   }
 
   async function startDemo() {
+    demoEffectStates.clear();
     seedDemoInstructions();
     seedDemoPlayers(DEMO_PLAYER_COUNT);
     setEventMessage(

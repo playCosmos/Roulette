@@ -1573,6 +1573,7 @@
         token = createPlayerToken(player);
         playerTokenElements.set(player.id, token);
         refs.playerLayer.append(token);
+        renderDemoEffectBadges(player.id);
       } else {
         updatePlayerToken(token, player);
       }

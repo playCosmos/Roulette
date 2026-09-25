@@ -115,7 +115,7 @@
     const configured = phase && phase.cells ? (phase.cells[index] || {}) : {};
 
     return {
-      label: configured.label || (index === 0 ? "START / LAP" : "칸 " + (index + 1)),
+      label: configured.label ?? (index === 0 ? "START / LAP" : ""),
       command: configured.command || null,
       kind: configured.kind || (index === 0 ? "start" : "normal"),
       instructionType: configured.instructionType || (index === 0 ? "start" : "normal"),
@@ -2164,6 +2164,100 @@
     };
   }
 
+  const DEMO_INSTRUCTION_TYPES = [
+    "forward",
+    "backward",
+    "skip",
+    "multiplier",
+    "ignore"
+  ];
+
+  function demoInstructionDefinition(type) {
+    if (type === "forward") {
+      const steps = 1 + Math.floor(Math.random() * 5);
+      return {
+        label: steps + "칸 앞으로",
+        command: steps + "칸 앞으로",
+        kind: "instruction",
+        instructionType: "forward"
+      };
+    }
+
+    if (type === "backward") {
+      const steps = 1 + Math.floor(Math.random() * 4);
+      return {
+        label: steps + "칸 뒤로",
+        command: steps + "칸 뒤로",
+        kind: "instruction",
+        instructionType: "backward"
+      };
+    }
+
+    if (type === "skip") {
+      return {
+        label: "다음 주사위 무효",
+        command: "다음 주사위 무효",
+        kind: "instruction",
+        instructionType: "skip"
+      };
+    }
+
+    if (type === "multiplier") {
+      const multiplier = 2 + Math.floor(Math.random() * 3);
+      return {
+        label: "다음 주사위 " + multiplier + "배",
+        command: "다음 주사위 " + multiplier + "배",
+        kind: "instruction",
+        instructionType: "multiplier"
+      };
+    }
+
+    return {
+      label: "다음 칸 무효화",
+      command: "다음 칸 무효화",
+      kind: "instruction",
+      instructionType: "ignore"
+    };
+  }
+
+  function seedDemoInstructions() {
+    const candidates = Array.from(
+      { length: Math.max(0, board.cellCount - 1) },
+      (_, index) => index + 1
+    );
+
+    for (let index = candidates.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [candidates[index], candidates[swapIndex]] = [
+        candidates[swapIndex],
+        candidates[index]
+      ];
+    }
+
+    const instructionCount = clamp(
+      Math.round(board.cellCount * 0.28),
+      DEMO_INSTRUCTION_TYPES.length,
+      15
+    );
+    const cells = {};
+
+    for (let index = 0; index < instructionCount; index += 1) {
+      const cellIndex = candidates[index];
+      const type = DEMO_INSTRUCTION_TYPES[index % DEMO_INSTRUCTION_TYPES.length];
+      cells[cellIndex] = demoInstructionDefinition(type);
+    }
+
+    setPhasePlan([
+      {
+        id: "phase-1",
+        minTotalLaps: 0,
+        label: "PHASE 1",
+        description: "기본 제공 지시문 데모",
+        cells
+      }
+    ]);
+  }
+
   function seedDemoPlayers(count) {
     for (let index = 0; index < count; index += 1) {
       const suffix = String.fromCharCode(65 + index);
@@ -2230,6 +2324,7 @@
   }
 
   async function startDemo() {
+    seedDemoInstructions();
     seedDemoPlayers(DEMO_PLAYER_COUNT);
     setEventMessage(
       "통합 Throw Overlay " +

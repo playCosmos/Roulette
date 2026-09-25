@@ -1932,7 +1932,7 @@
     syncPlayerOverlayPositions();
   }
 
-  function tokenLayout(count, tokenSize, geometry, allowOverflow = false) {  function tokenLayout(count, tokenSize, geometry, allowOverflow = false) {
+  function tokenLayout(count, tokenSize, geometry, allowOverflow = false) {
     if (count <= 1) {
       return {
         tokenSize,
@@ -2005,7 +2005,7 @@
     syncPlayerOverlayPositions();
   }
 
-  function renderPlayers() {  function renderPlayers() {
+  function renderPlayers() {
     ensurePlayerTokens();
     renderGlobalState();
     scheduleLayout();
@@ -2857,7 +2857,7 @@
       : movePlayerStepsCoreV8(playerId, steps);
   }
 
-  function playerTokenRect(playerId) {  function playerTokenRect(playerId) {
+  function playerTokenRect(playerId) {
     const token = playerTokenElements.get(String(playerId));
     if (!token || !token.isConnected) return null;
     return token.getBoundingClientRect();

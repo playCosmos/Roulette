@@ -356,6 +356,17 @@ body {
   align-items: flex-start;
   align-content: flex-start;
   padding: var(--player-edge-padding);
+  /*
+   * 위쪽 가로칸은 첫 줄을 셀의 안쪽(아래) 테두리에서 5px 띄운다.
+   * zone 자체를 이동하므로 3명 이상일 때 다음 줄은 기존 wrap 방향 그대로
+   * 보드 중앙 쪽으로 확장된다.
+   */
+  transform: translateY(calc(
+    100% -
+    var(--player-edge-padding) -
+    var(--player-edge-padding) -
+    var(--player-token-local-size, 13px)
+  ));
 }
 
 .board-cell[data-instruction-edge="bottom"] .cell-player-zone {
@@ -378,6 +389,16 @@ body {
   align-items: flex-start;
   align-content: flex-start;
   padding: var(--player-edge-padding);
+  /*
+   * 왼쪽 세로칸은 첫 줄을 셀의 안쪽(오른쪽) 테두리에서 5px 띄운다.
+   * 두 번째 줄은 기존 column wrap 방향을 유지해 보드 중앙 쪽으로 확장한다.
+   */
+  transform: translateX(calc(
+    100% -
+    var(--player-edge-padding) -
+    var(--player-edge-padding) -
+    var(--player-token-local-size, 13px)
+  ));
 }
 
 .board-cell[data-instruction-edge="right"] .cell-player-zone {

@@ -1124,18 +1124,26 @@
 
     if (state.element.classList.contains("board-cell")) {
       const inverseScale = 1 / Math.max(0.01, state.scale);
-      state.element.style.setProperty(
-        "--cell-content-inverse-scale",
-        inverseScale.toFixed(6)
-      );
-      state.element.style.setProperty(
-        "--cell-index-top",
-        (4 * inverseScale).toFixed(3) + "px"
-      );
-      state.element.style.setProperty(
-        "--cell-index-left",
-        (5 * inverseScale).toFixed(3) + "px"
-      );
+      const visualRadius =
+        Math.max(0, Number(state.baseRadius) || 0) * state.scale;
+      const cornerInset =
+        visualRadius * (1 - Math.SQRT1_2);
+      const screenTop = Math.max(4, cornerInset);
+      const screenLeft = Math.max(5, cornerInset);
+      const localTop = screenTop * inverseScale;
+      const localLeft = screenLeft * inverseScale;
+
+      if (!state.indexElement || !state.indexElement.isConnected) {
+        state.indexElement = state.element.querySelector(".cell-index");
+      }
+
+      if (state.indexElement) {
+        state.indexElement.style.transform =
+          "translate3d(" +
+          localLeft.toFixed(3) + "px," +
+          localTop.toFixed(3) + "px,0) scale(" +
+          inverseScale.toFixed(6) + ")";
+      }
     }
   }
 
@@ -1235,7 +1243,17 @@
     }
   }
 
-  function setMotionTarget(map, key, element, targetX, targetY, targetScale, mode, snap) {
+  function setMotionTarget(
+    map,
+    key,
+    element,
+    targetX,
+    targetY,
+    targetScale,
+    mode,
+    snap,
+    baseRadius = null
+  ) {
     let state = map.get(key);
 
     if (!state) {
@@ -1250,7 +1268,9 @@
         targetX,
         targetY,
         targetScale,
-        mode
+        mode,
+        baseRadius: Number.isFinite(baseRadius) ? baseRadius : null,
+        indexElement: null
       };
       map.set(key, state);
       applyMotionTransform(state);
@@ -1262,6 +1282,9 @@
     state.targetY = targetY;
     state.targetScale = targetScale;
     state.mode = mode;
+    if (Number.isFinite(baseRadius)) {
+      state.baseRadius = baseRadius;
+    }
 
     if (snap) {
       state.x = targetX;
@@ -1377,7 +1400,8 @@
       targetY,
       scale,
       motionMode || "neutral",
-      snap
+      snap,
+      cellRadius
     );
   }
 

@@ -56,11 +56,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           java -cp target/ramyani-game-server-0.2.0-SNAPSHOT.jar io.github.playcosmos.roulettebridge.boardserver.BoardGameServerMain --board-server-probe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -cp target/ramyani-game-server-0.2.0-SNAPSHOT.jar io.github.playcosmos.roulettebridge.room.MixedMovementProbe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build board-game-only Windows app
         working-directory: bridge
         shell: pwsh
-        run: ./package-board-server-windows.ps1 -Version 0.1.0 -SkipBuild
+        run: ./package-board-server-windows.ps1 -Version 0.2.0 -SkipBuild
 
       - name: Verify board-only package
         working-directory: bridge
@@ -100,7 +102,7 @@ jobs:
       - name: Upload board-game-only package
         uses: actions/upload-artifact@v4
         with:
-          name: RamyaniBoardGameServer-Windows-x64-v0.1.0
+          name: RamyaniBoardGameServer-Windows-x64-v0.2.0
           path: bridge/dist-board/RamyaniBoardGameServer/**
           if-no-files-found: error
           retention-days: 30

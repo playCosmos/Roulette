@@ -14,6 +14,8 @@
   const diceFields = $("boardRoomDiceFields");
   const yutFields = $("boardRoomYutFields");
   const instructionRows = $("boardRoomInstructionRows");
+  const instructionList = $("boardRoomInstructionList");
+  const instructionEmptyState = $("boardRoomInstructionEmptyState");
   const randomPoolMode = $("boardRoomRandomPoolMode");
   const result = $("boardRoomResult");
   const liveSummary = $("boardRoomLiveSummary");
@@ -37,6 +39,8 @@
 
   let currentRoom = null;
   let instructionSequence = 0;
+  let instructionEditorSequence = 0;
+  let selectedInstructionRow = null;
 
   function showResult(text, tone = "") {
     result.textContent = text;
@@ -89,7 +93,7 @@
           <input data-field="soopId" autocomplete="off" maxlength="120" required value="${escapeAttribute(saved.soopId || "")}" />
         </label>
         <label>표시 이름
-          <input data-field="displayName" autocomplete="off" maxlength="80" value="${escapeAttribute(saved.displayName || "")}" placeholder="미입력 시 SOOP ID" />
+          <input data-field="displayName" autocomplete="off" maxlength="80" value="${escapeAttribute(saved.displayName || "")}" placeholder="미입력 시 SOOP 현재 닉네임" />
         </label>
         <label>정확 별풍선
           <input data-field="balloonTrigger" type="number" min="1" step="1" required value="${escapeAttribute(saved.balloonTrigger || String((i + 1) * 100))}" />
@@ -128,13 +132,100 @@
     return candidate;
   }
 
+  function instructionTitle(row) {
+    const label = row.querySelector('[data-field="label"]')?.value?.trim();
+    const id = row.querySelector('[data-field="instructionId"]')?.value?.trim();
+    return {
+      label: label || id || "새 지시문",
+      id: id || "UNNAMED"
+    };
+  }
+
+  function selectInstruction(row) {
+    selectedInstructionRow = row && row.isConnected ? row : null;
+    instructionRows.querySelectorAll(".board-room-instruction-row").forEach((candidate) => {
+      candidate.hidden = candidate !== selectedInstructionRow;
+    });
+    if (instructionEmptyState) {
+      instructionEmptyState.hidden = selectedInstructionRow !== null;
+    }
+    if (instructionList) {
+      instructionList.querySelectorAll("[data-instruction-key]").forEach((button) => {
+        button.classList.toggle(
+          "active",
+          selectedInstructionRow !== null &&
+          button.dataset.instructionKey === selectedInstructionRow.dataset.editorKey
+        );
+      });
+    }
+  }
+
+  function updateInstructionListItem(row) {
+    if (!instructionList || !row?.dataset?.editorKey) return;
+    const button = Array.from(
+      instructionList.querySelectorAll("[data-instruction-key]")
+    ).find((candidate) => candidate.dataset.instructionKey === row.dataset.editorKey);
+    if (!button) return;
+    const title = instructionTitle(row);
+    const label = button.querySelector("[data-list-label]");
+    const id = button.querySelector("[data-list-id]");
+    if (label) label.textContent = title.label;
+    if (id) id.textContent = title.id;
+  }
+
+  function rebuildInstructionList() {
+    if (!instructionList) return;
+    instructionList.innerHTML = "";
+    const rows = Array.from(
+      instructionRows.querySelectorAll(".board-room-instruction-row")
+    );
+
+    if (!rows.length) {
+      const empty = document.createElement("div");
+      empty.className = "board-room-instruction-list-empty";
+      empty.textContent = "추가된 지시문이 없습니다.";
+      instructionList.append(empty);
+      selectInstruction(null);
+      return;
+    }
+
+    rows.forEach((row) => {
+      if (!row.dataset.editorKey) {
+        row.dataset.editorKey = "instruction-" + (++instructionEditorSequence);
+      }
+      const title = instructionTitle(row);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "board-room-instruction-list-item";
+      button.dataset.instructionKey = row.dataset.editorKey;
+
+      const label = document.createElement("strong");
+      label.dataset.listLabel = "";
+      label.textContent = title.label;
+
+      const id = document.createElement("span");
+      id.dataset.listId = "";
+      id.textContent = title.id;
+
+      button.append(label, id);
+      button.addEventListener("click", () => selectInstruction(row));
+      instructionList.append(button);
+    });
+
+    if (!selectedInstructionRow || !selectedInstructionRow.isConnected) {
+      selectInstruction(rows[0]);
+    } else {
+      selectInstruction(selectedInstructionRow);
+    }
+  }
+
   function addInstruction(kind) {
     const presets = {
-      forward: { id: "MOVE_FORWARD", label: "n칸 앞으로", action: "move", direction: "forward" },
-      backward: { id: "MOVE_BACKWARD", label: "n칸 뒤로", action: "move", direction: "backward" },
+      forward: { id: "MOVE_FORWARD", label: "{n}칸 앞으로", action: "move", direction: "forward" },
+      backward: { id: "MOVE_BACKWARD", label: "{n}칸 뒤로", action: "move", direction: "backward" },
       start: { id: "MOVE_TO_START", label: "START로 이동", action: "moveToStart" },
       skip: { id: "SKIP_NEXT_THROW", label: "다음 던지기 무효", action: "skipThrow" },
-      multiplier: { id: "MULTIPLY_NEXT_THROW", label: "다음 던지기 m배", action: "multiplyNextThrow" },
+      multiplier: { id: "MULTIPLY_NEXT_THROW", label: "다음 주사위 {m}배", action: "multiplyNextThrow" },
       ignoreLanding: { id: "IGNORE_NEXT_LANDING", label: "다음 칸 무효화", action: "ignoreNextLanding" },
       random: { id: "RANDOM_CELL", label: "랜덤칸", action: "randomCell", randomCell: true },
       custom: { id: "CUSTOM", label: "사용자 지시문", action: "display" }
@@ -143,6 +234,7 @@
     const id = uniqueInstructionId(preset.id);
     const row = document.createElement("div");
     row.className = "board-room-instruction-row";
+    row.dataset.editorKey = "instruction-" + (++instructionEditorSequence);
     row.dataset.actionType = preset.action;
     row.dataset.randomPlaceholder = preset.randomCell ? "true" : "false";
     row.innerHTML = `
@@ -180,20 +272,22 @@
     instructionRows.append(row);
     renderActionOptions(row, preset);
     syncInstructionRow(row);
+    rebuildInstructionList();
+    selectInstruction(row);
   }
 
   function renderActionOptions(row, preset) {
     const root = row.querySelector(".board-room-action-options");
     if (preset.action === "move") {
       root.innerHTML = `
-        <span class="board-room-action-chip">${preset.direction === "backward" ? "n칸 뒤로" : "n칸 앞으로"}</span>
-        <label>N 설정
+        <span class="board-room-action-chip">${preset.direction === "backward" ? "{n}칸 뒤로" : "{n}칸 앞으로"}</span>
+        <label>{n} 설정
           <select data-field="stepsMode">
             <option value="fixed">고정</option>
             <option value="range">범위 랜덤</option>
           </select>
         </label>
-        <label data-fixed-steps>N
+        <label data-fixed-steps>{n}
           <input data-field="stepsValue" type="number" min="1" max="999" step="1" value="1" />
         </label>
         <label data-range-min hidden>최소
@@ -211,7 +305,7 @@
     } else if (preset.action === "multiplyNextThrow") {
       root.innerHTML = `
         <span class="board-room-action-chip">다음 던지기 이동값 배율</span>
-        <label>M
+        <label>{m}
           <input data-field="multiplierValue" type="number" min="2" max="100" step="1" value="2" />
         </label>
       `;
@@ -266,6 +360,8 @@
       row.querySelector("[data-range-min]").hidden = !range;
       row.querySelector("[data-range-max]").hidden = !range;
     }
+
+    updateInstructionListItem(row);
   }
 
   function syncAllInstructionRows() {
@@ -279,9 +375,9 @@
   }
 
   function syncMovement() {
-    const dice = generator.value === "dice";
-    diceFields.hidden = !dice;
-    yutFields.hidden = dice;
+    const mode = generator.value;
+    diceFields.hidden = mode === "yut";
+    yutFields.hidden = mode === "dice";
   }
 
   function syncPauseDonationPolicy() {
@@ -401,8 +497,8 @@
         generator: generator.value,
         diceCount: Number(form.elements.namedItem("diceCount").value),
         extraThrowOnDouble: form.elements.namedItem("extraThrowOnDouble").checked,
-        extraThrowOnYut: form.elements.namedItem("extraThrowOnYut").checked,
-        extraThrowOnMo: form.elements.namedItem("extraThrowOnMo").checked
+        extraThrowOnYut: form.elements.namedItem("extraThrowOnYutMo").checked,
+        extraThrowOnMo: form.elements.namedItem("extraThrowOnYutMo").checked
       },
       rules: {
         landingInstructionMode: "destinationOnly",
@@ -740,16 +836,28 @@
   });
   instructionRows.addEventListener("input", (event) => {
     const row = event.target.closest(".board-room-instruction-row");
-    if (row && (
-      event.target.dataset.field === "allocationValue" ||
-      event.target.dataset.field === "poolWeight"
-    )) {
-      syncInstructionRow(row);
+    if (!row) return;
+    if (
+      event.target.dataset.field === "instructionId" ||
+      event.target.dataset.field === "label"
+    ) {
+      updateInstructionListItem(row);
+      return;
     }
+    syncInstructionRow(row);
   });
   instructionRows.addEventListener("click", (event) => {
     const button = event.target.closest('[data-action="remove"]');
-    if (button) button.closest(".board-room-instruction-row")?.remove();
+    if (!button) return;
+    const row = button.closest(".board-room-instruction-row");
+    if (!row) return;
+    const next = row.nextElementSibling || row.previousElementSibling;
+    row.remove();
+    selectedInstructionRow = null;
+    rebuildInstructionList();
+    if (next?.classList?.contains("board-room-instruction-row") && next.isConnected) {
+      selectInstruction(next);
+    }
   });
 
   document.querySelectorAll("[data-add-board-instruction]").forEach((button) => {
@@ -787,6 +895,7 @@
   syncMovement();
   syncPauseDonationPolicy();
   syncAllInstructionRows();
+  rebuildInstructionList();
   syncExtensionAvailability();
   window.setInterval(syncExtensionAvailability, 1000);
 })();

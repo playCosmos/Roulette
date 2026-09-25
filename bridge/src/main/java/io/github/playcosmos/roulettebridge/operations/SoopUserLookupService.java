@@ -38,7 +38,7 @@ public final class SoopUserLookupService {
         var request = HttpRequest.newBuilder(URI.create(url))
             .timeout(Duration.ofSeconds(8))
             .header("Accept", "application/json")
-            .header("User-Agent", "RouletteBridge/0.1")
+            .header("User-Agent", "RamyaniGameServer/0.2")
             .GET()
             .build();
         var response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));

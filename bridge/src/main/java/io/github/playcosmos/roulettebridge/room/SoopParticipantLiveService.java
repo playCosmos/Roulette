@@ -1,6 +1,7 @@
 package io.github.playcosmos.roulettebridge.room;
 
 import com.github.getcurrentthread.soopapi.SOOPClient;
+import io.github.playcosmos.roulettebridge.operations.SoopUserLookupService;
 import java.net.ConnectException;
 import java.net.UnknownHostException;
 import java.net.http.HttpTimeoutException;
@@ -17,6 +18,7 @@ import static io.github.playcosmos.roulettebridge.room.RoomModels.*;
 
 public final class SoopParticipantLiveService implements ParticipantLiveChecker {
     private static final long LOOKUP_TIMEOUT_SECONDS = 8L;
+    private final SoopUserLookupService userLookup = new SoopUserLookupService();
 
     @Override
     public List<PlayerConfig> check(List<PlayerConfig> players) {
@@ -40,6 +42,29 @@ public final class SoopParticipantLiveService implements ParticipantLiveChecker 
 
     private PlayerConfig checkOne(PlayerConfig player) {
         String checkedAt = OffsetDateTime.now().toString();
+        String displayName = player.displayName();
+        String profileImageUrl = player.profileImageUrl();
+
+        if (displayName == null || displayName.isBlank()) {
+            try {
+                var lookup = userLookup.lookup(player.soopId(), "id");
+                if (lookup.resolved() && lookup.match() != null) {
+                    displayName = lookup.match().nickname();
+                    if (
+                        (profileImageUrl == null || profileImageUrl.isBlank())
+                        && lookup.match().profileImage() != null
+                        && !lookup.match().profileImage().isBlank()
+                    ) {
+                        profileImageUrl = lookup.match().profileImage();
+                    }
+                }
+            } catch (Exception error) {
+                System.err.println(
+                    "[board-room] SOOP nickname lookup failed for "
+                        + player.soopId() + ": " + message(unwrap(error))
+                );
+            }
+        }
 
         try (var client = new SOOPClient()) {
             var detail = client.live()
@@ -48,8 +73,8 @@ public final class SoopParticipantLiveService implements ParticipantLiveChecker 
 
             return new PlayerConfig(
                 player.soopId(),
-                player.displayName(),
-                player.profileImageUrl(),
+                displayName,
+                profileImageUrl,
                 player.balloonTrigger(),
                 new PlayerLiveStatus(
                     "LIVE",
@@ -69,8 +94,8 @@ public final class SoopParticipantLiveService implements ParticipantLiveChecker 
 
             return new PlayerConfig(
                 player.soopId(),
-                player.displayName(),
-                player.profileImageUrl(),
+                displayName,
+                profileImageUrl,
                 player.balloonTrigger(),
                 new PlayerLiveStatus(
                     transportFailure ? "CHECK_FAILED" : "OFFLINE_OR_UNAVAILABLE",

@@ -106,7 +106,21 @@ public final class RoomService {
             ? DEFAULT_PAUSE_GRACE_SECONDS
             : request.pauseGraceSeconds();
         var preview = generateSafePreview(config);
-        var checkedPlayers = liveChecker.check(config.players());
+        var checkedPlayers = liveChecker.check(config.players()).stream()
+            .map(player -> {
+                String displayName = player.displayName();
+                if (displayName == null || displayName.isBlank()) {
+                    displayName = player.soopId();
+                }
+                return new PlayerConfig(
+                    player.soopId(),
+                    displayName,
+                    player.profileImageUrl(),
+                    player.balloonTrigger(),
+                    player.live()
+                );
+            })
+            .toList();
         config = new NormalizedRoomConfig(
             config.name(),
             checkedPlayers,
@@ -651,7 +665,7 @@ public final class RoomService {
 
             normalized.add(new PlayerConfig(
                 soopId,
-                normalizeText(player.displayName(), soopId),
+                normalizeText(player.displayName(), ""),
                 blankToNull(player.profileImageUrl()),
                 player.balloonTrigger(),
                 null
@@ -727,8 +741,8 @@ public final class RoomService {
             : input;
 
         String generator = normalizeText(movement.generator(), "dice").toLowerCase();
-        if (!Set.of("dice", "yut").contains(generator)) {
-            errors.add(new ValidationError("movement.generator", "generator must be dice or yut"));
+        if (!Set.of("dice", "yut", "mixed").contains(generator)) {
+            errors.add(new ValidationError("movement.generator", "generator must be dice, yut, or mixed"));
             generator = "dice";
         }
 

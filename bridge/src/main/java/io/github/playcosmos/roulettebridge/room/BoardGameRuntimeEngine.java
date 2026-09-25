@@ -371,10 +371,13 @@ public final class BoardGameRuntimeEngine {
                 var throwResolutions = new ArrayList<ResolvedThrow>();
                 var allCellUpdates = new ArrayList<CellUpdate>();
 
+                String turnGenerator = room.config().movement().generator();
+
                 if (player.skipNextThrows > 0) {
                     player.skipNextThrows -= 1;
                     openingThrowSkipped = true;
                 } else {
+                    turnGenerator = selectTurnGenerator(room.config().movement());
                     int pendingBonusThrows = 0;
                     int throwIndex = 0;
                     boolean shouldThrow = true;
@@ -382,7 +385,7 @@ public final class BoardGameRuntimeEngine {
                     while (shouldThrow && throwIndex < MAX_BONUS_CHAIN) {
                         throwIndex += 1;
                         int throwStart = player.position;
-                        var outcome = roll(room.config().movement());
+                        var outcome = roll(room.config().movement(), turnGenerator);
                         int appliedMultiplier = Math.max(1, player.nextThrowMultiplier);
                         player.nextThrowMultiplier = 1;
                         int effectiveSteps = outcome.steps() * appliedMultiplier;
@@ -438,7 +441,7 @@ public final class BoardGameRuntimeEngine {
                         allCellUpdates.addAll(updates);
                         throwResolutions.add(new ResolvedThrow(
                             throwIndex,
-                            room.config().movement().generator(),
+                            turnGenerator,
                             outcome.dice(),
                             outcome.yut(),
                             outcome.steps(),
@@ -491,7 +494,7 @@ public final class BoardGameRuntimeEngine {
                     donation.balloonCount(),
                     player.soopId,
                     player.displayName,
-                    room.config().movement().generator(),
+                    turnGenerator,
                     initialPosition,
                     player.position,
                     player.laps,
@@ -937,8 +940,15 @@ public final class BoardGameRuntimeEngine {
         }
     }
 
-    private ThrowOutcome roll(MovementConfig movement) {
-        if ("yut".equals(movement.generator())) {
+    private String selectTurnGenerator(MovementConfig movement) {
+        if (!"mixed".equals(movement.generator())) {
+            return movement.generator();
+        }
+        return nextInt(2) == 0 ? "dice" : "yut";
+    }
+
+    private ThrowOutcome roll(MovementConfig movement, String generator) {
+        if ("yut".equals(generator)) {
             boolean[] flat = new boolean[4];
             int flatCount = 0;
             for (int i = 0; i < flat.length; i++) {

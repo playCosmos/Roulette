@@ -1,0 +1,106 @@
+name: Ramyani Board Game Server Windows Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "bridge/**"
+      - "games/board/**"
+      - "board-admin.html"
+      - "soop/admin/soop-admin.css"
+      - "soop/admin/board-room-admin.css"
+      - "soop/admin/board-room-admin.js"
+      - ".github/workflows/board-server-windows-package.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Check board browser JavaScript
+        shell: pwsh
+        run: |
+          node --check soop/admin/board-room-admin.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check games/board/js/throw-presentation.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check games/board/js/board.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check games/board/js/board-rect.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build shared server core
+        working-directory: bridge
+        run: mvn --batch-mode --no-transfer-progress clean package
+
+      - name: Verify existing board room/runtime logic
+        working-directory: bridge
+        shell: pwsh
+        run: |
+          java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --room-probe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --board-runtime-probe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -cp target/ramyani-game-server-0.2.0-SNAPSHOT.jar io.github.playcosmos.roulettebridge.boardserver.BoardGameServerMain --board-server-probe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build board-game-only Windows app
+        working-directory: bridge
+        shell: pwsh
+        run: ./package-board-server-windows.ps1 -Version 0.1.0 -SkipBuild
+
+      - name: Verify board-only package
+        working-directory: bridge
+        shell: pwsh
+        run: |
+          $root = Resolve-Path "dist-board/RamyaniBoardGameServer"
+          $exe = Join-Path $root "RamyaniBoardGameServer.exe"
+          if (-not (Test-Path $exe)) { throw "RamyaniBoardGameServer.exe missing" }
+          if (-not (Test-Path (Join-Path $root "config.json"))) { throw "config.json missing" }
+          if (-not (Test-Path (Join-Path $root "runtime/bin/server/jvm.dll"))) { throw "bundled runtime missing" }
+          @(
+            "web/board-admin.html",
+            "web/soop/admin/soop-admin.css",
+            "web/soop/admin/board-room-admin.css",
+            "web/soop/admin/board-room-admin.js",
+            "web/games/board/index.html",
+            "web/games/board/rect.html",
+            "web/games/board/js/board.js",
+            "web/games/board/js/board-rect.js"
+          ) | ForEach-Object {
+            if (-not (Test-Path (Join-Path $root $_))) { throw "required board asset missing: $_" }
+          }
+
+          @(
+            "web/soop-overlay.html",
+            "web/soop-channel.html",
+            "web/assets",
+            "tickets",
+            "backups"
+          ) | ForEach-Object {
+            if (Test-Path (Join-Path $root $_)) { throw "roulette-only asset must not exist: $_" }
+          }
+
+          $probe = Start-Process -FilePath $exe -ArgumentList "--board-server-probe" -Wait -PassThru
+          if ($probe.ExitCode -ne 0) { throw "packaged board server probe failed: $($probe.ExitCode)" }
+
+      - name: Upload board-game-only package
+        uses: actions/upload-artifact@v4
+        with:
+          name: RamyaniBoardGameServer-Windows-x64-v0.1.0
+          path: bridge/dist-board/RamyaniBoardGameServer/**
+          if-no-files-found: error
+          retention-days: 30

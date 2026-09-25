@@ -1,0 +1,18 @@
+{
+  "streamerId": "",
+  "server": {
+    "host": "127.0.0.1",
+    "port": 17830,
+    "websocketPort": 17831,
+    "openBrowserOnStart": true
+  },
+  "storage": {
+    "databasePath": "./data/board-game.db",
+    "webRoot": "./web",
+    "logDirectory": "./logs"
+  },
+  "soop": {
+    "enabled": true,
+    "offlinePollSeconds": 30
+  }
+}

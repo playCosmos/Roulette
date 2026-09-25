@@ -3,7 +3,7 @@ package io.github.playcosmos.roulettebridge.room;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import io.github.playcosmos.roulettebridge.db.BridgeDatabase;
+import io.github.playcosmos.roulettebridge.db.DatabaseAccess;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -33,16 +33,16 @@ public final class RoomService {
     private static final int MAX_SAFE_LAYOUT_ATTEMPTS = 256;
     private static final double TARGET_GRID_RATIO = 4.0d / 3.0d;
 
-    private final BridgeDatabase database;
+    private final DatabaseAccess database;
     private final RoomLayoutGenerator layoutGenerator = new RoomLayoutGenerator();
     private final FixedInstructionCycleValidator cycleValidator = new FixedInstructionCycleValidator();
     private final ParticipantLiveChecker liveChecker;
 
-    public RoomService(BridgeDatabase database) {
+    public RoomService(DatabaseAccess database) {
         this(database, new SoopParticipantLiveService());
     }
 
-    public RoomService(BridgeDatabase database, ParticipantLiveChecker liveChecker) {
+    public RoomService(DatabaseAccess database, ParticipantLiveChecker liveChecker) {
         this.database = database;
         this.liveChecker = liveChecker;
     }

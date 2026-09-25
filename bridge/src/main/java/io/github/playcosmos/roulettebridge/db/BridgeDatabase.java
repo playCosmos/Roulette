@@ -10,7 +10,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
-public final class BridgeDatabase {
+public final class BridgeDatabase implements DatabaseAccess {
     private static final int CURRENT_SCHEMA_VERSION = 9;
     private final Path databasePath;
     private final String jdbcUrl;

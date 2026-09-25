@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import io.github.playcosmos.roulettebridge.db.BridgeDatabase;
+import io.github.playcosmos.roulettebridge.db.DatabaseAccess;
 import io.github.playcosmos.roulettebridge.soop.SoopDonation;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -30,19 +30,19 @@ public final class BoardGameRuntimeEngine {
     private static final int MAX_BONUS_CHAIN = 32;
     private static final int MAX_LANDING_CHAIN = 64;
 
-    private final BridgeDatabase database;
+    private final DatabaseAccess database;
     private final Consumer<BoardTurnEvent> eventSink;
     private final IntUnaryOperator randomInt;
 
     public BoardGameRuntimeEngine(
-        BridgeDatabase database,
+        DatabaseAccess database,
         Consumer<BoardTurnEvent> eventSink
     ) {
         this(database, eventSink, new SecureRandom()::nextInt);
     }
 
     BoardGameRuntimeEngine(
-        BridgeDatabase database,
+        DatabaseAccess database,
         Consumer<BoardTurnEvent> eventSink,
         IntUnaryOperator randomInt
     ) {

@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Ramyani Board Game Server</title>
+  <link rel="stylesheet" href="./soop/admin/soop-admin.css" />
+  <link rel="stylesheet" href="./soop/admin/board-room-admin.css" />
+  <style>
+    .board-server-status { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:16px; }
+    .board-server-status > div { padding:12px; border:1px solid #282e36; border-radius:10px; background:#0d1014; }
+    .board-server-status span { display:block; color:#85909e; font-size:11px; }
+    .board-server-status strong { display:block; margin-top:4px; overflow-wrap:anywhere; }
+    @media(max-width:760px){.board-server-status{grid-template-columns:1fr 1fr}}
+  </style>
+</head>
+<body>
+  <main class="admin-shell">
+    <header class="admin-header">
+      <div>
+        <p class="eyebrow">RAMYANI / BOARD GAME SERVER</p>
+        <h1>보드게임 서버 관리</h1>
+        <p>룰렛/티켓 발급 기능과 분리된 보드게임 전용 서버입니다.</p>
+      </div>
+      <div class="connection" id="boardServerConnection">서버 확인 중</div>
+    </header>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>서버 상태</h2>
+          <p>SOOP 수신 채널은 config.json의 streamerId를 사용합니다. 변경 후 프로그램을 다시 실행하세요.</p>
+        </div>
+      </div>
+      <div class="board-server-status">
+        <div><span>SOOP</span><strong id="boardServerSoop">확인 중</strong></div>
+        <div><span>Streamer ID</span><strong id="boardServerStreamer">-</strong></div>
+        <div><span>WebSocket</span><strong id="boardServerWs">-</strong></div>
+        <div><span>Database</span><strong id="boardServerDb">-</strong></div>
+      </div>
+      <input id="overlayUrlInput" type="hidden" />
+    </section>
+
+    <section class="panel board-room-panel" id="boardRoomPanel">
+      <div class="panel-heading">
+        <div>
+          <h2>보드게임 룸 생성</h2>
+          <p>룸별 설정은 SQLite에 저장합니다. 생성 시 참가자별 SOOP 방송 상태를 확인하고, 서버가 만든 실제 보드 프리뷰를 확인한 뒤 배치를 확정합니다. DRAFT 룸은 여러 개 만들 수 있지만 동시에 활성화되는 룸은 최대 1개입니다.</p>
+        </div>
+      </div>
+
+      <form class="board-room-form" id="boardRoomForm">
+        <fieldset>
+          <legend>룸 기본</legend>
+          <div class="board-room-basic-grid">
+            <label>룸 이름
+              <input name="roomName" autocomplete="off" value="Board Room" maxlength="120" />
+            </label>
+            <label>참가자 수
+              <input id="boardRoomPlayerCount" type="number" min="1" max="6" step="1" value="4" />
+            </label>
+            <label>룸 유지 시간(분)
+              <input name="retentionMinutes" type="number" min="1" max="480" step="1" value="240" />
+            </label>
+            <label>일시정지 중 후원
+              <select name="pauseDonationMode">
+                <option value="QUEUE" selected>유예시간 동안 큐에 저장 후 이후 무시</option>
+                <option value="IGNORE">일시정지 즉시 무시</option>
+              </select>
+            </label>
+            <label>일시정지 후원 유예(초)
+              <input name="pauseGraceSeconds" type="number" min="0" max="120" step="1" value="10" />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>참가자 / 후원 트리거</legend>
+          <p class="board-room-rule-note">각 참가자의 SOOP ID와 정확히 일치하는 후원 이벤트만 사용합니다. 입력한 별풍선 수와 정확히 같은 단일 후원만 해당 참가자의 던지기 이벤트가 됩니다.</p>
+          <div class="board-room-player-list" id="boardRoomPlayers"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>보드</legend>
+          <div class="board-room-board-grid">
+            <label>크기 입력 방식
+              <select id="boardRoomSizingMode">
+                <option value="dimensions">가로/세로</option>
+                <option value="cellCount">전체 칸 수</option>
+              </select>
+            </label>
+            <label>모서리 형상
+              <select name="layoutStyle">
+                <option value="rounded">라운드</option>
+                <option value="rect">직각</option>
+              </select>
+            </label>
+            <span class="board-room-field-cluster" id="boardRoomDimensionsFields">
+              <label>가로 칸
+                <input name="columns" type="number" min="8" max="64" step="1" value="16" />
+              </label>
+              <label>세로 칸
+                <input name="rows" type="number" min="6" max="48" step="1" value="12" />
+              </label>
+            </span>
+            <label id="boardRoomCellCountField" hidden>전체 외곽 칸 수
+              <input name="cellCount" type="number" min="24" step="2" value="52" />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>이동값 생성</legend>
+          <div class="board-room-movement-grid">
+            <label>방식
+              <select id="boardRoomGenerator">
+                <option value="dice">주사위</option>
+                <option value="yut">윷</option>
+              </select>
+            </label>
+            <span class="board-room-field-cluster" id="boardRoomDiceFields">
+              <label>주사위 개수
+                <select name="diceCount">
+                  <option value="1">1개</option>
+                  <option value="2" selected>2개</option>
+                </select>
+              </label>
+              <label class="check-label"><input name="extraThrowOnDouble" type="checkbox" checked />더블이면 한 번 더</label>
+            </span>
+            <span class="board-room-field-cluster" id="boardRoomYutFields" hidden>
+              <label class="check-label"><input name="extraThrowOnYut" type="checkbox" checked />윷이면 한 번 더</label>
+              <label class="check-label"><input name="extraThrowOnMo" type="checkbox" checked />모이면 한 번 더</label>
+            </span>
+          </div>
+          <p class="board-room-rule-note">이동 중 경유 칸은 실행하지 않고 최종 도착 칸 지시문만 처리합니다. 도착 지시문 처리가 끝난 뒤 보너스 던지기를 진행하며, 다음 주사위 무효는 아직 실행하지 않은 보너스 던지기도 취소합니다.</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>지시문 배치</legend>
+          <p class="board-room-rule-note">기본 아무 효과 없음 칸은 별도 배치하지 않은 나머지 칸입니다. 아래 기본 칸과 랜덤칸을 필요한 만큼 추가하세요.</p>
+          <div class="board-room-instruction-toolbar">
+            <button type="button" class="board-room-small-button" data-add-board-instruction="forward">n칸 앞으로</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="backward">n칸 뒤로</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="skip">다음 주사위 무효</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="multiplier">다음 주사위 m배</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="ignoreLanding">다음 칸 무효화</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="random">랜덤칸</button>
+            <button type="button" class="board-room-small-button" data-add-board-instruction="custom">사용자 지시문</button>
+          </div>
+          <div class="board-room-instruction-list" id="boardRoomInstructionRows"></div>
+
+          <div class="board-room-random-row">
+            <label>랜덤 변경 후보 설정
+              <select id="boardRoomRandomPoolMode">
+                <option value="inheritRatioInstructions">비율 지시문 전체 자동 포함 + 원 비율 상속</option>
+                <option value="custom">후보/가중치 직접 설정</option>
+              </select>
+            </label>
+            <p class="board-room-rule-note">자동 상속에서는 비율로 배치한 지시문만 랜덤 후보가 되며, 처음 지정한 비율이 그대로 가중치가 됩니다. 수량 배치 지시문은 기본 후보에서 제외됩니다.</p>
+          </div>
+        </fieldset>
+
+        <div class="board-room-create-actions">
+          <button type="submit" id="boardRoomCreateButton">룸 생성 및 방송 상태 확인</button>
+          <p class="operation-result" id="boardRoomResult">설정을 입력한 뒤 룸을 생성하세요.</p>
+        </div>
+      </form>
+
+      <div class="board-room-live-summary" id="boardRoomLiveSummary" aria-live="polite"></div>
+
+      <div class="board-room-preview-panel" id="boardRoomPreviewPanel" hidden>
+        <div class="board-room-preview-head">
+          <div>
+            <h2>보드 프리뷰</h2>
+            <p class="board-room-preview-meta" id="boardRoomPreviewMeta"></p>
+          </div>
+          <div class="board-room-preview-actions">
+            <button type="button" id="boardRoomRerollButton">다시 배치</button>
+            <button type="button" id="boardRoomCommitButton">이 배치로 확정</button>
+            <label class="board-room-inline-control" id="boardRoomExtendControl">연장(분, 최대 120)
+              <input id="boardRoomExtendMinutes" type="number" min="1" max="120" step="1" value="60" />
+            </label>
+            <button type="button" id="boardRoomExtendButton">시간 연장</button>
+            <button type="button" id="boardRoomPauseButton" hidden>일시정지</button>
+            <button type="button" id="boardRoomResumeButton" hidden>재개</button>
+            <button type="button" id="boardRoomTerminateButton" hidden>룸 종료</button>
+          </div>
+        </div>
+        <div class="board-room-preview-shell">
+          <iframe id="boardRoomPreviewFrame" title="보드게임 룸 프리뷰" loading="lazy"></iframe>
+        </div>
+        <div class="board-room-overlay-row" id="boardRoomOverlayRow" hidden>
+          <input id="boardRoomOverlayUrl" type="text" readonly aria-label="보드게임 OBS 오버레이 주소" />
+          <button type="button" id="boardRoomCopyOverlayButton">OBS 주소 복사</button>
+          <button type="button" id="boardRoomOpenOverlayButton">새 창에서 열기</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      async function refreshServerState() {
+        const badge = document.getElementById("boardServerConnection");
+        try {
+          const response = await fetch("/api/state", { cache: "no-store" });
+          if (!response.ok) throw new Error(response.statusText);
+          const state = await response.json();
+          badge.textContent = "서버 연결됨";
+          document.getElementById("boardServerSoop").textContent = state.soop?.status || "-";
+          document.getElementById("boardServerStreamer").textContent = state.streamerId || "미설정";
+          document.getElementById("boardServerWs").textContent = state.websocketUrl || "-";
+          document.getElementById("boardServerDb").textContent = state.database || "-";
+          const carrier = document.getElementById("overlayUrlInput");
+          carrier.value = location.origin + "/?ws=" + encodeURIComponent(state.websocketUrl || "");
+        } catch (error) {
+          badge.textContent = "서버 연결 대기";
+        }
+      }
+      refreshServerState();
+      setInterval(refreshServerState, 3000);
+    })();
+  </script>
+  <script src="./soop/admin/board-room-admin.js"></script>
+</body>
+</html>

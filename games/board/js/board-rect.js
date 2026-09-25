@@ -100,6 +100,8 @@
   const movingTokenLayerStates = new Map();
 
   const TOKEN_BASE_SIZE = 26;
+  const PLAYER_TOKEN_FALLBACK_SCREEN_SIZE = 42;
+  let fixedPlayerTokenScreenSize = PLAYER_TOKEN_FALLBACK_SCREEN_SIZE;
   const INSTRUCTION_ZONE_RATIO = 0.50;
   const PLAYER_ZONE_RATIO = 0.50;
   const OCCUPIED_HORIZONTAL_INSTRUCTION_ZONE_RATIO = 0.50;
@@ -194,6 +196,13 @@
     cellElements.clear();
     playerZoneElements.clear();
     playerMarkerElements.clear();
+    fixedPlayerTokenScreenSize = PLAYER_TOKEN_FALLBACK_SCREEN_SIZE;
+    if (refs.boardStage) {
+      refs.boardStage.style.setProperty(
+        "--player-token-screen-size",
+        fixedPlayerTokenScreenSize.toFixed(3) + "px"
+      );
+    }
     previousScaleWeights = null;
     neutralSolveCache = null;
 
@@ -1504,6 +1513,7 @@
     }
 
     previousScaleWeights = weights.slice();
+    refreshFixedPlayerTokenScreenSize();
     layoutPlayerTokens(solved.placements, occupancy);
     scheduleMotion();
 
@@ -1836,8 +1846,14 @@
     if (!token || !token.isConnected || !refs.boardStage) return false;
 
     const stageRect = refs.boardStage.getBoundingClientRect();
-    const x = centerX - stageRect.left - (TOKEN_BASE_SIZE * 0.5);
-    const y = centerY - stageRect.top - (TOKEN_BASE_SIZE * 0.5);
+    const tokenSize = Math.max(
+      1,
+      Number.isFinite(fixedPlayerTokenScreenSize)
+        ? fixedPlayerTokenScreenSize
+        : PLAYER_TOKEN_FALLBACK_SCREEN_SIZE
+    );
+    const x = centerX - stageRect.left - (tokenSize * 0.5);
+    const y = centerY - stageRect.top - (tokenSize * 0.5);
 
     token.style.transform =
       "translate3d(" + x.toFixed(3) + "px," +
@@ -1866,6 +1882,40 @@
     for (const playerId of playerTokenElements.keys()) {
       syncPlayerOverlayPosition(playerId, force);
     }
+  }
+
+  function refreshFixedPlayerTokenScreenSize() {
+    if (!refs.boardStage || directTokenAnimations.size > 0) return;
+
+    let previousRenderedSize = 0;
+
+    for (const player of state.players.values()) {
+      const cellIndex = Number(player.position);
+      const cell = cellElements.get(cellIndex);
+      const motion = cellMotionStates.get(cellIndex);
+      if (!cell || !motion) continue;
+
+      const localSize = Number.parseFloat(
+        cell.style.getPropertyValue("--player-token-local-size")
+      );
+      const targetScale = Number(motion.targetScale);
+      if (!Number.isFinite(localSize) || !Number.isFinite(targetScale)) continue;
+
+      // V7까지 실제 말은 이 localSize를 가진 채 board-cell scale의 영향을 받았다.
+      // 따라서 localSize × targetScale가 정지 상태에서 보이던 실제 화면 크기다.
+      previousRenderedSize = Math.max(
+        previousRenderedSize,
+        localSize * Math.abs(targetScale)
+      );
+    }
+
+    if (previousRenderedSize <= 0) return;
+
+    fixedPlayerTokenScreenSize = clamp(previousRenderedSize, 18, 62);
+    refs.boardStage.style.setProperty(
+      "--player-token-screen-size",
+      fixedPlayerTokenScreenSize.toFixed(3) + "px"
+    );
   }
 
   function ensurePlayerTokens() {

@@ -56,7 +56,7 @@ Ramyani Games(라먀니 게임즈)는 SOOP 방송 연동 게임을 한 저장소
 - P0: `END→START`를 포함한 모든 순환 인접 칸의 실제 외곽 간격은 하나의 동일 gap으로 유지하며, 겹침을 허용하지 않는다
 - 참가자별 진행은 독립적이며 공용 턴 없음
 - 참가자별 이동 큐를 별도로 처리
-- 보드 레이아웃/Dock 계산과 셀 스프링 구현은 변경하지 않는다. `20260925-34`, `20260925-35`, V3 이동 코어는 코드에 보존하고 현재 active 이동은 V4 코어를 사용한다. V4는 목적지의 최종 `token.targetX/Y`만 따라가지 않고 **목적지 셀의 현재 `cellMotion.x/y/scale`을 기준으로 매 프레임 실제 화면상 도착 좌표를 계산**한다. 따라서 지시문 칸이 Dock 확대/이동 중이어도 말이 현재 보이는 칸을 따라가며 도착한다. 스텝 종료 시 최종 layout target으로 강제 스냅하지 않고 현재 셀 위치에 맞춘 뒤 기존 token/cell spring에 자연스럽게 인계한다. rAF 복구 timeout은 정상 스텝보다 충분히 긴 `max(900ms, 4×STEP_DELAY_MS)`로 두어 정상 접근 애니메이션을 조기에 절단하지 않는다.
+- 보드 레이아웃/Dock 계산과 셀 스프링 구현은 변경하지 않는다. 기존 V34/V35/V3/V4 이동 구현은 회귀 비교용으로 보존하고, active 이동은 V5를 사용한다. V5는 `targetReady`, `acquireMovementTargetV3`, 스텝별 rAF 준비 확인/재시도/롤백을 사용하지 않는다. 각 스텝은 `논리 위치 1칸 변경 → 기존 layoutNow() 즉시 실행 → 계산된 token target 좌표 캡처 → 해당 좌표까지 STEP_DELAY_MS 동안 이동` 순서로만 처리한다. 목적지는 논리 위치로 항상 결정되며, 렌더 준비 상태를 이유로 이동을 중단하지 않는다.
 - 강조 칸 크기를 먼저 예약하고 남은 루프 공간을 일반 칸에 균등 분배하는 reserve-first 레이아웃을 사용
 - 셀/말 이동은 `left/top/width/height` transition 대신 `requestAnimationFrame` 기반 critically-damped spring과 `translate3d + scale` 합성으로 처리
 - 셀 최종 배치는 START를 고정 앵커로 두고 진행/역방향으로 나누어 배치한 뒤 반대편에서 폐합한다. 한쪽 방향으로 전체 칸 위치 오차가 누적되는 현상을 줄이면서 동일 gap P0를 유지한다.

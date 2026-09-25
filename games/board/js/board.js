@@ -2491,7 +2491,7 @@
     if (!player) return;
 
     if (turn.openingThrowSkipped) {
-      setEventMessage((turn.playerName || player.name) + " · 다음 던지기 스킵");
+      setEventMessage((turn.playerName || player.name) + " · 다음 주사위 무효");
       return;
     }
 

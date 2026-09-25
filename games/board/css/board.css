@@ -116,10 +116,55 @@ body {
   box-shadow: none;
 }
 
+
+.cell-instruction-zone {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+  background: rgba(255,255,255,.012);
+}
+
+.board-cell[data-instruction-edge="top"] .cell-instruction-zone {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: calc(var(--instruction-zone-ratio, .35) * 100%);
+  border-bottom: 1px solid rgba(255,255,255,.07);
+}
+
+.board-cell[data-instruction-edge="bottom"] .cell-instruction-zone {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--instruction-zone-ratio, .35) * 100%);
+  border-top: 1px solid rgba(255,255,255,.07);
+}
+
+.board-cell[data-instruction-edge="left"] .cell-instruction-zone {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(var(--instruction-zone-ratio, .35) * 100%);
+  border-right: 1px solid rgba(255,255,255,.07);
+}
+
+.board-cell[data-instruction-edge="right"] .cell-instruction-zone {
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(var(--instruction-zone-ratio, .35) * 100%);
+  border-left: 1px solid rgba(255,255,255,.07);
+}
+
 .cell-index {
   position: absolute;
-  top: clamp(5px, .5vw, 9px);
-  left: clamp(6px, .58vw, 11px);
+  top: clamp(2px, .22vw, 5px);
+  left: clamp(3px, .28vw, 6px);
+  z-index: 2;
   color: rgba(255,255,255,.34);
   font-size: var(--cell-index-font, 11px);
   font-weight: 850;
@@ -132,20 +177,40 @@ body {
 }
 
 .cell-label {
-  position: absolute;
-  left: clamp(6px, .58vw, 11px);
-  right: clamp(6px, .58vw, 11px);
-  bottom: clamp(5px, .5vw, 9px);
+  position: relative;
+  display: -webkit-box;
+  width: 100%;
+  max-height: 2.35em;
+  padding: clamp(3px, .28vw, 6px);
   overflow: hidden;
   color: var(--muted);
   font-size: var(--cell-label-font, 10px);
+  font-weight: 700;
   line-height: 1.15;
+  text-align: center;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   pointer-events: none;
   transition:
     font-size 280ms cubic-bezier(.16,1,.3,1),
     color 180ms ease;
+}
+
+.board-cell[data-instruction-edge="top"] .cell-label,
+.board-cell[data-instruction-edge="bottom"] .cell-label {
+  padding-left: clamp(18px, 1.3vw, 28px);
+  padding-right: clamp(5px, .42vw, 9px);
+}
+
+.board-cell[data-instruction-edge="left"] .cell-label,
+.board-cell[data-instruction-edge="right"] .cell-label {
+  -webkit-line-clamp: 3;
+  max-height: 3.5em;
+  padding-top: clamp(15px, 1.1vw, 24px);
 }
 
 .board-cell[data-kind="start"] .cell-label {

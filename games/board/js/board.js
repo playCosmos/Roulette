@@ -1554,9 +1554,22 @@
     }
   }
 
-  function snapStepMotionToTargets(playerId) {
+  function snapAllTokenMotionToTargets() {
+    for (const motion of tokenMotionStates.values()) {
+      if (!motion.element.isConnected) continue;
+      motion.x = motion.targetX;
+      motion.y = motion.targetY;
+      motion.scale = motion.targetScale;
+      motion.vx = 0;
+      motion.vy = 0;
+      motion.vs = 0;
+      applyMotionTransform(motion);
+    }
+  }
+
+  function snapStepMotionToTargets() {
     snapBoardMotionToTargets();
-    snapPlayerMotionToTarget(playerId);
+    snapAllTokenMotionToTargets();
   }
 
   const BUBBLE_PIP_POSITIONS = {
@@ -2058,12 +2071,12 @@
 
       // 다음 논리 스텝 전에 현재 스텝의 셀 재배치와 말을 모두 목표 상태에 확정한다.
       // 이전 스텝의 보드 스프링이 다음 플레이어 이동 때 뒤늦게 따라붙는 현상을 막는다.
-      snapStepMotionToTargets(player.id);
+      snapStepMotionToTargets();
       await waitForPaint();
     }
 
     // 마지막 칸에서도 현재 보드/말 상태를 한 번 더 확정한다.
-    snapStepMotionToTargets(player.id);
+    snapStepMotionToTargets();
 
     if (!meta.suppressDestinationEvent) {
       const command = destinationCommand(player.position);

@@ -48,23 +48,6 @@ body {
   inset: 0;
 }
 
-.player-movement-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 5000;
-  overflow: visible;
-  pointer-events: none;
-}
-
-.player-movement-layer .player-token {
-  transform-origin: center center;
-}
-
-.player-token[data-moving="true"] {
-  z-index: 5001;
-  transition: none !important;
-}
-
 .board-stage[data-layout-ready="false"] .board-cell {
   visibility: hidden;
   transition: none !important;

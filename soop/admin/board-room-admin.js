@@ -63,7 +63,7 @@
       const details = Array.isArray(payload.details)
         ? payload.details.map((item) => item.field + ": " + item.message).join(" / ")
         : "";
-      throw new Error((payload.error || response.status + " " + response.statusText) + (details ? " · " + details : ""));
+      throw new Error((payload.error || response.status + " " + response.statusText) + (details ? ": " + details : ""));
     }
     return payload;
   }
@@ -218,7 +218,7 @@
     } else if (preset.action === "ignoreNextLanding") {
       root.innerHTML = '<span class="board-room-action-chip">다음 칸 지시문을 1회 무효화</span>';
     } else if (preset.action === "randomCell") {
-      root.innerHTML = '<span class="board-room-action-chip">랜덤 후보 풀에서 최초/재선정 · 수량 배치만 가능</span>';
+      root.innerHTML = '<span class="board-room-action-chip">랜덤 후보 풀에서 최초/재선정 (수량 배치만 가능)</span>';
     } else {
       root.innerHTML = '<span class="board-room-action-chip">표시/사용자 지시문</span>';
     }
@@ -439,7 +439,7 @@
         : (player.live?.error || "현재 방송을 찾지 못했습니다.");
       card.innerHTML = `
         <div>
-          <strong>P${index + 1} · ${escapeAttribute(player.displayName || player.soopId)}</strong>
+          <strong>P${index + 1} ${escapeAttribute(player.displayName || player.soopId)}</strong>
           <span>${escapeAttribute(player.soopId)}</span>
         </div>
         <div class="board-room-live-state">
@@ -528,11 +528,11 @@
 
     const board = snapshot.config?.board;
     previewMeta.textContent =
-      snapshot.config?.name + " · " +
+      snapshot.config?.name + ", " +
       board.columns + "×" + board.rows +
-      " · " + board.cellCount + "칸 · " +
+      ", " + board.cellCount + "칸, " +
       (board.layoutStyle === "rect" ? "직각" : "라운드") +
-      " · " + snapshot.status;
+      ", " + snapshot.status;
 
     const lifecycle = snapshot.lifecycle || {};
     const lifecycleState = lifecycle.state || (snapshot.status === "READY" ? "ACTIVE" : "DRAFT");
@@ -540,9 +540,9 @@
     const terminated = lifecycleState === "TERMINATED";
 
     previewMeta.textContent +=
-      " · " + lifecycleState +
-      " · 유지 " + (lifecycle.retentionMinutes || 240) + "분" +
-      (lifecycle.queuedDonations ? " · 대기 후원 " + lifecycle.queuedDonations + "건" : "");
+      ", " + lifecycleState +
+      ", 유지 " + (lifecycle.retentionMinutes || 240) + "분" +
+      (lifecycle.queuedDonations ? ", 대기 후원 " + lifecycle.queuedDonations + "건" : "");
 
     rerollButton.disabled = ready || terminated;
     commitButton.disabled = ready || terminated;
@@ -564,7 +564,7 @@
     if (lifecycleState === "PAUSED" && lifecycle.pauseGraceUntil) {
       const graceUntil = new Date(lifecycle.pauseGraceUntil);
       if (!Number.isNaN(graceUntil.getTime())) {
-        previewMeta.textContent += " · 후원 유예 종료 " + graceUntil.toLocaleTimeString();
+        previewMeta.textContent += ", 후원 유예 종료 " + graceUntil.toLocaleTimeString();
       }
     }
 

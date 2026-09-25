@@ -329,6 +329,23 @@ body {
   font-size: var(--cell-label-font, 10px);
 }
 
+/*
+ * 플레이어가 도착한 좌/우 세로칸은 한 줄 최대 3글자를 기준으로 줄바꿈한다.
+ * 공백이 있는 기본 지시문은 단어 단위로 우선 나누고,
+ * 4글자 이상 붙은 문자열도 3글자 폭에서 강제로 다음 줄로 넘긴다.
+ */
+.board-cell[data-kind="instruction"][data-occupied="true"][data-instruction-edge="left"] .cell-label,
+.board-cell[data-kind="instruction"][data-occupied="true"][data-instruction-edge="right"] .cell-label {
+  width: 3.15em;
+  max-width: calc(100% - 4px);
+  max-height: 3.55em;
+  padding: 0;
+  line-height: 1.12;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 3;
+}
+
 /* START는 점유 여부와 무관하게 항상 중앙 고정. */
 .board-cell[data-kind="start"] .cell-label {
   color: var(--accent);

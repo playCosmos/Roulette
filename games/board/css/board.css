@@ -190,7 +190,7 @@ body {
   display: -webkit-box;
   width: 100%;
   max-height: 2.35em;
-  padding: clamp(3px, .28vw, 6px);
+  padding: clamp(4px, .34vw, 7px) clamp(5px, .42vw, 9px);
   overflow: hidden;
   color: var(--muted);
   font-size: var(--cell-label-font, 10px);
@@ -209,17 +209,11 @@ body {
     color 180ms ease;
 }
 
-.board-cell[data-instruction-edge="top"] .cell-label,
-.board-cell[data-instruction-edge="bottom"] .cell-label {
-  padding-left: clamp(18px, 1.3vw, 28px);
-  padding-right: clamp(5px, .42vw, 9px);
-}
-
 .board-cell[data-instruction-edge="left"] .cell-label,
 .board-cell[data-instruction-edge="right"] .cell-label {
-  -webkit-line-clamp: 3;
   max-height: 3.5em;
-  padding-top: clamp(15px, 1.1vw, 24px);
+  padding: clamp(5px, .42vw, 9px) clamp(3px, .28vw, 6px);
+  -webkit-line-clamp: 3;
 }
 
 .board-cell[data-kind="start"] .cell-label {

@@ -88,6 +88,8 @@
   let lastMotionTime = 0;
   let previousScaleWeights = null;
   let neutralSolveCache = null;
+  const rectMovementSolveCache = new Map();
+  let lastValidatedRectSolve = null;
   // 중앙 Throw 연출은 화면이 하나이므로 FIFO로 직렬화한다.
   // 결과 공개 이후의 말 이동은 기존 플레이어별 큐에서 독립적으로 진행된다.
   let throwPresentationQueue = Promise.resolve();
@@ -205,6 +207,8 @@
     }
     previousScaleWeights = null;
     neutralSolveCache = null;
+    rectMovementSolveCache.clear();
+    lastValidatedRectSolve = null;
 
 
     if (motionFrame) {
@@ -496,6 +500,42 @@
     };
   }
 
+  function rectGeometryDistance(a, b) {
+    const dx = Math.max(
+      0,
+      Math.abs(a.centerX - b.centerX) -
+      ((a.width + b.width) * 0.5)
+    );
+    const dy = Math.max(
+      0,
+      Math.abs(a.centerY - b.centerY) -
+      ((a.height + b.height) * 0.5)
+    );
+
+    return Math.hypot(dx, dy);
+  }
+
+  function rectMovementSolveBudget() {
+    const fast = directTokenAnimations.size > 0;
+    return fast
+      ? {
+          fast: true,
+          cornerGuard: 4,
+          cornerIterations: 12,
+          widthGuard: 4,
+          widthIterations: 14,
+          emphasisFactors: [1, 0.78, 0.56, 0.34, 0.16, 0]
+        }
+      : {
+          fast: false,
+          cornerGuard: 12,
+          cornerIterations: 20,
+          widthGuard: 14,
+          widthIterations: 42,
+          emphasisFactors: null
+        };
+  }
+
   function tangentHalfExtent(geometry) {
     return geometry.point.segment % 2 === 0
       ? geometry.width * 0.5
@@ -553,16 +593,22 @@
     let high = previousDistance + step;
     let candidate = cellGeometry(path, high, width, height);
 
-    for (let guard = 0; guard < 12; guard += 1) {
-      if (polygonDistance(previous.corners, candidate.corners) >= gap) break;
+    const budget = rectMovementSolveBudget();
+
+    for (let guard = 0; guard < budget.cornerGuard; guard += 1) {
+      if (rectGeometryDistance(previous, candidate) >= gap) break;
       high += step;
       candidate = cellGeometry(path, high, width, height);
     }
 
-    for (let iteration = 0; iteration < 20; iteration += 1) {
+    for (
+      let iteration = 0;
+      iteration < budget.cornerIterations;
+      iteration += 1
+    ) {
       const middle = (low + high) * 0.5;
       const middleGeometry = cellGeometry(path, middle, width, height);
-      const distance = polygonDistance(previous.corners, middleGeometry.corners);
+      const distance = rectGeometryDistance(previous, middleGeometry);
 
       if (distance >= gap) {
         high = middle;
@@ -654,16 +700,22 @@
     let low = nextDistance - step;
     let candidate = cellGeometry(path, low, width, height);
 
-    for (let guard = 0; guard < 12; guard += 1) {
-      if (polygonDistance(candidate.corners, next.corners) >= gap) break;
+    const budget = rectMovementSolveBudget();
+
+    for (let guard = 0; guard < budget.cornerGuard; guard += 1) {
+      if (rectGeometryDistance(candidate, next) >= gap) break;
       low -= step;
       candidate = cellGeometry(path, low, width, height);
     }
 
-    for (let iteration = 0; iteration < 20; iteration += 1) {
+    for (
+      let iteration = 0;
+      iteration < budget.cornerIterations;
+      iteration += 1
+    ) {
       const middle = (low + high) * 0.5;
       const middleGeometry = cellGeometry(path, middle, width, height);
-      const distance = polygonDistance(middleGeometry.corners, next.corners);
+      const distance = rectGeometryDistance(middleGeometry, next);
 
       if (distance >= gap) {
         low = middle;
@@ -779,9 +831,9 @@
 
     for (let index = 0; index < placements.length; index += 1) {
       const nextIndex = (index + 1) % placements.length;
-      const distance = polygonDistance(
-        placements[index].corners,
-        placements[nextIndex].corners
+      const distance = rectGeometryDistance(
+        placements[index],
+        placements[nextIndex]
       );
 
       adjacentGaps.push(distance);
@@ -807,9 +859,9 @@
 
         if (isAdjacent) continue;
 
-        const distance = polygonDistance(
-          placements[a].corners,
-          placements[b].corners
+        const distance = rectGeometryDistance(
+          placements[a],
+          placements[b]
         );
 
         if (distance <= overlapTolerance) {
@@ -871,7 +923,11 @@
       gap
     );
 
-    for (let iteration = 0; iteration < 42; iteration += 1) {
+    for (
+      let iteration = 0;
+      iteration < budget.widthIterations;
+      iteration += 1
+    ) {
       const middle = (low + high) * 0.5;
       const trial = placeLoopWithWidths(
         path,
@@ -972,10 +1028,11 @@
       return null;
     }
 
+    const budget = rectMovementSolveBudget();
     let highTrial = trialFor(high);
     for (
       let guard = 0;
-      guard < 14 &&
+      guard < budget.widthGuard &&
       !highTrial.frontierCrossed &&
       highTrial.closureGap > gap;
       guard += 1
@@ -1028,10 +1085,44 @@
       };
     }
 
+    const budget = rectMovementSolveBudget();
+
+    if (budget.fast) {
+      for (const emphasisFactor of budget.emphasisFactors) {
+        const solved = solveNormalWidth(
+          path,
+          aspect,
+          weights,
+          gap,
+          neutral.width,
+          emphasisFactor,
+          anchorDistance
+        );
+
+        if (!solved) continue;
+
+        const validation = validatePlacements(solved.placements, gap);
+        if (!validation.valid) continue;
+
+        return {
+          neutralWidth: neutral.width,
+          emphasisFactor,
+          gap,
+          validation,
+          layoutFallback:
+            emphasisFactor >= 0.9999
+              ? "none"
+              : (emphasisFactor <= 0.0001 ? "neutral" : "reduced-emphasis"),
+          ...solved
+        };
+      }
+
+      return null;
+    }
+
     let emphasisFactor = 1;
 
-    // 일반 상황에서는 강조 크기를 100% 예약한다.
-    // P0 충돌이 실제로 발생하는 경우에만 강조 초과분을 조금씩 낮춘다.
+    // 정지/초기 레이아웃은 기존 정밀 solver를 유지한다.
     for (let attempt = 0; attempt < 18; attempt += 1) {
       const solved = solveNormalWidth(
         path,
@@ -1054,7 +1145,8 @@
         emphasisFactor,
         gap,
         validation,
-        layoutFallback: emphasisFactor < 0.9999 ? "reduced-emphasis" : "none",
+        layoutFallback:
+          emphasisFactor < 0.9999 ? "reduced-emphasis" : "none",
         ...solved
       };
 
@@ -1063,9 +1155,7 @@
       emphasisFactor *= 0.94;
     }
 
-    throw new Error(
-      "P0 layout failure: reserve-first layout could not avoid overlap"
-    );
+    return null;
   }
 
   function circularPathDistance(a, b, perimeter) {
@@ -1094,6 +1184,25 @@
 
   function solveTopLeftStartLoop(path, aspect, logicalWeights, gap) {
     const targetDistance = path.perimeter;
+    const geometryKey = [
+      board.cellCount,
+      path.horizontal.toFixed(3),
+      path.vertical.toFixed(3),
+      aspect.toFixed(6),
+      gap.toFixed(3)
+    ].join(":");
+    const fast = directTokenAnimations.size > 0;
+    const weightKey = logicalWeights.map((weight) => weight.toFixed(3)).join(",");
+    const cacheKey = geometryKey + "|" + weightKey;
+
+    if (fast && rectMovementSolveCache.has(cacheKey)) {
+      const cached = rectMovementSolveCache.get(cacheKey);
+      return {
+        ...cached,
+        layoutFallback:
+          cached.layoutFallback === "none" ? "cache" : cached.layoutFallback
+      };
+    }
 
     const solved = solveReserveFirstLoop(
       path,
@@ -1103,17 +1212,50 @@
       targetDistance
     );
 
-    return {
-      ...solved,
-      placements: solved.placements,
-      physicalPlacements: solved.placements,
-      physicalOrder: Array.from(
-        { length: board.cellCount },
-        (_, index) => index
-      ),
-      startPhysicalSlot: 0,
-      startTargetDistance: targetDistance
-    };
+    if (solved) {
+      const result = {
+        ...solved,
+        placements: solved.placements,
+        physicalPlacements: solved.placements,
+        physicalOrder: Array.from(
+          { length: board.cellCount },
+          (_, index) => index
+        ),
+        startPhysicalSlot: 0,
+        startTargetDistance: targetDistance
+      };
+
+      lastValidatedRectSolve = {
+        geometryKey,
+        result
+      };
+
+      if (fast) {
+        rectMovementSolveCache.set(cacheKey, result);
+        if (rectMovementSolveCache.size > 128) {
+          const oldestKey = rectMovementSolveCache.keys().next().value;
+          rectMovementSolveCache.delete(oldestKey);
+        }
+      }
+
+      return result;
+    }
+
+    // 같은 입력을 다음 rAF에서 다시 계산하지 않는다.
+    // 현재 stage geometry와 일치하는 마지막 검증 배치를 즉시 재사용한다.
+    if (
+      lastValidatedRectSolve &&
+      lastValidatedRectSolve.geometryKey === geometryKey
+    ) {
+      return {
+        ...lastValidatedRectSolve.result,
+        layoutFallback: "last-validated"
+      };
+    }
+
+    throw new Error(
+      "rect layout unavailable: no validated fast or previous layout"
+    );
   }
 
   function motionSmoothTime(mode) {
@@ -3020,7 +3162,7 @@
       try {
         layoutNow();
       } catch (error) {
-        console.error("movement layout step failed; marker remains in destination cell", {
+        console.error("movement layout step failed; keeping last validated rect layout", {
           playerId: id,
           from: previous,
           to: next,
@@ -3028,7 +3170,9 @@
           distance,
           error
         });
-        scheduleLayout();
+        if (refs.boardGrid) {
+          refs.boardGrid.dataset.layoutFallback = "exception-last-valid";
+        }
       }
 
       await animateMarkerTrackedTokenV8(

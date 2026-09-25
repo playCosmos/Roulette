@@ -1342,8 +1342,14 @@
     cell.dataset.curved = String(geometry.point.curved);
     cell.dataset.pathAngle = geometry.point.angle.toFixed(4);
     cell.dataset.instructionEdge = instructionEdgeForGeometry(geometry);
-    cell.style.setProperty("--instruction-zone-ratio", String(INSTRUCTION_ZONE_RATIO));
-    cell.style.setProperty("--player-zone-ratio", String(PLAYER_ZONE_RATIO));
+    cell.style.setProperty(
+      "--instruction-zone-ratio",
+      (INSTRUCTION_ZONE_RATIO * 100).toFixed(2) + "%"
+    );
+    cell.style.setProperty(
+      "--player-zone-ratio",
+      (PLAYER_ZONE_RATIO * 100).toFixed(2) + "%"
+    );
 
     setMotionTarget(
       cellMotionStates,

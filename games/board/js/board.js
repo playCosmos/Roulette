@@ -2787,7 +2787,153 @@
   async function movePlayerStepsActive(playerId, steps) {
     return INSTANT_MOVEMENT_MODE
       ? movePlayerStepsInstant(playerId, steps)
-      : movePlayerStepsCoreV4(playerId, steps);
+      : movePlayerStepsCoreV5(playerId, steps);
+  }
+
+  function animateTokenStepV5(
+    playerId,
+    targetX,
+    targetY,
+    targetScale,
+    visualStart,
+    durationMs = STEP_DELAY_MS
+  ) {
+    const id = String(playerId);
+    const start = visualStart || captureTokenVisualState(id);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const startedAt = performance.now();
+      let frameId = 0;
+      let timeoutId = 0;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (frameId) window.cancelAnimationFrame(frameId);
+        if (timeoutId) window.clearTimeout(timeoutId);
+
+        const motion = tokenMotionStates.get(id);
+        if (motion && motion.element.isConnected) {
+          motion.x = targetX;
+          motion.y = targetY;
+          motion.scale = targetScale;
+          motion.vx = 0;
+          motion.vy = 0;
+          motion.vs = 0;
+          applyMotionTransform(motion);
+        }
+
+        releaseDirectTokenLock(id);
+        resolve();
+      };
+
+      if (!start) {
+        finish();
+        return;
+      }
+
+      const frame = (timestamp) => {
+        if (settled) return;
+
+        const motion = tokenMotionStates.get(id);
+        if (!motion || !motion.element.isConnected) {
+          finish();
+          return;
+        }
+
+        const progress = clamp(
+          (timestamp - startedAt) / Math.max(1, durationMs),
+          0,
+          1
+        );
+        const eased = progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - (Math.pow(-2 * progress + 2, 3) / 2);
+
+        motion.x = start.x + ((targetX - start.x) * eased);
+        motion.y = start.y + ((targetY - start.y) * eased);
+        motion.scale = start.scale + ((targetScale - start.scale) * eased);
+        motion.vx = 0;
+        motion.vy = 0;
+        motion.vs = 0;
+        applyMotionTransform(motion);
+
+        if (progress >= 1) {
+          finish();
+          return;
+        }
+
+        frameId = window.requestAnimationFrame(frame);
+      };
+
+      frameId = window.requestAnimationFrame(frame);
+      timeoutId = window.setTimeout(
+        finish,
+        Math.max(900, durationMs * 4)
+      );
+    });
+  }
+
+  async function movePlayerStepsCoreV5(playerId, steps) {
+    const player = state.players.get(String(playerId));
+    if (!player) throw new Error("unknown player: " + playerId);
+
+    const signedSteps = Number.parseInt(steps, 10) || 0;
+    const direction = signedSteps < 0 ? -1 : 1;
+    const distance = Math.abs(signedSteps);
+    if (!distance) return { ...player };
+
+    for (let moved = 0; moved < distance; moved += 1) {
+      const id = String(player.id);
+      const previous = player.position;
+      const next = normalizeCell(previous + direction);
+
+      directTokenAnimations.add(id);
+      const visualStart = captureTokenVisualState(id);
+
+      // 목적지는 논리 위치로 항상 확정된다.
+      player.position = next;
+      ensurePlayerTokens();
+      renderGlobalState();
+
+      // 기존 레이아웃 계산식을 즉시 한 번 실행해 이 스텝의 좌표를 확정한다.
+      // 별도의 ready/wait/retry 판정은 하지 않는다.
+      layoutNow();
+
+      const motion = tokenMotionStates.get(id);
+      if (!motion || !motion.element.isConnected) {
+        releaseDirectTokenLock(id);
+        throw new Error("player token motion state missing: " + id);
+      }
+
+      const targetX = motion.targetX;
+      const targetY = motion.targetY;
+      const targetScale = motion.targetScale;
+
+      await animateTokenStepV5(
+        id,
+        targetX,
+        targetY,
+        targetScale,
+        visualStart,
+        STEP_DELAY_MS
+      );
+
+      if (
+        direction > 0 &&
+        previous === board.cellCount - 1 &&
+        next === 0
+      ) {
+        player.laps += 1;
+        state.totalLaps += 1;
+        evaluatePhase();
+      }
+    }
+
+    releaseDirectTokenLock(player.id);
+    scheduleMotion();
+    return { ...player };
   }
 
   async function movePlayerStepsCoreV4(playerId, steps) {

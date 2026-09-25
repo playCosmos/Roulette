@@ -130,12 +130,12 @@
 
   function addInstruction(kind) {
     const presets = {
-      forward: { id: "MOVE_FORWARD", label: "+N칸 이동", action: "move", direction: "forward" },
-      backward: { id: "MOVE_BACKWARD", label: "-N칸 이동", action: "move", direction: "backward" },
+      forward: { id: "MOVE_FORWARD", label: "n칸 앞으로", action: "move", direction: "forward" },
+      backward: { id: "MOVE_BACKWARD", label: "n칸 뒤로", action: "move", direction: "backward" },
       start: { id: "MOVE_TO_START", label: "START로 이동", action: "moveToStart" },
-      skip: { id: "SKIP_NEXT_THROW", label: "다음 던지기 무효", action: "skipThrow" },
-      multiplier: { id: "MULTIPLY_NEXT_THROW", label: "다음 던지기 M배", action: "multiplyNextThrow" },
-      ignoreLanding: { id: "IGNORE_NEXT_LANDING", label: "다음 도착 칸 효과 무시", action: "ignoreNextLanding" },
+      skip: { id: "SKIP_NEXT_THROW", label: "다음 주사위 무효", action: "skipThrow" },
+      multiplier: { id: "MULTIPLY_NEXT_THROW", label: "다음 주사위 m배", action: "multiplyNextThrow" },
+      ignoreLanding: { id: "IGNORE_NEXT_LANDING", label: "다음 칸 무효화", action: "ignoreNextLanding" },
       random: { id: "RANDOM_CELL", label: "랜덤칸", action: "randomCell", randomCell: true },
       custom: { id: "CUSTOM", label: "사용자 지시문", action: "display" }
     };
@@ -186,7 +186,7 @@
     const root = row.querySelector(".board-room-action-options");
     if (preset.action === "move") {
       root.innerHTML = `
-        <span class="board-room-action-chip">${preset.direction === "backward" ? "후진" : "전진"}</span>
+        <span class="board-room-action-chip">${preset.direction === "backward" ? "n칸 뒤로" : "n칸 앞으로"}</span>
         <label>N 설정
           <select data-field="stepsMode">
             <option value="fixed">고정</option>
@@ -207,16 +207,16 @@
     } else if (preset.action === "moveToStart") {
       root.innerHTML = '<span class="board-room-action-chip">도착 즉시 START로 이동</span>';
     } else if (preset.action === "skipThrow") {
-      root.innerHTML = '<span class="board-room-action-chip">가장 가까운 다음 실제 던지기 1회 무효</span>';
+      root.innerHTML = '<span class="board-room-action-chip">가장 가까운 다음 주사위 1회 무효</span>';
     } else if (preset.action === "multiplyNextThrow") {
       root.innerHTML = `
-        <span class="board-room-action-chip">다음 실제 던지기 이동값 배율</span>
+        <span class="board-room-action-chip">다음 주사위 이동값 배율</span>
         <label>M
           <input data-field="multiplierValue" type="number" min="2" max="100" step="1" value="2" />
         </label>
       `;
     } else if (preset.action === "ignoreNextLanding") {
-      root.innerHTML = '<span class="board-room-action-chip">다음 실제 도착 칸의 지시문을 1회 무시</span>';
+      root.innerHTML = '<span class="board-room-action-chip">다음 칸 지시문을 1회 무효화</span>';
     } else if (preset.action === "randomCell") {
       root.innerHTML = '<span class="board-room-action-chip">랜덤 후보 풀에서 최초/재선정 · 수량 배치만 가능</span>';
     } else {

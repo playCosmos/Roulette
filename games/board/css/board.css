@@ -48,6 +48,18 @@ body {
   inset: 0;
 }
 
+.player-token-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1500;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.board-stage[data-layout-ready="false"] .player-token-layer {
+  visibility: hidden;
+}
+
 .board-stage[data-layout-ready="false"] .board-cell {
   visibility: hidden;
   transition: none !important;
@@ -423,12 +435,12 @@ body {
 
 /* 기존 tokenLayout의 0.78× center spacing을 재현: 두 말은 지름의 약 22% 겹친다. */
 .board-cell:is([data-instruction-edge="top"], [data-instruction-edge="bottom"])
-  .cell-player-zone[data-count="2"] .player-token + .player-token {
+  .cell-player-zone[data-count="2"] .player-token-marker + .player-token-marker {
   margin-left: calc(var(--player-overlap) * -1);
 }
 
 .board-cell:is([data-instruction-edge="left"], [data-instruction-edge="right"])
-  .cell-player-zone[data-count="2"] .player-token + .player-token {
+  .cell-player-zone[data-count="2"] .player-token-marker + .player-token-marker {
   margin-top: calc(var(--player-overlap) * -1);
 }
 
@@ -437,11 +449,22 @@ body {
   visibility: visible;
 }
 
-.player-token {
+.player-token-marker {
   position: relative;
   flex: 0 0 auto;
   width: var(--player-token-local-size, 13px);
   height: var(--player-token-local-size, 13px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.player-token {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -453,14 +476,20 @@ body {
   box-shadow:
     0 4px 11px rgba(0,0,0,.46),
     0 0 0 1px rgba(0,0,0,.14);
-  font-size: max(5px, calc(var(--player-token-local-size, 13px) * .385));
+  font-size: 10px;
   font-weight: 900;
   line-height: 1;
-  transform: translate3d(0,0,0) scale(1);
+  transform: translate3d(-1000px,-1000px,0);
   transform-origin: center center;
   backface-visibility: hidden;
   will-change: transform;
   transition: box-shadow 330ms ease;
+  pointer-events: none;
+}
+
+.player-token[data-moving="true"] {
+  z-index: 2;
+  transition: none !important;
 }
 
 .player-token[data-stacked="true"] {

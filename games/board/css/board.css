@@ -55,11 +55,13 @@ body {
 }
 
 .board-cell {
+  --cell-border-rgb: 255,255,255;
+  --cell-border-alpha: .42;
   position: absolute;
   left: 0;
   top: 0;
   overflow: hidden;
-  border: 1px solid rgba(255,255,255,.16);
+  border: 1px solid rgba(var(--cell-border-rgb), var(--cell-border-alpha));
   border-radius: var(--cell-radius, 6px);
   background-color: #171b23;
   background-image: none;
@@ -67,53 +69,80 @@ body {
   filter: none;
   mix-blend-mode: normal;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.018),
-    0 7px 22px rgba(0,0,0,.12);
+    inset 0 1px 0 rgba(255,255,255,.035),
+    0 7px 22px rgba(0,0,0,.16);
   transform: translate3d(0,0,0) scale(1);
   transform-origin: center center;
   backface-visibility: hidden;
   will-change: transform;
   contain: layout style;
   transition:
-    border-color 330ms ease,
-    box-shadow 360ms ease;
+    border-color 220ms ease,
+    background-color 220ms ease,
+    box-shadow 260ms ease;
 }
 
-.board-cell[data-kind="start"] {
-  border-color: rgba(255,211,107,.58);
+.board-cell[data-kind="start"],
+.board-cell[data-instruction-type="start"],
+.board-cell[data-instruction-type="start-move"] {
+  --cell-border-rgb: 255,211,107;
   background-color: #1d1b19;
 }
 
-
-.board-cell[data-compact="true"] {
-  background-color: #171b23;
-  border-color: rgba(255,255,255,.12);
-  box-shadow: none;
+.board-cell[data-instruction-type="forward"] {
+  --cell-border-rgb: 69,200,255;
 }
 
-.board-cell[data-kind="start"][data-compact="true"] {
-  background-color: #1d1b19;
-  border-color: rgba(255,211,107,.42);
+.board-cell[data-instruction-type="backward"] {
+  --cell-border-rgb: 255,126,82;
 }
 
-.board-cell[data-occupied="true"] {
-  border-color: rgba(255,255,255,.40);
+.board-cell[data-instruction-type="skip"] {
+  --cell-border-rgb: 255,88,164;
+}
+
+.board-cell[data-instruction-type="multiplier"] {
+  --cell-border-rgb: 174,118,255;
+}
+
+.board-cell[data-instruction-type="ignore"] {
+  --cell-border-rgb: 80,224,154;
+}
+
+.board-cell[data-instruction-type="extra"] {
+  --cell-border-rgb: 255,199,82;
+}
+
+.board-cell[data-instruction-type="custom"] {
+  --cell-border-rgb: 185,196,214;
+}
+
+/* compact는 크기/타이포그래피 판정값일 뿐 시각 강조에는 관여하지 않는다. */
+.board-cell[data-player-state="normal"] {
+  --cell-border-alpha: .42;
+}
+
+.board-cell[data-player-state="adjacent"] {
+  --cell-border-alpha: .70;
+  background-color: #1b2029;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.04),
-    0 12px 32px rgba(0,0,0,.20),
-    0 0 18px rgba(255,255,255,.07);
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 10px 28px rgba(0,0,0,.20),
+    0 0 12px rgba(var(--cell-border-rgb), .10);
 }
 
-.board-cell[data-compact="true"][data-occupied="true"] {
-  background-color: #171b23;
-  border-color: rgba(255,255,255,.24);
-  box-shadow: none;
+.board-cell[data-player-state="occupied"] {
+  --cell-border-alpha: .96;
+  background-color: #202733;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    0 14px 36px rgba(0,0,0,.24),
+    0 0 20px rgba(var(--cell-border-rgb), .18);
 }
 
-.board-cell[data-kind="start"][data-compact="true"][data-occupied="true"] {
-  background-color: #1d1b19;
-  border-color: rgba(255,211,107,.48);
-  box-shadow: none;
+.board-cell[data-kind="start"][data-player-state="adjacent"],
+.board-cell[data-kind="start"][data-player-state="occupied"] {
+  background-color: #282319;
 }
 
 

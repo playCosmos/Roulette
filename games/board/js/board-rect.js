@@ -1030,10 +1030,9 @@
 
     let emphasisFactor = 1;
 
-    // 강조 배율 때문에 P0 검증이 실패해도 해당 이동 스텝의 layout 전체를 버리지 않는다.
-    // 기존 18회는 약 0.33 배율에서 바로 throw하여 이전 scale target이 한 스텝 남을 수 있었다.
-    // 유효한 강조 배율을 충분히 낮은 구간까지 계속 탐색한다.
-    for (let attempt = 0; attempt < 48; attempt += 1) {
+    // 일반 상황에서는 강조 크기를 100% 예약한다.
+    // P0 충돌이 실제로 발생하는 경우에만 강조 초과분을 조금씩 낮춘다.
+    for (let attempt = 0; attempt < 18; attempt += 1) {
       const solved = solveNormalWidth(
         path,
         aspect,
@@ -1044,57 +1043,28 @@
         anchorDistance
       );
 
-      if (solved) {
-        const validation = validatePlacements(solved.placements, gap);
-        const result = {
-          neutralWidth: neutral.width,
-          emphasisFactor,
-          gap,
-          validation,
-          layoutFallback: emphasisFactor < 0.9999 ? "reduced-emphasis" : "none",
-          ...solved
-        };
-
-        if (validation.valid) return result;
+      if (!solved) {
+        emphasisFactor *= 0.94;
+        continue;
       }
+
+      const validation = validatePlacements(solved.placements, gap);
+      const result = {
+        neutralWidth: neutral.width,
+        emphasisFactor,
+        gap,
+        validation,
+        layoutFallback: emphasisFactor < 0.9999 ? "reduced-emphasis" : "none",
+        ...solved
+      };
+
+      if (validation.valid) return result;
 
       emphasisFactor *= 0.94;
     }
 
-    // 같은 입력을 다음 rAF에서 재시도해도 결과는 같으므로 throw 후 지연 재시도하지 않는다.
-    // 마지막 안전망은 강조를 완전히 제거한 동일 anchor 배치이며,
-    // 이것도 P0 검증을 통과한 경우에만 사용한다.
-    const neutralWeights = weights.map(() => 1);
-    const neutralSolved = solveNormalWidth(
-      path,
-      aspect,
-      neutralWeights,
-      gap,
-      neutral.width,
-      0,
-      anchorDistance
-    );
-
-    if (neutralSolved) {
-      const neutralValidation = validatePlacements(
-        neutralSolved.placements,
-        gap
-      );
-
-      if (neutralValidation.valid) {
-        return {
-          neutralWidth: neutral.width,
-          emphasisFactor: 0,
-          gap,
-          validation: neutralValidation,
-          layoutFallback: "neutral",
-          ...neutralSolved
-        };
-      }
-    }
-
     throw new Error(
-      "P0 layout failure: no validated emphasized or neutral layout"
+      "P0 layout failure: reserve-first layout could not avoid overlap"
     );
   }
 

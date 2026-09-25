@@ -115,7 +115,7 @@
     const configured = phase && phase.cells ? (phase.cells[index] || {}) : {};
 
     return {
-      label: configured.label ?? (index === 0 ? "START / LAP" : ""),
+      label: configured.label ?? (index === 0 ? "START" : ""),
       command: configured.command || null,
       kind: configured.kind || (index === 0 ? "start" : "normal"),
       instructionType: configured.instructionType || (index === 0 ? "start" : "normal"),

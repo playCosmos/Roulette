@@ -98,6 +98,9 @@
   const PLAYER_EDGE_PADDING = 5;
   const MOTION_EPSILON = 0.025;
   const VELOCITY_EPSILON = 0.04;
+  // P0 gap 허용오차(0.05px)에 충분한 정밀도를 유지하면서 이동 중 solver 부하를 줄인다.
+  const GEOMETRY_SEARCH_ITERATIONS = 14;
+  const WIDTH_SOLVE_ITERATIONS = 20;
 
   function normalizeCell(index) {
     const numeric = Number.parseInt(index, 10);
@@ -538,7 +541,7 @@
       candidate = cellGeometry(path, high, width, height);
     }
 
-    for (let iteration = 0; iteration < 24; iteration += 1) {
+    for (let iteration = 0; iteration < GEOMETRY_SEARCH_ITERATIONS; iteration += 1) {
       const middle = (low + high) * 0.5;
       const middleGeometry = cellGeometry(path, middle, width, height);
       const distance = polygonDistance(previous.corners, middleGeometry.corners);
@@ -622,7 +625,7 @@
       candidate = cellGeometry(path, low, width, height);
     }
 
-    for (let iteration = 0; iteration < 24; iteration += 1) {
+    for (let iteration = 0; iteration < GEOMETRY_SEARCH_ITERATIONS; iteration += 1) {
       const middle = (low + high) * 0.5;
       const middleGeometry = cellGeometry(path, middle, width, height);
       const distance = polygonDistance(middleGeometry.corners, next.corners);
@@ -833,7 +836,7 @@
       gap
     );
 
-    for (let iteration = 0; iteration < 42; iteration += 1) {
+    for (let iteration = 0; iteration < WIDTH_SOLVE_ITERATIONS; iteration += 1) {
       const middle = (low + high) * 0.5;
       const trial = placeLoopWithWidths(
         path,
@@ -948,7 +951,7 @@
       highTrial = trialFor(high);
     }
 
-    for (let iteration = 0; iteration < 42; iteration += 1) {
+    for (let iteration = 0; iteration < WIDTH_SOLVE_ITERATIONS; iteration += 1) {
       const middle = (low + high) * 0.5;
       const trial = trialFor(middle);
       const tooLarge =
@@ -1538,6 +1541,24 @@
     applyMotionTransform(motion);
   }
 
+  function snapBoardMotionToTargets() {
+    for (const motion of cellMotionStates.values()) {
+      if (!motion.element.isConnected) continue;
+      motion.x = motion.targetX;
+      motion.y = motion.targetY;
+      motion.scale = motion.targetScale;
+      motion.vx = 0;
+      motion.vy = 0;
+      motion.vs = 0;
+      applyMotionTransform(motion);
+    }
+  }
+
+  function snapStepMotionToTargets(playerId) {
+    snapBoardMotionToTargets();
+    snapPlayerMotionToTarget(playerId);
+  }
+
   const BUBBLE_PIP_POSITIONS = {
     1: ["c"],
     2: ["tl", "br"],
@@ -2035,15 +2056,14 @@
       if (committed) await waitForPaint();
       await delay(STEP_DELAY_MS);
 
-      // 스프링이 다음 논리 스텝보다 뒤처지지 않도록 현재 칸 목표에 정확히 착지시킨다.
-      // 착지 상태도 한 프레임 노출한 뒤 다음 칸으로 넘어가므로 중간 눈금이 합쳐지지 않는다.
-      snapPlayerMotionToTarget(player.id);
+      // 다음 논리 스텝 전에 현재 스텝의 셀 재배치와 말을 모두 목표 상태에 확정한다.
+      // 이전 스텝의 보드 스프링이 다음 플레이어 이동 때 뒤늦게 따라붙는 현상을 막는다.
+      snapStepMotionToTargets(player.id);
       await waitForPaint();
     }
 
-    // 마지막 칸은 이미 각 스텝 끝에서 목표 좌표에 맞췄지만,
-    // 보드 전체 셀 모션과 외부 갱신이 남은 경우를 위해 최종 위치를 한 번 더 보장한다.
-    snapPlayerMotionToTarget(player.id);
+    // 마지막 칸에서도 현재 보드/말 상태를 한 번 더 확정한다.
+    snapStepMotionToTargets(player.id);
 
     if (!meta.suppressDestinationEvent) {
       const command = destinationCommand(player.position);

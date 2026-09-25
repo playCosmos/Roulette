@@ -88,6 +88,7 @@
   // 결과 공개 이후의 말 이동은 기존 플레이어별 큐에서 독립적으로 진행된다.
   let throwPresentationQueue = Promise.resolve();
   let roomTurnPlaybackQueue = Promise.resolve();
+  const instructionFlashTimers = new Map();
 
   const TOKEN_BASE_SIZE = 26;
   const INSTRUCTION_ZONE_RATIO = 0.70;
@@ -1489,7 +1490,12 @@
     bubble.className = "player-result-bubble";
     bubble.dataset.visible = "false";
 
-    token.append(label, bubble);
+    const effectBadges = document.createElement("span");
+    effectBadges.className = "player-effect-badges";
+    effectBadges.dataset.visible = "false";
+
+    token.append(label, bubble, effectBadges);
+    renderDemoEffectBadges(player.id);
     return token;
   }
 
@@ -1497,6 +1503,7 @@
     token.title = player.name;
     const label = token.querySelector(".player-token-label");
     if (label) label.textContent = player.shortLabel;
+    renderDemoEffectBadges(player.id);
   }
 
   function createBubbleDie(value) {
@@ -2180,6 +2187,78 @@
     return demoEffectStates.get(id);
   }
 
+  function renderDemoEffectBadges(playerId) {
+    const token = playerTokenElements.get(String(playerId));
+    if (!token) return;
+
+    const root = token.querySelector(".player-effect-badges");
+    if (!root) return;
+    root.innerHTML = "";
+
+    if (!DEMO_MODE) {
+      root.dataset.visible = "false";
+      return;
+    }
+
+    const effects = demoEffectStates.get(String(playerId));
+    if (!effects) {
+      root.dataset.visible = "false";
+      return;
+    }
+
+    const badges = [];
+    if (effects.skipNextThrows > 0) {
+      badges.push({
+        effect: "skip",
+        text: effects.skipNextThrows > 1
+          ? "무효×" + effects.skipNextThrows
+          : "무효"
+      });
+    }
+    if (effects.nextThrowMultiplier > 1) {
+      badges.push({
+        effect: "multiplier",
+        text: "×" + effects.nextThrowMultiplier
+      });
+    }
+    if (effects.ignoreNextLandingEffects > 0) {
+      badges.push({
+        effect: "ignore",
+        text: effects.ignoreNextLandingEffects > 1
+          ? "칸 무효×" + effects.ignoreNextLandingEffects
+          : "칸 무효"
+      });
+    }
+
+    for (const badge of badges) {
+      const element = document.createElement("span");
+      element.className = "player-effect-badge";
+      element.dataset.effect = badge.effect;
+      element.textContent = badge.text;
+      root.append(element);
+    }
+
+    root.dataset.visible = String(badges.length > 0);
+  }
+
+  function flashDemoInstructionCell(cellIndex, mode = "triggered", duration = 560) {
+    const index = normalizeCell(cellIndex);
+    const cell = cellElements.get(index);
+    if (!cell) return;
+
+    const previousTimer = instructionFlashTimers.get(index);
+    if (previousTimer) window.clearTimeout(previousTimer);
+
+    cell.dataset.instructionFlash = mode;
+    const timer = window.setTimeout(() => {
+      if (cell.dataset.instructionFlash === mode) {
+        delete cell.dataset.instructionFlash;
+      }
+      instructionFlashTimers.delete(index);
+    }, duration);
+    instructionFlashTimers.set(index, timer);
+  }
+
   function demoRawThrowSteps(event) {
     if (event.generator === "dice") {
       return (event.dice?.values || []).reduce(
@@ -2203,6 +2282,7 @@
     const effects = demoEffectState(event.playerId);
     const multiplier = Math.max(1, effects.nextThrowMultiplier || 1);
     effects.nextThrowMultiplier = 1;
+    renderDemoEffectBadges(event.playerId);
     const rawSteps = demoRawThrowSteps(event);
 
     return {
@@ -2235,10 +2315,13 @@
 
       if (effects.ignoreNextLandingEffects > 0) {
         effects.ignoreNextLandingEffects -= 1;
+        renderDemoEffectBadges(player.id);
+        flashDemoInstructionCell(player.position, "ignored", 620);
         setEventMessage(
           player.name + ": " + (command || "현재 칸") + " 효과 무효"
         );
         emitDemoInstruction(player, definition, { effectIgnored: true });
+        await delay(420);
         return { safetyStopped: false };
       }
 
@@ -2246,6 +2329,12 @@
         setEventMessage(player.name + " 이동 완료");
         return { safetyStopped: false };
       }
+
+      flashDemoInstructionCell(
+        player.position,
+        depth > 0 ? "chain" : "triggered",
+        620
+      );
 
       if (
         definition.instructionType === "forward" ||
@@ -2263,24 +2352,34 @@
         }
         visitedMoves.add(visitKey);
 
-        setEventMessage(player.name + ": " + command);
+        setEventMessage(
+          player.name + ": " + command +
+          (depth > 0 ? " (연쇄)" : "")
+        );
         emitDemoInstruction(player, definition, {
-          actionMoveSteps: signedSteps
+          actionMoveSteps: signedSteps,
+          chainDepth: depth
         });
-        await delay(180);
+
+        // 지시문 발동을 눈으로 확인한 뒤 추가 이동을 시작한다.
+        await delay(420);
         await movePlayerBy(player.id, signedSteps, {
           source: "데모 지시문",
           suppressDestinationEvent: true
         });
+        // 다음 도착 칸을 잠깐 확인한 후 연쇄 효과를 판정한다.
+        await delay(220);
         continue;
       }
 
       if (definition.instructionType === "skip") {
         effects.skipNextThrows += 1;
+        renderDemoEffectBadges(player.id);
         setEventMessage(player.name + ": 다음 던지기 무효 획득");
         emitDemoInstruction(player, definition, {
           skipNextThrows: effects.skipNextThrows
         });
+        await delay(420);
         return { safetyStopped: false };
       }
 
@@ -2290,6 +2389,7 @@
           2,
           Number.parseInt(match?.[1] || "2", 10) || 2
         );
+        renderDemoEffectBadges(player.id);
         setEventMessage(
           player.name + ": 다음 던지기 " +
           effects.nextThrowMultiplier + "배 적용 대기"
@@ -2297,15 +2397,18 @@
         emitDemoInstruction(player, definition, {
           nextThrowMultiplier: effects.nextThrowMultiplier
         });
+        await delay(420);
         return { safetyStopped: false };
       }
 
       if (definition.instructionType === "ignore") {
         effects.ignoreNextLandingEffects += 1;
+        renderDemoEffectBadges(player.id);
         setEventMessage(player.name + ": 다음 칸 효과 무효화 대기");
         emitDemoInstruction(player, definition, {
           ignoreNextLandingEffects: effects.ignoreNextLandingEffects
         });
+        await delay(420);
         return { safetyStopped: false };
       }
 
@@ -2465,6 +2568,7 @@
 
     if (effects.skipNextThrows > 0) {
       effects.skipNextThrows -= 1;
+      renderDemoEffectBadges(player.id);
       setEventMessage(player.name + ": 다음 던지기 무효 적용");
       window.dispatchEvent(new CustomEvent("ramyani-board:demoskip", {
         detail: {
@@ -2497,8 +2601,10 @@
       bonus = Boolean(event.bonusThrow);
       if (bonus && effects.skipNextThrows > 0) {
         effects.skipNextThrows -= 1;
+        renderDemoEffectBadges(player.id);
         bonus = false;
         setEventMessage(player.name + ": 보너스 던지기 무효");
+        await delay(420);
       }
 
       if (bonus) await delay(350);

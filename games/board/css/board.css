@@ -145,6 +145,74 @@ body {
   background-color: #282319;
 }
 
+/* 데모 지시문 발동 피드백: 셀 크기/위치는 건드리지 않고 기존 지시문 색만 강조한다. */
+.board-cell[data-instruction-flash="triggered"],
+.board-cell[data-instruction-flash="chain"] {
+  --cell-border-alpha: 1;
+  background-color: #252b35;
+  box-shadow:
+    inset 0 0 0 2px rgba(var(--cell-border-rgb), .48),
+    inset 0 1px 0 rgba(255,255,255,.12),
+    0 0 26px rgba(var(--cell-border-rgb), .40),
+    0 16px 38px rgba(0,0,0,.28);
+}
+
+.board-cell[data-instruction-flash="ignored"] {
+  --cell-border-alpha: .92;
+  background-color: #20242b;
+  box-shadow:
+    inset 0 0 0 2px rgba(255,255,255,.18),
+    0 0 18px rgba(var(--cell-border-rgb), .20);
+}
+
+.board-cell[data-instruction-flash] .cell-label {
+  color: rgba(255,255,255,.98);
+}
+
+.player-effect-badges {
+  position: absolute;
+  z-index: 2200;
+  left: 50%;
+  top: -8px;
+  display: none;
+  align-items: center;
+  gap: 3px;
+  transform: translate(-50%, -100%) scale(var(--bubble-inverse-scale, 1));
+  transform-origin: bottom center;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.player-effect-badges[data-visible="true"] {
+  display: flex;
+}
+
+.player-effect-badge {
+  min-width: 24px;
+  padding: 3px 5px;
+  border: 1px solid rgba(255,255,255,.34);
+  border-radius: 8px;
+  background: rgba(17,20,27,.94);
+  color: rgba(255,255,255,.96);
+  box-shadow: 0 5px 14px rgba(0,0,0,.34);
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+}
+
+.player-effect-badge[data-effect="skip"] {
+  border-color: rgba(255,88,164,.76);
+}
+
+.player-effect-badge[data-effect="multiplier"] {
+  border-color: rgba(174,118,255,.82);
+}
+
+.player-effect-badge[data-effect="ignore"] {
+  border-color: rgba(80,224,154,.78);
+}
+
 
 .cell-instruction-zone {
   position: absolute;

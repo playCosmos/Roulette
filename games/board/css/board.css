@@ -154,7 +154,7 @@ body {
   justify-content: center;
   overflow: hidden;
   pointer-events: none;
-  background: rgba(255,255,255,.012);
+  background: transparent;
 }
 
 .board-cell[data-instruction-edge="top"] .cell-instruction-zone {
@@ -162,7 +162,6 @@ body {
   right: 0;
   top: 0;
   height: var(--instruction-zone-ratio, 70%);
-  border-bottom: 1px solid rgba(255,255,255,.07);
 }
 
 .board-cell[data-instruction-edge="bottom"] .cell-instruction-zone {
@@ -170,7 +169,6 @@ body {
   right: 0;
   bottom: 0;
   height: var(--instruction-zone-ratio, 70%);
-  border-top: 1px solid rgba(255,255,255,.07);
 }
 
 .board-cell[data-instruction-edge="left"] .cell-instruction-zone {
@@ -178,7 +176,6 @@ body {
   top: 0;
   bottom: 0;
   width: var(--instruction-zone-ratio, 70%);
-  border-right: 1px solid rgba(255,255,255,.07);
 }
 
 .board-cell[data-instruction-edge="right"] .cell-instruction-zone {
@@ -186,23 +183,22 @@ body {
   top: 0;
   bottom: 0;
   width: var(--instruction-zone-ratio, 70%);
-  border-left: 1px solid rgba(255,255,255,.07);
 }
 
 .cell-index {
   position: absolute;
-  top: clamp(2px, .22vw, 5px);
-  left: clamp(3px, .28vw, 6px);
-  z-index: 2;
-  color: rgba(255,255,255,.34);
-  font-size: var(--cell-index-font, 11px);
+  top: 4px;
+  left: 5px;
+  z-index: 3;
+  color: rgba(255,255,255,.46);
+  font-size: 10px;
   font-weight: 850;
   line-height: 1;
   letter-spacing: .02em;
   pointer-events: none;
-  transition:
-    font-size 280ms cubic-bezier(.16,1,.3,1),
-    color 180ms ease;
+  transform: scale(var(--cell-content-inverse-scale, 1));
+  transform-origin: top left;
+  transition: color 180ms ease;
 }
 
 .cell-label {

@@ -1852,7 +1852,7 @@
 
     buildBoard();
     setEventMessage(
-      "보드 크기 변경 · " + board.columns + "×" + board.rows + " · 외곽 " + board.cellCount + "칸"
+      "보드 크기 변경 " + board.columns + "×" + board.rows + ", 외곽 " + board.cellCount + "칸"
     );
 
     window.dispatchEvent(new CustomEvent("ramyani-board:dimensionschange", {
@@ -1897,7 +1897,7 @@
 
       if (changed) {
         setEventMessage(
-          "전체 누적 " + state.totalLaps + "바퀴 · " + next.label + "로 판 전환"
+          "전체 누적 " + state.totalLaps + "바퀴, " + next.label + "로 판 전환"
         );
         window.dispatchEvent(new CustomEvent("ramyani-board:phasechange", {
           detail: {
@@ -1946,7 +1946,7 @@
     }
 
     const command = destinationCommand(player.position);
-    const source = meta.source ? " · " + meta.source : "";
+    const source = meta.source ? " (" + meta.source + ")" : "";
 
     if (command) {
       setEventMessage(player.name + ": " + command + source);
@@ -2232,10 +2232,10 @@
   async function startDemo() {
     seedDemoPlayers(DEMO_PLAYER_COUNT);
     setEventMessage(
-      "통합 Throw Overlay · " +
+      "통합 Throw Overlay " +
       board.columns + "×" + board.rows +
-      " · 외곽 " + board.cellCount +
-      "칸 · 참가자 " + DEMO_PLAYER_COUNT + "명"
+      ", 외곽 " + board.cellCount +
+      "칸, 참가자 " + DEMO_PLAYER_COUNT + "명"
     );
 
     const requested = String(params.get("throw") || "mixed").toLowerCase();
@@ -2437,9 +2437,9 @@
     }
 
     setEventMessage(
-      (snapshot.config?.name || "룸") + " · " +
+      (snapshot.config?.name || "룸") + " " +
       board.columns + "×" + board.rows +
-      " · 외곽 " + board.cellCount + "칸"
+      ", 외곽 " + board.cellCount + "칸"
     );
     return snapshot;
   }
@@ -2483,7 +2483,7 @@
     if (!player) return;
 
     if (turn.openingThrowSkipped) {
-      setEventMessage((turn.playerName || player.name) + " · 다음 주사위 무효");
+      setEventMessage((turn.playerName || player.name) + ": 다음 주사위 무효");
       return;
     }
 
@@ -2664,7 +2664,7 @@
     } else if (!ROOM_ID) {
       setEventMessage(
         board.columns + "×" + board.rows +
-        " · 외곽 " + board.cellCount +
+        ", 외곽 " + board.cellCount +
         "칸 방송 오버레이 준비 완료"
       );
     }

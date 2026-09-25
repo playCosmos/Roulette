@@ -84,7 +84,6 @@
   let lastMotionTime = 0;
   let previousScaleWeights = null;
   let neutralSolveCache = null;
-  const layoutWaiters = [];
   // 중앙 Throw 연출은 화면이 하나이므로 FIFO로 직렬화한다.
   // 결과 공개 이후의 말 이동은 기존 플레이어별 큐에서 독립적으로 진행된다.
   let throwPresentationQueue = Promise.resolve();
@@ -163,8 +162,6 @@
     previousScaleWeights = null;
     neutralSolveCache = null;
 
-    // 보드 재구성 전에 이전 프레임의 레이아웃 대기자를 남겨두지 않는다.
-    resolveLayoutWaiters();
 
     if (motionFrame) {
       window.cancelAnimationFrame(motionFrame);
@@ -1478,12 +1475,6 @@
 
   }
 
-  function resolveLayoutWaiters() {
-    if (!layoutWaiters.length) return;
-    const waiters = layoutWaiters.splice(0, layoutWaiters.length);
-    for (const resolve of waiters) resolve();
-  }
-
   function scheduleLayout() {
     if (layoutFrame) return;
 
@@ -1491,81 +1482,60 @@
       try {
         layoutNow();
       } catch (error) {
-        // 이동 중 일시적인 레이아웃 실패가 발생해도 이동 큐 전체를 교착시키지 않는다.
         layoutFrame = 0;
         console.error("board layout failed", error);
-      } finally {
-        resolveLayoutWaiters();
       }
     });
   }
 
-  function waitForLayoutCommit(timeoutMs = 700) {
+  function flushLayoutNow() {
+    if (layoutFrame) {
+      window.cancelAnimationFrame(layoutFrame);
+      layoutFrame = 0;
+    }
+
+    try {
+      layoutNow();
+      return true;
+    } catch (error) {
+      layoutFrame = 0;
+      console.error("board layout failed", error);
+      // 다음 일반 렌더 프레임에서 다시 시도하되 이동 큐를 기다리게 하지는 않는다.
+      scheduleLayout();
+      return false;
+    }
+  }
+
+  function waitForPaint(timeoutMs = 120) {
     return new Promise((resolve) => {
       let settled = false;
+      let frameId = 0;
       let timeoutId = 0;
 
       const finish = () => {
         if (settled) return;
         settled = true;
+        if (frameId) window.cancelAnimationFrame(frameId);
         if (timeoutId) window.clearTimeout(timeoutId);
-
-        const index = layoutWaiters.indexOf(finish);
-        if (index >= 0) layoutWaiters.splice(index, 1);
         resolve();
       };
 
-      layoutWaiters.push(finish);
+      frameId = window.requestAnimationFrame(finish);
       timeoutId = window.setTimeout(finish, timeoutMs);
-      scheduleLayout();
     });
   }
 
-  function waitForPlayerMotionSettle(playerId, timeoutMs = 900) {
-    const id = String(playerId);
-    const startedAt = performance.now();
+  function snapPlayerMotionToTarget(playerId) {
+    const motion = tokenMotionStates.get(String(playerId));
+    if (!motion) return;
 
-    return new Promise((resolve) => {
-      let settled = false;
-      let timeoutId = 0;
-
-      const finish = (snapToTarget = false) => {
-        if (settled) return;
-        settled = true;
-        if (timeoutId) window.clearTimeout(timeoutId);
-
-        const motion = tokenMotionStates.get(id);
-        if (snapToTarget && motion) {
-          motion.x = motion.targetX;
-          motion.y = motion.targetY;
-          motion.scale = motion.targetScale;
-          motion.vx = 0;
-          motion.vy = 0;
-          motion.vs = 0;
-          applyMotionTransform(motion);
-        }
-        resolve();
-      };
-
-      const check = () => {
-        if (settled) return;
-        const motion = tokenMotionStates.get(id);
-        if (!motion || !stateNeedsMotion(motion)) {
-          finish(false);
-          return;
-        }
-
-        scheduleMotion();
-        if ((performance.now() - startedAt) >= timeoutMs) {
-          finish(true);
-          return;
-        }
-        window.requestAnimationFrame(check);
-      };
-
-      timeoutId = window.setTimeout(() => finish(true), timeoutMs + 80);
-      check();
-    });
+    motion.x = motion.targetX;
+    motion.y = motion.targetY;
+    motion.scale = motion.targetScale;
+    motion.vx = 0;
+    motion.vy = 0;
+    motion.vs = 0;
+    applyMotionTransform(motion);
   }
 
   const BUBBLE_PIP_POSITIONS = {
@@ -2054,17 +2024,26 @@
         evaluatePhase();
       }
 
-      renderPlayers();
+      // 논리 위치를 바꾼 즉시 현재 프레임의 레이아웃/토큰 목표를 확정한다.
+      // 별도 완료 Promise를 기다리지 않으므로 레이아웃 실패가 이동 큐의 교착으로 이어지지 않는다.
+      ensurePlayerTokens();
+      renderGlobalState();
+      const committed = flushLayoutNow();
 
-      // 각 논리 한 칸 이동이 최소 한 번은 실제 레이아웃 목표로 반영되게 한다.
-      // rAF가 밀려 여러 스텝이 한 프레임으로 합쳐지는 현상을 방지한다.
-      await waitForLayoutCommit();
+      // 성공한 커밋은 최소 한 번 실제 페인트 기회를 준 뒤 1칸 이동 시간을 보장한다.
+      // 실패한 커밋도 다음 예약 프레임에서 복구하되 논리 큐를 무한 대기시키지 않는다.
+      if (committed) await waitForPaint();
       await delay(STEP_DELAY_MS);
+
+      // 스프링이 다음 논리 스텝보다 뒤처지지 않도록 현재 칸 목표에 정확히 착지시킨다.
+      // 착지 상태도 한 프레임 노출한 뒤 다음 칸으로 넘어가므로 중간 눈금이 합쳐지지 않는다.
+      snapPlayerMotionToTarget(player.id);
+      await waitForPaint();
     }
 
-    // 마지막 스텝의 말 스프링까지 정착한 뒤 이동 완료로 처리한다.
-    // 과부하 시 제한 시간 뒤 목표 위치로 스냅해 다음 턴에서 뒤늦게 따라가지 않게 한다.
-    await waitForPlayerMotionSettle(player.id);
+    // 마지막 칸은 이미 각 스텝 끝에서 목표 좌표에 맞췄지만,
+    // 보드 전체 셀 모션과 외부 갱신이 남은 경우를 위해 최종 위치를 한 번 더 보장한다.
+    snapPlayerMotionToTarget(player.id);
 
     if (!meta.suppressDestinationEvent) {
       const command = destinationCommand(player.position);

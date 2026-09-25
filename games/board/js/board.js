@@ -2753,6 +2753,58 @@
     return token.getBoundingClientRect();
   }
 
+  function applyScaleAwareTokenPositionV6(
+    token,
+    startCenterX,
+    startCenterY,
+    eased
+  ) {
+    if (!token || !token.isConnected) return false;
+
+    // 자연 위치를 읽을 때만 보정 transform을 제거한다.
+    // 같은 JS/rAF 실행 안에서 다시 transform을 적용하므로 중간 상태는 paint되지 않는다.
+    token.style.transform = "translate3d(0,0,0)";
+    const naturalRect = token.getBoundingClientRect();
+
+    const targetCenterX =
+      naturalRect.left + (naturalRect.width * 0.5);
+    const targetCenterY =
+      naturalRect.top + (naturalRect.height * 0.5);
+
+    const desiredCenterX =
+      startCenterX + ((targetCenterX - startCenterX) * eased);
+    const desiredCenterY =
+      startCenterY + ((targetCenterY - startCenterY) * eased);
+
+    const localWidth = Math.max(
+      0.0001,
+      token.offsetWidth || TOKEN_BASE_SIZE
+    );
+    const localHeight = Math.max(
+      0.0001,
+      token.offsetHeight || TOKEN_BASE_SIZE
+    );
+    const parentScaleX = Math.max(
+      0.0001,
+      naturalRect.width / localWidth
+    );
+    const parentScaleY = Math.max(
+      0.0001,
+      naturalRect.height / localHeight
+    );
+
+    const localDx =
+      (desiredCenterX - targetCenterX) / parentScaleX;
+    const localDy =
+      (desiredCenterY - targetCenterY) / parentScaleY;
+
+    token.style.transform =
+      "translate3d(" + localDx.toFixed(3) + "px," +
+      localDy.toFixed(3) + "px,0)";
+
+    return true;
+  }
+
   function animateReparentedTokenV6(
     playerId,
     firstRect,
@@ -2772,6 +2824,18 @@
 
     const startCenterX = firstRect.left + (firstRect.width * 0.5);
     const startCenterY = firstRect.top + (firstRect.height * 0.5);
+
+    // 중요: reparent/layout 직후, 브라우저가 다음 프레임을 그리기 전에
+    // progress=0 inverse를 즉시 적용한다.
+    // 목적지 셀 위치가 한 프레임 노출되는 경계 튐을 차단한다.
+    if (!applyScaleAwareTokenPositionV6(
+      token,
+      startCenterX,
+      startCenterY,
+      0
+    )) {
+      return delay(durationMs);
+    }
 
     return new Promise((resolve) => {
       let settled = false;
@@ -2805,50 +2869,15 @@
           ? 1 - Math.pow(1 - progress, 2)
           : progress;
 
-        // 먼저 token transform만 제거해 현재 부모 셀 scale/이동이 적용된
-        // '자연 위치'를 읽는다. transform은 layout을 바꾸지 않으므로
-        // 같은 rAF 안에서 최종 보정 transform을 다시 적용한다.
-        token.style.transform = "translate3d(0,0,0)";
-        const naturalRect = token.getBoundingClientRect();
-        const targetCenterX =
-          naturalRect.left + (naturalRect.width * 0.5);
-        const targetCenterY =
-          naturalRect.top + (naturalRect.height * 0.5);
-
-        // 목적지 셀이 움직이거나 scale 중이어도 현재 자연 위치를 매 프레임
-        // endpoint로 사용한다. 따라서 부모 Dock 모션은 토큰 경로에 중복되지 않는다.
-        const desiredCenterX =
-          startCenterX + ((targetCenterX - startCenterX) * eased);
-        const desiredCenterY =
-          startCenterY + ((targetCenterY - startCenterY) * eased);
-
-        // CSS translate는 부모 좌표계에서 적용되므로 현재 화면 scale의 역수로 변환한다.
-        // 토큰 자체 크기/부모 scale 변화는 취소하지 않고 위치 offset만 보정한다.
-        const localWidth = Math.max(
-          0.0001,
-          token.offsetWidth || TOKEN_BASE_SIZE
-        );
-        const localHeight = Math.max(
-          0.0001,
-          token.offsetHeight || TOKEN_BASE_SIZE
-        );
-        const parentScaleX = Math.max(
-          0.0001,
-          naturalRect.width / localWidth
-        );
-        const parentScaleY = Math.max(
-          0.0001,
-          naturalRect.height / localHeight
-        );
-
-        const localDx =
-          (desiredCenterX - targetCenterX) / parentScaleX;
-        const localDy =
-          (desiredCenterY - targetCenterY) / parentScaleY;
-
-        token.style.transform =
-          "translate3d(" + localDx.toFixed(3) + "px," +
-          localDy.toFixed(3) + "px,0)";
+        if (!applyScaleAwareTokenPositionV6(
+          token,
+          startCenterX,
+          startCenterY,
+          eased
+        )) {
+          finish();
+          return;
+        }
 
         if (progress >= 1) {
           finish();
@@ -2908,7 +2937,8 @@
       await animateReparentedTokenV6(
         player.id,
         firstRect,
-        STEP_DELAY_MS
+        STEP_DELAY_MS,
+        moved === distance - 1
       );
 
       if (

@@ -90,6 +90,8 @@
   let roomTurnPlaybackQueue = Promise.resolve();
 
   const TOKEN_BASE_SIZE = 26;
+  const INSTRUCTION_ZONE_RATIO = 0.35;
+  const PLAYER_ZONE_RATIO = 0.65;
   const MOTION_EPSILON = 0.025;
   const VELOCITY_EPSILON = 0.04;
 
@@ -179,7 +181,11 @@
       label.className = "cell-label";
       label.textContent = definition.command || definition.label;
 
-      cell.append(number, label);
+      const instructionZone = document.createElement("span");
+      instructionZone.className = "cell-instruction-zone";
+      instructionZone.append(number, label);
+
+      cell.append(instructionZone);
       refs.boardGrid.append(cell);
       cellElements.set(index, cell);
     }
@@ -1246,6 +1252,51 @@
     }
   }
 
+  function instructionEdgeForGeometry(geometry) {
+    const tangentX = Math.cos(geometry.point.angle);
+    const tangentY = Math.sin(geometry.point.angle);
+    const inwardX = -tangentY;
+    const inwardY = tangentX;
+
+    if (Math.abs(inwardY) >= Math.abs(inwardX)) {
+      return inwardY >= 0 ? "top" : "bottom";
+    }
+    return inwardX >= 0 ? "left" : "right";
+  }
+
+  function playerZoneForGeometry(geometry) {
+    const edge = instructionEdgeForGeometry(geometry);
+    const left = geometry.centerX - (geometry.width * 0.5);
+    const top = geometry.centerY - (geometry.height * 0.5);
+    let minX = left;
+    let maxX = left + geometry.width;
+    let minY = top;
+    let maxY = top + geometry.height;
+
+    if (edge === "top") {
+      minY += geometry.height * INSTRUCTION_ZONE_RATIO;
+    } else if (edge === "bottom") {
+      maxY -= geometry.height * INSTRUCTION_ZONE_RATIO;
+    } else if (edge === "left") {
+      minX += geometry.width * INSTRUCTION_ZONE_RATIO;
+    } else {
+      maxX -= geometry.width * INSTRUCTION_ZONE_RATIO;
+    }
+
+    return {
+      edge,
+      minX,
+      maxX,
+      minY,
+      maxY,
+      width: Math.max(1, maxX - minX),
+      height: Math.max(1, maxY - minY),
+      centerX: (minX + maxX) * 0.5,
+      centerY: (minY + maxY) * 0.5,
+      point: geometry.point
+    };
+  }
+
   function applyCellGeometry(
     index,
     geometry,
@@ -1285,6 +1336,9 @@
     cell.dataset.dockScale = weight.toFixed(3);
     cell.dataset.curved = String(geometry.point.curved);
     cell.dataset.pathAngle = geometry.point.angle.toFixed(4);
+    cell.dataset.instructionEdge = instructionEdgeForGeometry(geometry);
+    cell.style.setProperty("--instruction-zone-ratio", String(INSTRUCTION_ZONE_RATIO));
+    cell.style.setProperty("--player-zone-ratio", String(PLAYER_ZONE_RATIO));
 
     setMotionTarget(
       cellMotionStates,
@@ -1589,8 +1643,9 @@
       if (!geometry) continue;
 
       const visiblePlayers = players.slice(0, MAX_PLAYERS);
+      const playerZone = playerZoneForGeometry(geometry);
       const baseTokenSize = clamp(
-        Math.min(geometry.width, geometry.height) * 0.46,
+        Math.min(playerZone.width, playerZone.height) * 0.58,
         18,
         62
       );
@@ -1598,7 +1653,7 @@
       const layout = tokenLayout(
         visiblePlayers.length,
         tokenSize,
-        geometry
+        playerZone
       );
 
       visiblePlayers.forEach((player, index) => {
@@ -1620,7 +1675,7 @@
           Math.abs(inwardX) > 0.0001
             ? Math.max(
                 0,
-                ((geometry.width * 0.5) - tokenRadius - edgePadding) /
+                ((playerZone.width * 0.5) - tokenRadius - edgePadding) /
                   Math.abs(inwardX)
               )
             : Infinity;
@@ -1628,31 +1683,31 @@
           Math.abs(inwardY) > 0.0001
             ? Math.max(
                 0,
-                ((geometry.height * 0.5) - tokenRadius - edgePadding) /
+                ((playerZone.height * 0.5) - tokenRadius - edgePadding) /
                   Math.abs(inwardY)
               )
             : Infinity;
         const inwardOffset = Math.min(maxOffsetX, maxOffsetY);
 
         let centerX =
-          geometry.centerX +
+          playerZone.centerX +
           (inwardX * (inwardOffset + slot.depth)) +
           (tangentX * slot.tangent);
         let centerY =
-          geometry.centerY +
+          playerZone.centerY +
           (inwardY * (inwardOffset + slot.depth)) +
           (tangentY * slot.tangent);
 
-        // 여러 말 배치 오프셋이 있어도 셀 밖으로 튀어나오지 않게 최종 clamp.
+        // 토큰은 고정 65% 플레이어 영역 밖으로 절대 넘어가지 않는다.
         centerX = clamp(
           centerX,
-          geometry.centerX - (geometry.width * 0.5) + tokenRadius + edgePadding,
-          geometry.centerX + (geometry.width * 0.5) - tokenRadius - edgePadding
+          playerZone.minX + tokenRadius + edgePadding,
+          playerZone.maxX - tokenRadius - edgePadding
         );
         centerY = clamp(
           centerY,
-          geometry.centerY - (geometry.height * 0.5) + tokenRadius + edgePadding,
-          geometry.centerY + (geometry.height * 0.5) - tokenRadius - edgePadding
+          playerZone.minY + tokenRadius + edgePadding,
+          playerZone.maxY - tokenRadius - edgePadding
         );
 
         token.dataset.cellIndex = String(cellIndex);

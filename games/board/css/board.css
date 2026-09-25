@@ -49,319 +49,83 @@ body {
 }
 
 .board-stage[data-layout-ready="false"] .board-cell,
-.board-stage[data-layout-ready="false"] .player-layer {
-  visibility: hidden;
-  transition: none !important;
-}
-
-.board-cell {
-  --cell-border-rgb: 255,255,255;
-  --cell-border-alpha: .42;
+.board-stage[data-layout-ready="false"] .cell-player-zone {
   position: absolute;
-  left: 0;
-  top: 0;
-  overflow: hidden;
-  border: 1px solid rgba(var(--cell-border-rgb), var(--cell-border-alpha));
-  border-radius: var(--cell-radius, 6px);
-  background-color: #171b23;
-  background-image: none;
-  opacity: 1;
-  filter: none;
-  mix-blend-mode: normal;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.035),
-    0 7px 22px rgba(0,0,0,.16);
-  transform: translate3d(0,0,0) scale(1);
-  transform-origin: center center;
-  backface-visibility: hidden;
-  will-change: transform;
-  contain: layout style;
-  transition:
-    border-color 220ms ease,
-    background-color 220ms ease,
-    box-shadow 260ms ease;
-}
-
-.board-cell[data-kind="start"],
-.board-cell[data-instruction-type="start"],
-.board-cell[data-instruction-type="start-move"] {
-  --cell-border-rgb: 255,211,107;
-  background-color: #1d1b19;
-}
-
-.board-cell[data-instruction-type="forward"] {
-  --cell-border-rgb: 69,200,255;
-}
-
-.board-cell[data-instruction-type="backward"] {
-  --cell-border-rgb: 255,126,82;
-}
-
-.board-cell[data-instruction-type="skip"] {
-  --cell-border-rgb: 255,88,164;
-}
-
-.board-cell[data-instruction-type="multiplier"] {
-  --cell-border-rgb: 174,118,255;
-}
-
-.board-cell[data-instruction-type="ignore"] {
-  --cell-border-rgb: 80,224,154;
-}
-
-.board-cell[data-instruction-type="extra"] {
-  --cell-border-rgb: 255,199,82;
-}
-
-.board-cell[data-instruction-type="custom"] {
-  --cell-border-rgb: 185,196,214;
-}
-
-/* compact는 크기/타이포그래피 판정값일 뿐 시각 강조에는 관여하지 않는다. */
-.board-cell[data-player-state="normal"] {
-  --cell-border-alpha: .42;
-}
-
-.board-cell[data-player-state="adjacent"] {
-  --cell-border-alpha: .70;
-  background-color: #1b2029;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.05),
-    0 10px 28px rgba(0,0,0,.20),
-    0 0 12px rgba(var(--cell-border-rgb), .10);
-}
-
-.board-cell[data-player-state="occupied"] {
-  --cell-border-alpha: .96;
-  background-color: #202733;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.08),
-    0 14px 36px rgba(0,0,0,.24),
-    0 0 20px rgba(var(--cell-border-rgb), .18);
-}
-
-.board-cell[data-kind="start"][data-player-state="adjacent"],
-.board-cell[data-kind="start"][data-player-state="occupied"] {
-  background-color: #282319;
-}
-
-/* 데모 지시문 발동 피드백: 셀 크기/위치는 건드리지 않고 기존 지시문 색만 강조한다. */
-.board-cell[data-instruction-flash="triggered"],
-.board-cell[data-instruction-flash="chain"] {
-  --cell-border-alpha: 1;
-  background-color: #252b35;
-  box-shadow:
-    inset 0 0 0 2px rgba(var(--cell-border-rgb), .48),
-    inset 0 1px 0 rgba(255,255,255,.12),
-    0 0 26px rgba(var(--cell-border-rgb), .40),
-    0 16px 38px rgba(0,0,0,.28);
-}
-
-.board-cell[data-instruction-flash="ignored"] {
-  --cell-border-alpha: .92;
-  background-color: #20242b;
-  box-shadow:
-    inset 0 0 0 2px rgba(255,255,255,.18),
-    0 0 18px rgba(var(--cell-border-rgb), .20);
-}
-
-.board-cell[data-instruction-flash] .cell-label {
-  color: rgba(255,255,255,.98);
-}
-
-.player-effect-badges {
-  position: static;
-  z-index: 1;
-  display: none;
-  align-items: center;
-  gap: 3px;
-  pointer-events: none;
-  white-space: nowrap;
-}
-
-.player-effect-badges[data-visible="true"] {
-  display: flex;
-}
-
-.player-effect-badge {
-  min-width: 24px;
-  padding: 3px 5px;
-  border: 1px solid rgba(255,255,255,.34);
-  border-radius: 8px;
-  background: rgba(17,20,27,.94);
-  color: rgba(255,255,255,.96);
-  box-shadow: 0 5px 14px rgba(0,0,0,.34);
-  font-size: 9px;
-  font-weight: 900;
-  line-height: 1;
-  text-align: center;
-}
-
-.player-effect-badge[data-effect="skip"] {
-  border-color: rgba(255,88,164,.76);
-}
-
-.player-effect-badge[data-effect="multiplier"] {
-  border-color: rgba(174,118,255,.82);
-}
-
-.player-effect-badge[data-effect="ignore"] {
-  border-color: rgba(80,224,154,.78);
-}
-
-
-.cell-instruction-zone {
-  position: absolute;
-  z-index: 2;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
+  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  pointer-events: none;
-  background: transparent;
-  transition:
-    left 240ms cubic-bezier(.16,1,.3,1),
-    right 240ms cubic-bezier(.16,1,.3,1),
-    top 240ms cubic-bezier(.16,1,.3,1),
-    bottom 240ms cubic-bezier(.16,1,.3,1);
-}
-
-/*
- * 비점유 지시문 칸은 셀 전체를 사용해 중앙 배치한다.
- * 플레이어가 도착하면 위/아래 가로칸과 좌/우 세로칸 모두
- * 50:50으로 지시문/플레이어 공간을 나눈다.
- * START도 동일한 점유/비점유 위치 규칙을 따른다.
- */
-.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"][data-instruction-edge="top"] .cell-instruction-zone {
-  bottom: var(--occupied-horizontal-player-zone-ratio, 50%);
-}
-
-.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"][data-instruction-edge="bottom"] .cell-instruction-zone {
-  top: var(--occupied-horizontal-player-zone-ratio, 50%);
-}
-
-.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"][data-instruction-edge="left"] .cell-instruction-zone {
-  right: var(--player-zone-ratio, 50%);
-}
-
-.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"][data-instruction-edge="right"] .cell-instruction-zone {
-  left: var(--player-zone-ratio, 50%);
-}
-
-.cell-label {
-  position: relative;
-  display: -webkit-box;
-  width: 100%;
-  max-height: 2.35em;
-  padding: clamp(4px, .34vw, 7px) clamp(5px, .42vw, 9px);
-  overflow: hidden;
-  color: var(--muted);
-  font-size: var(--cell-label-font, 10px);
-  font-weight: 700;
-  line-height: 1.15;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: normal;
-  word-break: keep-all;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  pointer-events: none;
-  transition:
-    font-size 280ms cubic-bezier(.16,1,.3,1),
-    color 180ms ease;
-}
-
-.board-cell[data-instruction-edge="left"] .cell-label,
-.board-cell[data-instruction-edge="right"] .cell-label {
-  max-height: 3.5em;
-  padding: clamp(5px, .42vw, 9px) clamp(3px, .28vw, 6px);
-  -webkit-line-clamp: 3;
-}
-
-/* 플레이어가 없는 지시문 칸은 셀 중앙에서 더 크게 읽히게 한다. */
-.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="false"] .cell-label {
-  max-height: 3.65em;
-  padding: clamp(4px, .34vw, 7px);
-  color: rgba(255,255,255,.80);
-  font-size: calc(var(--cell-label-font, 10px) * 1.28);
-  font-weight: 780;
-  line-height: 1.12;
-  -webkit-line-clamp: 3;
-}
-
-/* 점유되면 플레이어 공간 확보를 위해 기본 크기로 자연스럽게 복귀한다. */
-.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"] .cell-label {
-  font-size: var(--cell-label-font, 10px);
-}
-
-/*
- * 플레이어가 도착한 좌/우 세로칸은 한 줄 최대 3글자를 기준으로 줄바꿈한다.
- * 공백이 있는 기본 지시문은 단어 단위로 우선 나누고,
- * 4글자 이상 붙은 문자열도 3글자 폭에서 강제로 다음 줄로 넘긴다.
- */
-.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"][data-instruction-edge="left"] .cell-label,
-.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"][data-instruction-edge="right"] .cell-label {
-  width: 3.15em;
-  max-width: calc(100% - 4px);
-  max-height: 3.55em;
-  padding: 0;
-  line-height: 1.12;
-  word-break: keep-all;
-  overflow-wrap: anywhere;
-  -webkit-line-clamp: 3;
-}
-
-/* START도 동일한 위치 규칙을 따르되 강조 색과 굵기는 유지한다. */
-.board-cell[data-kind="start"] .cell-label {
-  color: var(--accent);
-  font-weight: 850;
-}
-
-/*
- * START는 영문 5글자이므로 좌/우 세로칸 점유 시에도 한 줄을 유지한다.
- * 일반 지시문의 3글자 폭 규칙보다 뒤에서 우선 적용한다.
- */
-.board-cell[data-kind="start"][data-occupied="true"][data-instruction-edge="left"] .cell-label,
-.board-cell[data-kind="start"][data-occupied="true"][data-instruction-edge="right"] .cell-label {
-  width: 4.2em;
-  max-width: calc(100% - 2px);
-  white-space: nowrap;
-  word-break: normal;
-  overflow-wrap: normal;
-  -webkit-line-clamp: 1;
-}
-
-.player-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 1000;
+  gap: 2px;
   overflow: visible;
   pointer-events: none;
 }
 
-.player-token {
-  position: absolute;
+.board-cell[data-instruction-edge="top"] .cell-player-zone {
   left: 0;
+  right: 0;
+  top: 50%;
+  bottom: 0;
+  flex-flow: row wrap;
+  align-content: flex-start;
+}
+
+.board-cell[data-instruction-edge="bottom"] .cell-player-zone {
+  left: 0;
+  right: 0;
   top: 0;
-  width: 26px;
-  height: 26px;
+  bottom: 50%;
+  flex-flow: row wrap-reverse;
+  align-content: flex-end;
+}
+
+.board-cell[data-instruction-edge="left"] .cell-player-zone {
+  left: 50%;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  flex-flow: column wrap;
+  align-content: flex-start;
+}
+
+.board-cell[data-instruction-edge="right"] .cell-player-zone {
+  left: 0;
+  right: 50%;
+  top: 0;
+  bottom: 0;
+  flex-flow: column wrap-reverse;
+  align-content: flex-end;
+}
+
+.cell-player-zone[data-count="0"] {
+  visibility: hidden;
+}
+
+.cell-player-zone[data-count="1"],
+.cell-player-zone[data-count="2"] {
+  flex-wrap: nowrap;
+}
+
+.cell-player-zone[data-overflow="true"] {
+  visibility: visible;
+}
+
+.player-token {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--player-token-local-size, 13px);
+  height: var(--player-token-local-size, 13px);
   display: grid;
   place-items: center;
   border-radius: 50%;
-  border: clamp(2px, .16vw, 3px) solid rgba(255,255,255,.9);
+  border: clamp(1px, .08vw, 2px) solid rgba(255,255,255,.9);
   background:
     radial-gradient(circle at 35% 30%, rgba(255,255,255,.3), transparent 26%),
     #30394d;
   color: white;
   box-shadow:
-    0 8px 22px rgba(0,0,0,.46),
-    0 0 0 2px rgba(0,0,0,.14);
-  font-size: 10px;
+    0 4px 11px rgba(0,0,0,.46),
+    0 0 0 1px rgba(0,0,0,.14);
+  font-size: max(5px, calc(var(--player-token-local-size, 13px) * .385));
   font-weight: 900;
   line-height: 1;
   transform: translate3d(0,0,0) scale(1);
@@ -373,8 +137,8 @@ body {
 
 .player-token[data-stacked="true"] {
   box-shadow:
-    0 10px 26px rgba(0,0,0,.48),
-    0 0 0 2px rgba(255,255,255,.08);
+    0 5px 13px rgba(0,0,0,.48),
+    0 0 0 1px rgba(255,255,255,.08);
 }
 
 .board-center {

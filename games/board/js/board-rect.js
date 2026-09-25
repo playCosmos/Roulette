@@ -1842,7 +1842,7 @@
 
     buildBoard();
     setEventMessage(
-      "보드 크기 변경 " + board.columns + "×" + board.rows + ", 외곽 " + board.cellCount + "칸"
+      "보드 크기 변경 " + board.columns + "×" + board.rows + " · 외곽 " + board.cellCount + "칸"
     );
 
     window.dispatchEvent(new CustomEvent("ramyani-board:dimensionschange", {
@@ -2224,7 +2224,7 @@
     setEventMessage(
       "통합 Throw Overlay " +
       board.columns + "×" + board.rows +
-      ", 외곽 " + board.cellCount +
+      " · 외곽 " + board.cellCount +
       "칸, 참가자 " + DEMO_PLAYER_COUNT + "명"
     );
 
@@ -2427,7 +2427,7 @@
     }
 
     setEventMessage(
-      (snapshot.config?.name || "룸") + " " +
+      (snapshot.config?.name || "룸") + " · " +
       board.columns + "×" + board.rows +
       ", 외곽 " + board.cellCount + "칸"
     );
@@ -2654,7 +2654,7 @@
     } else if (!ROOM_ID) {
       setEventMessage(
         board.columns + "×" + board.rows +
-        ", 외곽 " + board.cellCount +
+        " · 외곽 " + board.cellCount +
         "칸 방송 오버레이 준비 완료"
       );
     }

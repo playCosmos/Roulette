@@ -2537,8 +2537,221 @@
     return { ...player };
   }
 
+  function currentVisualTokenTargetV4(playerId, cellIndex) {
+    const id = String(playerId);
+    const tokenMotion = tokenMotionStates.get(id);
+    const cellMotion = cellMotionStates.get(Number(cellIndex));
+    const cell = cellElements.get(Number(cellIndex));
+
+    if (!tokenMotion) return null;
+
+    if (!cellMotion || !cell || !cellMotion.element.isConnected) {
+      return {
+        x: tokenMotion.targetX,
+        y: tokenMotion.targetY,
+        scale: tokenMotion.targetScale
+      };
+    }
+
+    const baseWidth = Number.parseFloat(cell.style.width) || 0;
+    const baseHeight = Number.parseFloat(cell.style.height) || 0;
+    if (baseWidth <= 0 || baseHeight <= 0) {
+      return {
+        x: tokenMotion.targetX,
+        y: tokenMotion.targetY,
+        scale: tokenMotion.targetScale
+      };
+    }
+
+    // cell transform-origin이 center center이므로 현재/최종 셀 중심을 직접 계산할 수 있다.
+    const finalCellCenterX = cellMotion.targetX + (baseWidth * 0.5);
+    const finalCellCenterY = cellMotion.targetY + (baseHeight * 0.5);
+    const currentCellCenterX = cellMotion.x + (baseWidth * 0.5);
+    const currentCellCenterY = cellMotion.y + (baseHeight * 0.5);
+
+    const finalTokenCenterX = tokenMotion.targetX + (TOKEN_BASE_SIZE * 0.5);
+    const finalTokenCenterY = tokenMotion.targetY + (TOKEN_BASE_SIZE * 0.5);
+    const localX = finalTokenCenterX - finalCellCenterX;
+    const localY = finalTokenCenterY - finalCellCenterY;
+
+    const scaleRatio = Math.abs(cellMotion.targetScale) > 0.00001
+      ? cellMotion.scale / cellMotion.targetScale
+      : 1;
+
+    return {
+      x:
+        currentCellCenterX +
+        (localX * scaleRatio) -
+        (TOKEN_BASE_SIZE * 0.5),
+      y:
+        currentCellCenterY +
+        (localY * scaleRatio) -
+        (TOKEN_BASE_SIZE * 0.5),
+      scale: tokenMotion.targetScale * scaleRatio
+    };
+  }
+
+  function placeTokenAtCurrentCellVisualTargetV4(playerId, cellIndex) {
+    const id = String(playerId);
+    const motion = tokenMotionStates.get(id);
+    const target = currentVisualTokenTargetV4(id, cellIndex);
+    if (!motion || !target) return false;
+
+    motion.x = target.x;
+    motion.y = target.y;
+    motion.scale = target.scale;
+    motion.vx = 0;
+    motion.vy = 0;
+    motion.vs = 0;
+    applyMotionTransform(motion);
+    return true;
+  }
+
+  function animateTokenStepV4(
+    playerId,
+    expectedCell,
+    visualStart,
+    durationMs = STEP_DELAY_MS
+  ) {
+    const id = String(playerId);
+    const start = visualStart || captureTokenVisualState(id);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const wallStartedAt = performance.now();
+      let frameId = 0;
+      let timeoutId = 0;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (frameId) window.cancelAnimationFrame(frameId);
+        if (timeoutId) window.clearTimeout(timeoutId);
+
+        // 최종 layout target으로 스냅하지 않는다.
+        // 현재 화면에 보이는 목적지 셀 위치에 정확히 맞춘 뒤 Dock spring에 다시 넘긴다.
+        placeTokenAtCurrentCellVisualTargetV4(id, expectedCell);
+        releaseDirectTokenLock(id);
+        resolve();
+      };
+
+      if (!start || !tokenTargetReady(id, expectedCell)) {
+        finish();
+        return;
+      }
+
+      const frame = (timestamp) => {
+        if (settled) return;
+
+        const motion = tokenMotionStates.get(id);
+        const visualTarget = currentVisualTokenTargetV4(id, expectedCell);
+        if (!motion || !motion.element.isConnected || !visualTarget) {
+          finish();
+          return;
+        }
+
+        const progress = clamp(
+          (timestamp - wallStartedAt) / Math.max(1, durationMs),
+          0,
+          1
+        );
+        const eased = progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - (Math.pow(-2 * progress + 2, 3) / 2);
+
+        motion.x = start.x + ((visualTarget.x - start.x) * eased);
+        motion.y = start.y + ((visualTarget.y - start.y) * eased);
+        motion.scale = start.scale + ((visualTarget.scale - start.scale) * eased);
+        motion.vx = 0;
+        motion.vy = 0;
+        motion.vs = 0;
+        applyMotionTransform(motion);
+
+        if (progress >= 1) {
+          finish();
+          return;
+        }
+
+        frameId = window.requestAnimationFrame(frame);
+      };
+
+      frameId = window.requestAnimationFrame(frame);
+
+      // 비정상적인 rAF 중단만 복구한다. 정상 애니메이션보다 충분히 긴 제한으로 조기 절단을 피한다.
+      timeoutId = window.setTimeout(
+        finish,
+        Math.max(900, durationMs * 4)
+      );
+    });
+  }
+
+  async function movePlayerStepsCoreV4(playerId, steps) {
+    const player = state.players.get(String(playerId));
+    if (!player) throw new Error("unknown player: " + playerId);
+
+    const signedSteps = Number.parseInt(steps, 10) || 0;
+    const direction = signedSteps < 0 ? -1 : 1;
+    const distance = Math.abs(signedSteps);
+    if (!distance) return { ...player };
+
+    for (let moved = 0; moved < distance; moved += 1) {
+      const id = String(player.id);
+      const previous = player.position;
+      const next = normalizeCell(previous + direction);
+
+      directTokenAnimations.add(id);
+      const visualStart = captureTokenVisualState(id);
+
+      player.position = next;
+      ensurePlayerTokens();
+      renderGlobalState();
+
+      const targetReady = await acquireMovementTargetV3(
+        id,
+        next,
+        visualStart
+      );
+
+      if (!targetReady) {
+        player.position = previous;
+        ensurePlayerTokens();
+        renderGlobalState();
+        scheduleLayout();
+        restoreTokenVisualState(id, visualStart);
+        releaseDirectTokenLock(id);
+        await waitForRenderFrame();
+        throw new Error(
+          "movement target unavailable: " + id + " -> " + next
+        );
+      }
+
+      await animateTokenStepV4(
+        id,
+        next,
+        visualStart,
+        STEP_DELAY_MS
+      );
+
+      if (
+        direction > 0 &&
+        previous === board.cellCount - 1 &&
+        next === 0
+      ) {
+        player.laps += 1;
+        state.totalLaps += 1;
+        evaluatePhase();
+      }
+    }
+
+    // 최종 셀의 현재 화면 위치에서 종료한다. 최종 layout target 스냅은 하지 않는다.
+    placeTokenAtCurrentCellVisualTargetV4(player.id, player.position);
+    releaseDirectTokenLock(player.id);
+    scheduleMotion();
+    return { ...player };
+  }
+
   async function movePlayerBy(playerId, steps, meta = {}) {
-    const movedPlayer = await movePlayerStepsCoreV3(playerId, steps);
+    const movedPlayer = await movePlayerStepsCoreV4(playerId, steps);
     const player = state.players.get(String(playerId));
     if (!player) return movedPlayer;
 
@@ -2957,7 +3170,7 @@
 
         // 지시문 발동을 눈으로 확인한 뒤 추가 이동을 시작한다.
         await delay(300);
-        await movePlayerStepsCoreV3(player.id, signedSteps);
+        await movePlayerStepsCoreV4(player.id, signedSteps);
         // 다음 도착 칸을 잠깐 확인한 후 연쇄 효과를 판정한다.
         await delay(140);
         continue;

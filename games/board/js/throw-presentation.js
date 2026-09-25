@@ -199,11 +199,11 @@
       const effectiveSteps = Number(event.steps);
       let suffix = "";
       if (multiplier > 1 && Number.isFinite(effectiveSteps)) {
-        suffix += " · ×" + multiplier + " → " + effectiveSteps + "칸";
+        suffix += ", ×" + multiplier + " → " + effectiveSteps + "칸";
       }
-      if (isDouble && event.bonusThrow) suffix += " · 더블! 한 번 더";
-      else if (isDouble) suffix += " · 더블";
-      else if (event.bonusThrow) suffix += " · 한 번 더";
+      if (isDouble && event.bonusThrow) suffix += ", 더블! 한 번 더";
+      else if (isDouble) suffix += ", 더블";
+      else if (event.bonusThrow) suffix += ", 한 번 더";
       return values.join(" + ") + " = " + total + suffix;
     }
 
@@ -215,10 +215,10 @@
       : rawSteps;
     const rawDirection = rawSteps < 0 ? rawSteps + "칸" : "+" + rawSteps + "칸";
     const multiplied = multiplier > 1
-      ? " · ×" + multiplier + " → " + (effectiveSteps >= 0 ? "+" : "") + effectiveSteps + "칸"
+      ? ", ×" + multiplier + " → " + (effectiveSteps >= 0 ? "+" : "") + effectiveSteps + "칸"
       : "";
-    const suffix = event.bonusThrow ? " · 한 번 더" : "";
-    return yutLabel(name) + " · " + rawDirection + multiplied + suffix;
+    const suffix = event.bonusThrow ? ", 한 번 더" : "";
+    return yutLabel(name) + " " + rawDirection + multiplied + suffix;
   }
 
   function setFinalVisual(event) {
@@ -278,7 +278,7 @@
     root.dataset.visible = "true";
     root.dataset.phase = "rolling";
     root.dataset.generator = event.generator;
-    label.textContent = player?.name ? player.name + " · 던지는 중" : "던지는 중";
+    label.textContent = player?.name ? player.name + ": 던지는 중" : "던지는 중";
     result.textContent = "";
     setRollingVisual(event);
 

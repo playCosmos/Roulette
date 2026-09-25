@@ -90,6 +90,7 @@
   let neutralSolveCache = null;
   const rectMovementSolveCache = new Map();
   let lastValidatedRectSolve = null;
+  let rectForcePreciseSolve = false;
   // 중앙 Throw 연출은 화면이 하나이므로 FIFO로 직렬화한다.
   // 결과 공개 이후의 말 이동은 기존 플레이어별 큐에서 독립적으로 진행된다.
   let throwPresentationQueue = Promise.resolve();
@@ -516,23 +517,24 @@
   }
 
   function rectMovementSolveBudget() {
-    const fast = directTokenAnimations.size > 0;
+    const fast =
+      directTokenAnimations.size > 0 &&
+      !rectForcePreciseSolve;
+
     return fast
       ? {
           fast: true,
           cornerGuard: 4,
           cornerIterations: 12,
           widthGuard: 4,
-          widthIterations: 14,
-          emphasisFactors: [1, 0.78, 0.56, 0.34, 0.16, 0]
+          widthIterations: 14
         }
       : {
           fast: false,
           cornerGuard: 12,
           cornerIterations: 20,
           widthGuard: 14,
-          widthIterations: 42,
-          emphasisFactors: null
+          widthIterations: 42
         };
   }
 
@@ -1088,36 +1090,62 @@
     const budget = rectMovementSolveBudget();
 
     if (budget.fast) {
-      for (const emphasisFactor of budget.emphasisFactors) {
-        const solved = solveNormalWidth(
+      // 이동 최적화는 계산 정밀도만 낮춘다.
+      // Dock scale 계약(2.00 / 1.36 / 1.10)은 절대 축소하지 않는다.
+      let solved = solveNormalWidth(
+        path,
+        aspect,
+        weights,
+        gap,
+        neutral.width,
+        1,
+        anchorDistance
+      );
+
+      if (solved) {
+        const validation = validatePlacements(solved.placements, gap);
+        if (validation.valid) {
+          return {
+            neutralWidth: neutral.width,
+            emphasisFactor: 1,
+            gap,
+            validation,
+            layoutFallback: "none",
+            ...solved
+          };
+        }
+      }
+
+      // 빠른 반복수 때문에 검증이 모자란 경우에만 같은 배율(1.0)로
+      // 정밀 계산을 단 한 번 수행한다. 배율을 낮추는 fallback은 금지한다.
+      rectForcePreciseSolve = true;
+      try {
+        solved = solveNormalWidth(
           path,
           aspect,
           weights,
           gap,
           neutral.width,
-          emphasisFactor,
+          1,
           anchorDistance
         );
-
-        if (!solved) continue;
-
-        const validation = validatePlacements(solved.placements, gap);
-        if (!validation.valid) continue;
-
-        return {
-          neutralWidth: neutral.width,
-          emphasisFactor,
-          gap,
-          validation,
-          layoutFallback:
-            emphasisFactor >= 0.9999
-              ? "none"
-              : (emphasisFactor <= 0.0001 ? "neutral" : "reduced-emphasis"),
-          ...solved
-        };
+      } finally {
+        rectForcePreciseSolve = false;
       }
 
-      return null;
+      if (!solved) return null;
+
+      const validation = validatePlacements(solved.placements, gap);
+      if (!validation.valid) return null;
+
+      return {
+        neutralWidth: neutral.width,
+        emphasisFactor: 1,
+        gap,
+        validation,
+        layoutFallback: "precise-scale-preserved",
+        ...solved
+      };
     }
 
     let emphasisFactor = 1;
@@ -1227,6 +1255,7 @@
 
       lastValidatedRectSolve = {
         geometryKey,
+        weightKey,
         result
       };
 
@@ -1245,11 +1274,12 @@
     // 현재 stage geometry와 일치하는 마지막 검증 배치를 즉시 재사용한다.
     if (
       lastValidatedRectSolve &&
-      lastValidatedRectSolve.geometryKey === geometryKey
+      lastValidatedRectSolve.geometryKey === geometryKey &&
+      lastValidatedRectSolve.weightKey === weightKey
     ) {
       return {
         ...lastValidatedRectSolve.result,
-        layoutFallback: "last-validated"
+        layoutFallback: "last-validated-same-scale"
       };
     }
 

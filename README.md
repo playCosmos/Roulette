@@ -56,7 +56,7 @@ Ramyani Games(라먀니 게임즈)는 SOOP 방송 연동 게임을 한 저장소
 - P0: `END→START`를 포함한 모든 순환 인접 칸의 실제 외곽 간격은 하나의 동일 gap으로 유지하며, 겹침을 허용하지 않는다
 - 참가자별 진행은 독립적이며 공용 턴 없음
 - 참가자별 이동 큐를 별도로 처리
-- 보드 레이아웃/Dock 계산과 셀 스프링 구현은 유지하고, active 플레이어 이동은 V6 cell-reparent 방식으로 처리한다. 토큰은 이동 중에도 목적지 `.cell-player-zone`의 실제 자식으로 유지한다. 셀의 Dock 위치/scale 변화도 그대로 유지하되, 토큰 이동 애니메이션은 매 rAF마다 transform을 잠시 0으로 두고 현재 자연 screen rect를 읽은 뒤 `시작 화면 중심 → 현재 자연 목적지 중심`을 보간하여 부모 scale의 역수만큼 translate offset을 적용한다. **scale 변화는 취소하지 않고 위치 성분만 역보정**하므로 셀 확대/축소 중에도 토큰이 부모 움직임 때문에 통통 튀는 현상을 줄인다. 중간 칸은 linear, 최종 칸만 약한 ease-out을 사용하며 별도 scale 애니메이션은 하지 않는다. 기존 V34/V35/V3/V4/V5 구현은 회귀 비교용으로 보존한다.
+- 보드 레이아웃/Dock 계산과 셀 스프링 구현은 유지하고, active 플레이어 이동은 V6 cell-reparent 방식으로 처리한다. 토큰은 이동 중에도 목적지 `.cell-player-zone`의 실제 자식으로 유지한다. 한 칸 reparent와 `layoutNow()`가 끝난 **같은 JS 실행 안에서 progress=0 inverse transform을 즉시 적용**해 목적지 위치가 한 프레임 노출되지 않게 한다. 이후 rAF마다 현재 부모 셀의 실제 screen rect/scale을 다시 읽고 `시작 화면 중심 → 현재 자연 목적지 중심`을 보간하여 위치 성분만 역보정한다. 셀의 scale 변화 자체는 유지하며 별도 토큰 scale 애니메이션은 하지 않는다. 중간 칸은 linear, 최종 칸만 약한 ease-out을 사용한다. 기존 V34/V35/V3/V4/V5 구현은 회귀 비교용으로 보존한다.
 - 강조 칸 크기를 먼저 예약하고 남은 루프 공간을 일반 칸에 균등 분배하는 reserve-first 레이아웃을 사용
 - 셀/말 이동은 `left/top/width/height` transition 대신 `requestAnimationFrame` 기반 critically-damped spring과 `translate3d + scale` 합성으로 처리
 - 셀 최종 배치는 START를 고정 앵커로 두고 진행/역방향으로 나누어 배치한 뒤 반대편에서 폐합한다. 한쪽 방향으로 전체 칸 위치 오차가 누적되는 현상을 줄이면서 동일 gap P0를 유지한다.

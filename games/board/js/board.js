@@ -3216,6 +3216,329 @@
     }));
   }
 
+  const DEMO_MAX_BONUS_CHAIN = 32;
+  const DEMO_MAX_LANDING_CHAIN = 64;
+
+  function copyDemoEffects(source) {
+    return {
+      skipNextThrows: Math.max(0, Number(source?.skipNextThrows) || 0),
+      nextThrowMultiplier: Math.max(1, Number(source?.nextThrowMultiplier) || 1),
+      ignoreNextLandingEffects: Math.max(
+        0,
+        Number(source?.ignoreNextLandingEffects) || 0
+      )
+    };
+  }
+
+  function commitDemoEffects(playerId, snapshot) {
+    const effects = demoEffectState(playerId);
+    effects.skipNextThrows = Math.max(0, Number(snapshot.skipNextThrows) || 0);
+    effects.nextThrowMultiplier = Math.max(
+      1,
+      Number(snapshot.nextThrowMultiplier) || 1
+    );
+    effects.ignoreNextLandingEffects = Math.max(
+      0,
+      Number(snapshot.ignoreNextLandingEffects) || 0
+    );
+    renderDemoEffectBadges(playerId);
+  }
+
+  function demoAdvancePosition(position, steps) {
+    return normalizeCell(position + (Number.parseInt(steps, 10) || 0));
+  }
+
+  function resolveDemoLandingPlan(startPosition, initialEffects) {
+    const effects = copyDemoEffects(initialEffects);
+    const landings = [];
+    let position = normalizeCell(startPosition);
+    let safetyStopped = false;
+
+    for (let depth = 0; depth < DEMO_MAX_LANDING_CHAIN; depth += 1) {
+      const definition = cellDefinition(position);
+      const command = definition.command || "";
+      let actionMoveSteps = null;
+      let effectIgnored = false;
+
+      if (effects.ignoreNextLandingEffects > 0) {
+        effects.ignoreNextLandingEffects -= 1;
+        effectIgnored = true;
+      } else if (definition.instructionType === "skip") {
+        effects.skipNextThrows += 1;
+      } else if (definition.instructionType === "multiplier") {
+        const match = command.match(/(\d+)배/);
+        effects.nextThrowMultiplier = Math.max(
+          2,
+          Number.parseInt(match?.[1] || "2", 10) || 2
+        );
+      } else if (definition.instructionType === "ignore") {
+        effects.ignoreNextLandingEffects += 1;
+      } else if (
+        definition.instructionType === "forward" ||
+        definition.instructionType === "backward"
+      ) {
+        const magnitude = Math.max(
+          1,
+          Number.parseInt(command, 10) || 1
+        );
+        actionMoveSteps =
+          definition.instructionType === "backward"
+            ? -magnitude
+            : magnitude;
+      }
+
+      const landing = {
+        depth,
+        position,
+        definition,
+        command,
+        actionMoveSteps,
+        effectIgnored,
+        effectsAfter: copyDemoEffects(effects)
+      };
+
+      if (actionMoveSteps !== null) {
+        landing.destination = demoAdvancePosition(position, actionMoveSteps);
+      } else {
+        landing.destination = position;
+      }
+
+      landings.push(landing);
+
+      if (actionMoveSteps === null || landing.destination === position) {
+        return {
+          startPosition: normalizeCell(startPosition),
+          endPosition: position,
+          effectsAfter: copyDemoEffects(effects),
+          landings,
+          safetyStopped: false
+        };
+      }
+
+      position = landing.destination;
+    }
+
+    safetyStopped = true;
+    return {
+      startPosition: normalizeCell(startPosition),
+      endPosition: position,
+      effectsAfter: copyDemoEffects(effects),
+      landings,
+      safetyStopped
+    };
+  }
+
+  function resolveDemoThrowPlan(player, generator) {
+    const currentEffects = copyDemoEffects(demoEffectState(player.id));
+    const rawEvent = generator === "yut"
+      ? resolveDemoYut(player.id)
+      : resolveDemoDice(player.id);
+
+    const appliedMultiplier = Math.max(
+      1,
+      currentEffects.nextThrowMultiplier || 1
+    );
+    currentEffects.nextThrowMultiplier = 1;
+
+    const rawSteps = demoRawThrowSteps(rawEvent);
+    const effectiveSteps = rawSteps * appliedMultiplier;
+    const throwStart = player.position;
+    const throwLanding = demoAdvancePosition(throwStart, effectiveSteps);
+    let pendingBonusThrows = rawEvent.bonusThrow ? 1 : 0;
+
+    const landingPlan = resolveDemoLandingPlan(
+      throwLanding,
+      currentEffects
+    );
+
+    let effectsAfter = copyDemoEffects(landingPlan.effectsAfter);
+    let nextThrowScheduled = false;
+    let bonusConsumedBySkip = false;
+
+    while (pendingBonusThrows > 0 && !nextThrowScheduled) {
+      if (effectsAfter.skipNextThrows > 0) {
+        pendingBonusThrows -= 1;
+        effectsAfter.skipNextThrows -= 1;
+        bonusConsumedBySkip = true;
+      } else {
+        pendingBonusThrows -= 1;
+        nextThrowScheduled = true;
+      }
+    }
+
+    return {
+      event: {
+        ...rawEvent,
+        resolvedSteps: effectiveSteps,
+        appliedMultiplier
+      },
+      throwStart,
+      throwLanding,
+      effectiveSteps,
+      landingPlan,
+      endPosition: landingPlan.endPosition,
+      effectsAfter,
+      naturalBonus: Boolean(rawEvent.bonusThrow),
+      nextThrowScheduled,
+      bonusConsumedBySkip,
+      safetyStopped: Boolean(landingPlan.safetyStopped)
+    };
+  }
+
+  function assertDemoPosition(player, expected, stage) {
+    const actual = normalizeCell(player.position);
+    const normalizedExpected = normalizeCell(expected);
+    if (actual === normalizedExpected) return;
+
+    throw new Error(
+      "demo position mismatch at " + stage +
+      ": expected " + normalizedExpected +
+      ", actual " + actual
+    );
+  }
+
+  async function playDemoLandingPlan(player, plan) {
+    for (const landing of plan.landings) {
+      assertDemoPosition(player, landing.position, "landing");
+
+      const definition = landing.definition;
+      const command = landing.command || "";
+
+      if (landing.effectIgnored) {
+        commitDemoEffects(player.id, landing.effectsAfter);
+        flashDemoInstructionCell(landing.position, "ignored", 620);
+        setEventMessage(
+          player.name + ": " + (command || "현재 칸") + " 효과 무효"
+        );
+        emitDemoInstruction(player, definition, {
+          effectIgnored: true,
+          chainDepth: landing.depth
+        });
+        await delay(INSTANT_MOVEMENT_MODE ? 500 : 420);
+        return;
+      }
+
+      if (!command) {
+        commitDemoEffects(player.id, landing.effectsAfter);
+        setEventMessage(player.name + " 이동 완료");
+        return;
+      }
+
+      flashDemoInstructionCell(
+        landing.position,
+        landing.depth > 0 ? "chain" : "triggered",
+        620
+      );
+
+      if (landing.actionMoveSteps !== null) {
+        setEventMessage(
+          player.name + ": " + command +
+          (landing.depth > 0 ? " (연쇄)" : "")
+        );
+        emitDemoInstruction(player, definition, {
+          actionMoveSteps: landing.actionMoveSteps,
+          chainDepth: landing.depth
+        });
+
+        await delay(INSTANT_MOVEMENT_MODE ? 500 : 300);
+        await movePlayerStepsActive(
+          player.id,
+          landing.actionMoveSteps
+        );
+        assertDemoPosition(
+          player,
+          landing.destination,
+          "instruction move"
+        );
+        await delay(INSTANT_MOVEMENT_MODE ? 400 : 140);
+        continue;
+      }
+
+      commitDemoEffects(player.id, landing.effectsAfter);
+
+      if (definition.instructionType === "skip") {
+        setEventMessage(player.name + ": 다음 던지기 무효 획득");
+        emitDemoInstruction(player, definition, {
+          skipNextThrows: landing.effectsAfter.skipNextThrows
+        });
+      } else if (definition.instructionType === "multiplier") {
+        setEventMessage(
+          player.name + ": 다음 던지기 " +
+          landing.effectsAfter.nextThrowMultiplier + "배 적용 대기"
+        );
+        emitDemoInstruction(player, definition, {
+          nextThrowMultiplier:
+            landing.effectsAfter.nextThrowMultiplier
+        });
+      } else if (definition.instructionType === "ignore") {
+        setEventMessage(player.name + ": 다음 칸 효과 무효화 대기");
+        emitDemoInstruction(player, definition, {
+          ignoreNextLandingEffects:
+            landing.effectsAfter.ignoreNextLandingEffects
+        });
+      } else {
+        emitDemoInstruction(player, definition, {
+          chainDepth: landing.depth
+        });
+      }
+
+      await delay(INSTANT_MOVEMENT_MODE ? 500 : 420);
+      return;
+    }
+  }
+
+  async function playDemoThrowPlan(player, plan) {
+    const event = plan.event;
+    const id = player.id;
+    const presentation = reserveThrowPresentation(event, player);
+
+    window.dispatchEvent(new CustomEvent("ramyani-board:throwstarted", {
+      detail: { event, source: "데모" }
+    }));
+
+    await presentation.reveal;
+    showPlayerResultBubble(id, event);
+
+    window.dispatchEvent(new CustomEvent("ramyani-board:throwrevealed", {
+      detail: { event, source: "데모" }
+    }));
+
+    try {
+      await movePlayerStepsActive(id, plan.effectiveSteps);
+      assertDemoPosition(player, plan.throwLanding, "throw landing");
+
+      window.dispatchEvent(new CustomEvent("ramyani-board:movementcompleted", {
+        detail: {
+          event,
+          playerId: id,
+          position: player.position,
+          bonusThrow: plan.naturalBonus,
+          source: "데모"
+        }
+      }));
+
+      await playDemoLandingPlan(player, plan.landingPlan);
+      assertDemoPosition(player, plan.endPosition, "landing chain end");
+
+      // 서버와 동일하게 전체 착지 연쇄가 끝난 뒤 보너스/스킵 소비 결과를 확정한다.
+      commitDemoEffects(id, plan.effectsAfter);
+
+      if (plan.bonusConsumedBySkip) {
+        setEventMessage(player.name + ": 보너스 던지기 무효");
+        await delay(INSTANT_MOVEMENT_MODE ? 500 : 420);
+      }
+
+      await presentation.finished;
+    } finally {
+      await delay(180);
+      hidePlayerResultBubble(id);
+    }
+  }
+
+  /*
+   * 기존 데모 착지 resolver는 회귀 비교용으로 보존한다.
+   * active 데모 턴에서는 사용하지 않는다.
+   */
   async function resolveDemoLandingChain(player) {
     const effects = demoEffectState(player.id);
     const visitedMoves = new Set();
@@ -3536,6 +3859,7 @@
   async function runDemoTurn(player, generator) {
     const effects = demoEffectState(player.id);
 
+    // 서버와 동일하게 턴 시작 시 skip을 가장 먼저 소비한다.
     if (effects.skipNextThrows > 0) {
       effects.skipNextThrows -= 1;
       renderDemoEffectBadges(player.id);
@@ -3550,34 +3874,29 @@
       return;
     }
 
-    let bonus = true;
-    let safety = 0;
+    let shouldThrow = true;
+    let throwIndex = 0;
 
-    while (bonus && safety < 6) {
-      safety += 1;
-      const rawEvent = generator === "yut"
-        ? resolveDemoYut(player.id)
-        : resolveDemoDice(player.id);
-      const event = applyDemoThrowEffects(rawEvent);
+    while (shouldThrow && throwIndex < DEMO_MAX_BONUS_CHAIN) {
+      throwIndex += 1;
 
-      await enqueueThrowEvent(event, {
-        source: "데모",
-        suppressDestinationEvent: true
-      });
+      // 먼저 논리 결과 전체를 확정한다. 화면 재생 중에는 지시문 판정을 다시 하지 않는다.
+      const plan = resolveDemoThrowPlan(player, generator);
+      await playDemoThrowPlan(player, plan);
 
-      const landing = await resolveDemoLandingChain(player);
-      if (landing.safetyStopped) return;
-
-      bonus = Boolean(event.bonusThrow);
-      if (bonus && effects.skipNextThrows > 0) {
-        effects.skipNextThrows -= 1;
-        renderDemoEffectBadges(player.id);
-        bonus = false;
-        setEventMessage(player.name + ": 보너스 던지기 무효");
-        await delay(420);
+      if (plan.safetyStopped) {
+        setEventMessage(player.name + ": 지시문 연쇄 안전 제한 도달");
+        return;
       }
 
-      if (bonus) await delay(350);
+      shouldThrow = plan.nextThrowScheduled;
+      if (shouldThrow) {
+        await delay(350);
+      }
+    }
+
+    if (shouldThrow) {
+      throw new Error("demo bonus chain safety limit reached");
     }
   }
 

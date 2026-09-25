@@ -316,13 +316,23 @@
       };
     }
 
+    const rawSteps = Number(event.yut?.steps) || 0;
+    const effectiveSteps = Number.isFinite(Number(event.steps))
+      ? Number(event.steps)
+      : rawSteps;
+    const multiplier = Math.max(1, Number(event.appliedMultiplier) || 1);
+    const rawText =
+      (rawSteps >= 0 ? "+" : "") + rawSteps + "칸";
+    const effectiveText = multiplier > 1
+      ? " ×" + multiplier + " → " +
+        (effectiveSteps >= 0 ? "+" : "") + effectiveSteps + "칸"
+      : "";
+
     return {
       generator: "yut",
       name: String(event.yut?.name || "DO").toUpperCase(),
       faces: normalizeYutFaces(event.yut?.faces || null, event.yut?.name || "DO"),
-      text: yutLabel(event.yut?.name || "DO") + " " +
-        ((Number(event.yut?.steps) || 0) >= 0 ? "+" : "") +
-        String(Number(event.yut?.steps) || 0),
+      text: yutLabel(event.yut?.name || "DO") + " " + rawText + effectiveText,
       bonus: Boolean(event.bonusThrow)
     };
   }

@@ -163,6 +163,9 @@
     previousScaleWeights = null;
     neutralSolveCache = null;
 
+    // 보드 재구성 전에 이전 프레임의 레이아웃 대기자를 남겨두지 않는다.
+    resolveLayoutWaiters();
+
     if (motionFrame) {
       window.cancelAnimationFrame(motionFrame);
       motionFrame = 0;
@@ -1473,20 +1476,47 @@
       refs.boardStage.dataset.layoutReady = "true";
     }
 
-    if (layoutWaiters.length) {
-      const waiters = layoutWaiters.splice(0, layoutWaiters.length);
-      for (const resolve of waiters) resolve();
-    }
+  }
+
+  function resolveLayoutWaiters() {
+    if (!layoutWaiters.length) return;
+    const waiters = layoutWaiters.splice(0, layoutWaiters.length);
+    for (const resolve of waiters) resolve();
   }
 
   function scheduleLayout() {
     if (layoutFrame) return;
-    layoutFrame = window.requestAnimationFrame(layoutNow);
+
+    layoutFrame = window.requestAnimationFrame(() => {
+      try {
+        layoutNow();
+      } catch (error) {
+        // 이동 중 일시적인 레이아웃 실패가 발생해도 이동 큐 전체를 교착시키지 않는다.
+        layoutFrame = 0;
+        console.error("board layout failed", error);
+      } finally {
+        resolveLayoutWaiters();
+      }
+    });
   }
 
-  function waitForLayoutCommit() {
+  function waitForLayoutCommit(timeoutMs = 700) {
     return new Promise((resolve) => {
-      layoutWaiters.push(resolve);
+      let settled = false;
+      let timeoutId = 0;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (timeoutId) window.clearTimeout(timeoutId);
+
+        const index = layoutWaiters.indexOf(finish);
+        if (index >= 0) layoutWaiters.splice(index, 1);
+        resolve();
+      };
+
+      layoutWaiters.push(finish);
+      timeoutId = window.setTimeout(finish, timeoutMs);
       scheduleLayout();
     });
   }
@@ -2726,8 +2756,10 @@
 
       try {
         await runDemoTurn(player, generator);
-      } catch (_) {
-        // 데모는 다음 턴으로 계속 진행한다.
+      } catch (error) {
+        console.error("demo turn failed", error);
+        setEventMessage(player.name + ": 데모 턴 복구 후 계속");
+        // 데모는 한 턴 실패가 전체 루프를 중단시키지 않도록 다음 턴으로 계속 진행한다.
       }
       await delay(650);
     }

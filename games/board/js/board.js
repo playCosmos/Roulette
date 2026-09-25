@@ -95,6 +95,7 @@
   const PLAYER_ZONE_RATIO = 0.30;
   const OCCUPIED_HORIZONTAL_INSTRUCTION_ZONE_RATIO = 0.50;
   const OCCUPIED_HORIZONTAL_PLAYER_ZONE_RATIO = 0.50;
+  const PLAYER_EDGE_PADDING = 5;
   const MOTION_EPSILON = 0.025;
   const VELOCITY_EPSILON = 0.04;
 
@@ -1714,11 +1715,11 @@
         const inwardX = -tangentY;
         const inwardY = tangentX;
         const tokenRadius = tokenSize * 0.5;
-        const edgePadding = 2;
+        const edgePadding = PLAYER_EDGE_PADDING;
 
-        // 플레이어 영역은 지시문과 맞닿은 경계에서 보드 안쪽으로 30%를 차지한다.
-        // 첫 줄을 이 경계 바로 안쪽에 두면 3명 이상에서 토큰이 커져도
-        // 지시문 영역 쪽이 아니라 보드 안쪽 방향으로만 넘치게 된다.
+        // 플레이어 영역의 지시문 경계에서 약간 더 안쪽 여유를 둔다.
+        // 위/아래는 50%, 좌/우는 30% 플레이어 영역을 사용하며
+        // 3명 이상에서도 지시문 쪽이 아니라 보드 안쪽 방향으로만 확장한다.
         const zoneDepth =
           playerZone.edge === "top" || playerZone.edge === "bottom"
             ? playerZone.height

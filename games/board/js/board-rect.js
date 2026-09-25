@@ -22,6 +22,9 @@
 
   const params = new URLSearchParams(window.location.search);
   const DEMO_MODE = params.get("demo") === "1";
+  const INSTANT_MOVEMENT_MODE =
+    params.get("motion") === "instant" ||
+    /(?:^|\/)(?:rect-)?instant\.html$/i.test(window.location.pathname);
   const ROOM_ID = String(params.get("roomId") || "").trim();
   const ROOM_PREVIEW_MODE = params.get("preview") === "1";
   const ROOM_BOARD_SOURCE = params.get("board") === "committed" ? "committed" : "preview";
@@ -137,6 +140,8 @@
     if (!refs.boardStage) return;
 
     refs.boardStage.dataset.layoutEngine = "rectilinear-loop-experimental";
+    refs.boardStage.dataset.movementMode =
+      INSTANT_MOVEMENT_MODE ? "instant-diagnostic" : "animated-v4";
     refs.boardStage.dataset.phase = state.currentPhaseId;
     refs.boardStage.dataset.totalLaps = String(state.totalLaps);
     refs.boardStage.dataset.playerCount = String(state.players.size);
@@ -1197,7 +1202,42 @@
     }
   }
 
+  function snapAllMotionToTargetsInstant() {
+    if (motionFrame) {
+      window.cancelAnimationFrame(motionFrame);
+      motionFrame = 0;
+    }
+    lastMotionTime = 0;
+
+    for (const motion of cellMotionStates.values()) {
+      if (!motion.element.isConnected) continue;
+      motion.x = motion.targetX;
+      motion.y = motion.targetY;
+      motion.scale = motion.targetScale;
+      motion.vx = 0;
+      motion.vy = 0;
+      motion.vs = 0;
+      applyMotionTransform(motion);
+    }
+
+    for (const motion of tokenMotionStates.values()) {
+      if (!motion.element.isConnected) continue;
+      motion.x = motion.targetX;
+      motion.y = motion.targetY;
+      motion.scale = motion.targetScale;
+      motion.vx = 0;
+      motion.vy = 0;
+      motion.vs = 0;
+      applyMotionTransform(motion);
+    }
+  }
+
   function scheduleMotion() {
+    if (INSTANT_MOVEMENT_MODE) {
+      snapAllMotionToTargetsInstant();
+      return;
+    }
+
     if (motionFrame) return;
 
     let moving = false;
@@ -2685,6 +2725,61 @@
     });
   }
 
+  async function movePlayerStepsInstant(playerId, steps) {
+    const player = state.players.get(String(playerId));
+    if (!player) throw new Error("unknown player: " + playerId);
+
+    const signedSteps = Number.parseInt(steps, 10) || 0;
+    const direction = signedSteps < 0 ? -1 : 1;
+    const distance = Math.abs(signedSteps);
+    if (!distance) return { ...player };
+
+    let crossedStart = false;
+
+    // 기존과 동일하게 논리적으로는 한 칸씩 계산하지만 경유 칸은 화면에 표시하지 않는다.
+    for (let moved = 0; moved < distance; moved += 1) {
+      const previous = player.position;
+      player.position = normalizeCell(player.position + direction);
+
+      if (
+        direction > 0 &&
+        previous === board.cellCount - 1 &&
+        player.position === 0
+      ) {
+        player.laps += 1;
+        state.totalLaps += 1;
+        crossedStart = true;
+      }
+    }
+
+    if (crossedStart) {
+      evaluatePhase();
+    }
+
+    ensurePlayerTokens();
+    renderGlobalState();
+
+    try {
+      layoutNow();
+    } catch (error) {
+      console.error("instant movement layout failed", error);
+      scheduleLayout();
+      await waitForRenderFrame();
+    }
+
+    // 레이아웃 계산 결과는 그대로 사용하고 화면 모션 상태만 즉시 최종값으로 확정한다.
+    snapAllMotionToTargetsInstant();
+    await waitForRenderFrame();
+
+    return { ...player };
+  }
+
+  async function movePlayerStepsActive(playerId, steps) {
+    return INSTANT_MOVEMENT_MODE
+      ? movePlayerStepsInstant(playerId, steps)
+      : movePlayerStepsCoreV4(playerId, steps);
+  }
+
   async function movePlayerStepsCoreV4(playerId, steps) {
     const player = state.players.get(String(playerId));
     if (!player) throw new Error("unknown player: " + playerId);
@@ -2751,7 +2846,7 @@
   }
 
   async function movePlayerBy(playerId, steps, meta = {}) {
-    const movedPlayer = await movePlayerStepsCoreV4(playerId, steps);
+    const movedPlayer = await movePlayerStepsActive(playerId, steps);
     const player = state.players.get(String(playerId));
     if (!player) return movedPlayer;
 
@@ -3169,10 +3264,10 @@
         });
 
         // 지시문 발동을 눈으로 확인한 뒤 추가 이동을 시작한다.
-        await delay(300);
-        await movePlayerStepsCoreV4(player.id, signedSteps);
-        // 다음 도착 칸을 잠깐 확인한 후 연쇄 효과를 판정한다.
-        await delay(140);
+        await delay(INSTANT_MOVEMENT_MODE ? 500 : 300);
+        await movePlayerStepsActive(player.id, signedSteps);
+        // instant 진단에서는 새 착지칸을 충분히 보여준 뒤 다음 판정을 진행한다.
+        await delay(INSTANT_MOVEMENT_MODE ? 400 : 140);
         continue;
       }
 
@@ -3605,7 +3700,9 @@
     const configuredStyle = snapshot.config?.board?.layoutStyle || "rounded";
     const expectedStyle = "rect";
     if (configuredStyle !== expectedStyle) {
-      const target = configuredStyle === "rect" ? "rect.html" : "index.html";
+      const target = configuredStyle === "rect"
+        ? (INSTANT_MOVEMENT_MODE ? "rect-instant.html" : "rect.html")
+        : (INSTANT_MOVEMENT_MODE ? "instant.html" : "index.html");
       const url = new URL(target, window.location.href);
       url.searchParams.set("roomId", roomId);
       if (ROOM_PREVIEW_MODE) url.searchParams.set("preview", "1");

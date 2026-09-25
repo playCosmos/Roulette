@@ -244,40 +244,42 @@ body {
 .cell-instruction-zone {
   position: absolute;
   z-index: 2;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   pointer-events: none;
   background: transparent;
+  transition:
+    left 240ms cubic-bezier(.16,1,.3,1),
+    right 240ms cubic-bezier(.16,1,.3,1),
+    top 240ms cubic-bezier(.16,1,.3,1),
+    bottom 240ms cubic-bezier(.16,1,.3,1);
 }
 
-.board-cell[data-instruction-edge="top"] .cell-instruction-zone {
-  left: 0;
-  right: 0;
-  top: 0;
-  height: var(--instruction-zone-ratio, 70%);
+/*
+ * 비점유 지시문 칸은 셀 전체를 사용해 중앙 배치한다.
+ * 플레이어가 도착하면 바깥쪽 70%로 이동해 안쪽 30%를 플레이어 공간으로 비운다.
+ * START는 점유 여부와 무관하게 항상 셀 전체 중앙을 사용한다.
+ */
+.board-cell[data-kind="instruction"][data-occupied="true"][data-instruction-edge="top"] .cell-instruction-zone {
+  bottom: var(--player-zone-ratio, 30%);
 }
 
-.board-cell[data-instruction-edge="bottom"] .cell-instruction-zone {
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: var(--instruction-zone-ratio, 70%);
+.board-cell[data-kind="instruction"][data-occupied="true"][data-instruction-edge="bottom"] .cell-instruction-zone {
+  top: var(--player-zone-ratio, 30%);
 }
 
-.board-cell[data-instruction-edge="left"] .cell-instruction-zone {
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: var(--instruction-zone-ratio, 70%);
+.board-cell[data-kind="instruction"][data-occupied="true"][data-instruction-edge="left"] .cell-instruction-zone {
+  right: var(--player-zone-ratio, 30%);
 }
 
-.board-cell[data-instruction-edge="right"] .cell-instruction-zone {
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: var(--instruction-zone-ratio, 70%);
+.board-cell[data-kind="instruction"][data-occupied="true"][data-instruction-edge="right"] .cell-instruction-zone {
+  left: var(--player-zone-ratio, 30%);
 }
 
 .cell-label {
@@ -311,6 +313,23 @@ body {
   -webkit-line-clamp: 3;
 }
 
+/* 플레이어가 없는 지시문 칸은 셀 중앙에서 더 크게 읽히게 한다. */
+.board-cell[data-kind="instruction"][data-occupied="false"] .cell-label {
+  max-height: 3.65em;
+  padding: clamp(4px, .34vw, 7px);
+  color: rgba(255,255,255,.80);
+  font-size: calc(var(--cell-label-font, 10px) * 1.28);
+  font-weight: 780;
+  line-height: 1.12;
+  -webkit-line-clamp: 3;
+}
+
+/* 점유되면 플레이어 공간 확보를 위해 기본 크기로 자연스럽게 복귀한다. */
+.board-cell[data-kind="instruction"][data-occupied="true"] .cell-label {
+  font-size: var(--cell-label-font, 10px);
+}
+
+/* START는 점유 여부와 무관하게 항상 중앙 고정. */
 .board-cell[data-kind="start"] .cell-label {
   color: var(--accent);
   font-weight: 850;

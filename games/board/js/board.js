@@ -2291,7 +2291,11 @@
     });
   }
 
-  async function movePlayerBy(playerId, steps, meta = {}) {
+  /*
+   * PRESERVED MOVEMENT V35
+   * 2026-09-25-35 active 이동 구현. 회귀 비교용으로 보존하며 런타임에서는 호출하지 않는다.
+   */
+  async function movePlayerByPreservedV35(playerId, steps, meta = {}) {
     const player = state.players.get(String(playerId));
     if (!player) throw new Error("unknown player: " + playerId);
 
@@ -2344,6 +2348,209 @@
     }
 
     snapTokenMotionToLatestTarget(player.id);
+
+    if (!meta.suppressDestinationEvent) {
+      const command = destinationCommand(player.position);
+      const source = meta.source ? " (" + meta.source + ")" : "";
+
+      if (command) {
+        setEventMessage(player.name + ": " + command + source);
+        window.dispatchEvent(new CustomEvent("ramyani-board:command", {
+          detail: {
+            playerId: player.id,
+            position: player.position,
+            command,
+            source: meta.source || null
+          }
+        }));
+      } else {
+        setEventMessage(player.name + " → " + (player.position + 1) + "번 칸" + source);
+      }
+    }
+
+    return { ...player };
+  }
+
+  function releaseDirectTokenLock(playerId) {
+    const id = String(playerId);
+    directTokenAnimations.delete(id);
+    scheduleMotion();
+  }
+
+  async function acquireMovementTargetV3(playerId, expectedCell, visualStart) {
+    const id = String(playerId);
+
+    // 1차: 정상 비동기 layout rAF.
+    scheduleLayout();
+    await waitForRenderFrame();
+    if (tokenTargetReady(id, expectedCell)) {
+      const motion = tokenMotionStates.get(id);
+      if (visualStart && motion && motion.element !== visualStart.element) {
+        restoreTokenVisualState(id, visualStart);
+      }
+      return true;
+    }
+
+    // 2차: 같은 기존 layoutNow를 동기 실행. 레이아웃 공식 자체는 변경하지 않는다.
+    try {
+      layoutNow();
+    } catch (error) {
+      console.error("movement target layout retry failed", error);
+    }
+    await waitForRenderFrame();
+    if (tokenTargetReady(id, expectedCell)) {
+      const motion = tokenMotionStates.get(id);
+      if (visualStart && motion && motion.element !== visualStart.element) {
+        restoreTokenVisualState(id, visualStart);
+      }
+      return true;
+    }
+
+    // 3차: 마지막 bounded rAF 재시도. 여기서도 실패하면 stale target으로 진행하지 않는다.
+    scheduleLayout();
+    await waitForRenderFrame();
+    if (tokenTargetReady(id, expectedCell)) {
+      const motion = tokenMotionStates.get(id);
+      if (visualStart && motion && motion.element !== visualStart.element) {
+        restoreTokenVisualState(id, visualStart);
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  function animateTokenStepV3(playerId, visualStart, durationMs = STEP_DELAY_MS) {
+    const id = String(playerId);
+    const start = visualStart || captureTokenVisualState(id);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let startedAt = 0;
+      let frameId = 0;
+      let timeoutId = 0;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (frameId) window.cancelAnimationFrame(frameId);
+        if (timeoutId) window.clearTimeout(timeoutId);
+
+        snapTokenMotionToLatestTarget(id);
+        releaseDirectTokenLock(id);
+        resolve();
+      };
+
+      if (!start || !tokenTargetReady(id, state.players.get(id)?.position)) {
+        finish();
+        return;
+      }
+
+      const frame = (timestamp) => {
+        if (settled) return;
+        if (!startedAt) startedAt = timestamp;
+
+        const motion = tokenMotionStates.get(id);
+        if (!motion || !motion.element.isConnected) {
+          finish();
+          return;
+        }
+
+        const progress = clamp(
+          (timestamp - startedAt) / Math.max(1, durationMs),
+          0,
+          1
+        );
+        const eased = progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - (Math.pow(-2 * progress + 2, 3) / 2);
+
+        motion.x = start.x + ((motion.targetX - start.x) * eased);
+        motion.y = start.y + ((motion.targetY - start.y) * eased);
+        motion.scale = start.scale + ((motion.targetScale - start.scale) * eased);
+        motion.vx = 0;
+        motion.vy = 0;
+        motion.vs = 0;
+        applyMotionTransform(motion);
+
+        if (progress >= 1) {
+          finish();
+          return;
+        }
+        frameId = window.requestAnimationFrame(frame);
+      };
+
+      frameId = window.requestAnimationFrame(frame);
+      timeoutId = window.setTimeout(finish, durationMs + 160);
+    });
+  }
+
+  async function movePlayerStepsCoreV3(playerId, steps) {
+    const player = state.players.get(String(playerId));
+    if (!player) throw new Error("unknown player: " + playerId);
+
+    const signedSteps = Number.parseInt(steps, 10) || 0;
+    const direction = signedSteps < 0 ? -1 : 1;
+    const distance = Math.abs(signedSteps);
+    if (!distance) return { ...player };
+
+    for (let moved = 0; moved < distance; moved += 1) {
+      const id = String(player.id);
+      const previous = player.position;
+      const next = normalizeCell(previous + direction);
+
+      // 출발 화면 좌표를 먼저 잠그고 캡처한다.
+      directTokenAnimations.add(id);
+      const visualStart = captureTokenVisualState(id);
+
+      // 목적지 레이아웃 계산을 위해 논리 위치만 임시로 다음 칸에 둔다.
+      player.position = next;
+      ensurePlayerTokens();
+      renderGlobalState();
+
+      const targetReady = await acquireMovementTargetV3(
+        id,
+        next,
+        visualStart
+      );
+
+      if (!targetReady) {
+        // stale target으로 계속 가지 않는다. 논리 위치를 되돌리고 현재 스텝을 실패 처리한다.
+        player.position = previous;
+        ensurePlayerTokens();
+        renderGlobalState();
+        scheduleLayout();
+        restoreTokenVisualState(id, visualStart);
+        releaseDirectTokenLock(id);
+        await waitForRenderFrame();
+        throw new Error(
+          "movement target unavailable: " + id + " -> " + next
+        );
+      }
+
+      await animateTokenStepV3(id, visualStart, STEP_DELAY_MS);
+
+      // START 통과에 따른 누적/Phase 갱신은 화면 이동이 끝난 뒤 반영한다.
+      if (
+        direction > 0 &&
+        previous === board.cellCount - 1 &&
+        next === 0
+      ) {
+        player.laps += 1;
+        state.totalLaps += 1;
+        evaluatePhase();
+      }
+    }
+
+    snapTokenMotionToLatestTarget(player.id);
+    releaseDirectTokenLock(player.id);
+    return { ...player };
+  }
+
+  async function movePlayerBy(playerId, steps, meta = {}) {
+    const movedPlayer = await movePlayerStepsCoreV3(playerId, steps);
+    const player = state.players.get(String(playerId));
+    if (!player) return movedPlayer;
 
     if (!meta.suppressDestinationEvent) {
       const command = destinationCommand(player.position);
@@ -2705,7 +2912,8 @@
     const effects = demoEffectState(player.id);
     const visitedMoves = new Set();
 
-    for (let depth = 0; depth < 64; depth += 1) {
+    const maxChainDepth = Math.min(16, Math.max(1, board.cellCount));
+    for (let depth = 0; depth < maxChainDepth; depth += 1) {
       const definition = cellDefinition(player.position);
       const command = definition.command || "";
 
@@ -2758,13 +2966,10 @@
         });
 
         // 지시문 발동을 눈으로 확인한 뒤 추가 이동을 시작한다.
-        await delay(420);
-        await movePlayerBy(player.id, signedSteps, {
-          source: "데모 지시문",
-          suppressDestinationEvent: true
-        });
+        await delay(300);
+        await movePlayerStepsCoreV3(player.id, signedSteps);
         // 다음 도착 칸을 잠깐 확인한 후 연쇄 효과를 판정한다.
-        await delay(220);
+        await delay(140);
         continue;
       }
 
@@ -2872,31 +3077,92 @@
     };
   }
 
-  function seedDemoInstructions() {
-    const candidates = Array.from(
-      { length: Math.max(0, board.cellCount - 1) },
-      (_, index) => index + 1
-    );
+  function demoMovementCycleExists(cells) {
+    const movementNodes = new Set();
 
-    for (let index = candidates.length - 1; index > 0; index -= 1) {
-      const swapIndex = Math.floor(Math.random() * (index + 1));
-      [candidates[index], candidates[swapIndex]] = [
-        candidates[swapIndex],
-        candidates[index]
-      ];
+    for (const [key, definition] of Object.entries(cells)) {
+      if (
+        definition?.instructionType === "forward" ||
+        definition?.instructionType === "backward"
+      ) {
+        movementNodes.add(Number(key));
+      }
     }
 
-    const instructionCount = clamp(
-      Math.round(board.cellCount * 0.28),
-      DEMO_INSTRUCTION_TYPES.length,
-      15
-    );
+    for (const start of movementNodes) {
+      const seen = new Set();
+      let current = start;
+
+      while (movementNodes.has(current)) {
+        if (seen.has(current)) return true;
+        seen.add(current);
+
+        const definition = cells[current];
+        const steps = Math.max(
+          1,
+          Number.parseInt(definition?.command || "", 10) || 1
+        );
+        const signedSteps =
+          definition?.instructionType === "backward" ? -steps : steps;
+        current = normalizeCell(current + signedSteps);
+      }
+    }
+
+    return false;
+  }
+
+  function buildDemoInstructionCells(candidates, instructionCount) {
     const cells = {};
 
     for (let index = 0; index < instructionCount; index += 1) {
       const cellIndex = candidates[index];
       const type = DEMO_INSTRUCTION_TYPES[index % DEMO_INSTRUCTION_TYPES.length];
       cells[cellIndex] = demoInstructionDefinition(type);
+    }
+
+    return cells;
+  }
+
+  function seedDemoInstructions() {
+    const baseCandidates = Array.from(
+      { length: Math.max(0, board.cellCount - 1) },
+      (_, index) => index + 1
+    );
+
+    const instructionCount = clamp(
+      Math.round(board.cellCount * 0.28),
+      DEMO_INSTRUCTION_TYPES.length,
+      15
+    );
+
+    let cells = {};
+
+    for (let attempt = 0; attempt < 64; attempt += 1) {
+      const candidates = baseCandidates.slice();
+
+      for (let index = candidates.length - 1; index > 0; index -= 1) {
+        const swapIndex = Math.floor(Math.random() * (index + 1));
+        [candidates[index], candidates[swapIndex]] = [
+          candidates[swapIndex],
+          candidates[index]
+        ];
+      }
+
+      cells = buildDemoInstructionCells(candidates, instructionCount);
+      if (!demoMovementCycleExists(cells)) break;
+      cells = {};
+    }
+
+    if (!Object.keys(cells).length) {
+      // 극단적인 경우에도 데모 시작 자체가 막히지 않도록 이동 지시문을 제외한 안전 배치로 fallback.
+      const candidates = baseCandidates.slice(0, instructionCount);
+      cells = {};
+      for (let index = 0; index < candidates.length; index += 1) {
+        const safeTypes = ["skip", "multiplier", "ignore"];
+        cells[candidates[index]] = demoInstructionDefinition(
+          safeTypes[index % safeTypes.length]
+        );
+      }
     }
 
     setPhasePlan([

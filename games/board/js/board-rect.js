@@ -1547,6 +1547,9 @@
     label.className = "player-token-label";
     label.textContent = player.shortLabel;
 
+    const overlay = document.createElement("span");
+    overlay.className = "player-token-overlay";
+
     const bubble = document.createElement("span");
     bubble.className = "player-result-bubble";
     bubble.dataset.visible = "false";
@@ -1555,7 +1558,8 @@
     effectBadges.className = "player-effect-badges";
     effectBadges.dataset.visible = "false";
 
-    token.append(label, bubble, effectBadges);
+    overlay.append(bubble, effectBadges);
+    token.append(label, overlay);
     renderDemoEffectBadges(player.id);
     return token;
   }

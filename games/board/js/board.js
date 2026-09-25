@@ -93,6 +93,9 @@
   const instructionFlashTimers = new Map();
   // 이동 중인 말은 보드 셀 스프링과 분리해 한 칸 단위 고정 시간 애니메이션으로 처리한다.
   const directTokenAnimations = new Set();
+  // transform이 적용된 각 board-cell은 독립 stacking context이므로,
+  // 이동 중인 토큰이 다른 셀 뒤로 숨지 않도록 현재 부모 셀을 임시로 최상위에 둔다.
+  const movingTokenLayerStates = new Map();
 
   const TOKEN_BASE_SIZE = 26;
   const INSTRUCTION_ZONE_RATIO = 0.50;
@@ -140,7 +143,7 @@
 
     refs.boardStage.dataset.layoutEngine = "reserve-first-loop-v4";
     refs.boardStage.dataset.movementMode =
-      INSTANT_MOVEMENT_MODE ? "instant-cell-reparent" : "cell-reparent-flip-v6";
+      INSTANT_MOVEMENT_MODE ? "instant-cell-reparent" : "cell-reparent-flip-v7";
     refs.boardStage.dataset.phase = state.currentPhaseId;
     refs.boardStage.dataset.totalLaps = String(state.totalLaps);
     refs.boardStage.dataset.playerCount = String(state.players.size);
@@ -2805,6 +2808,44 @@
     return true;
   }
 
+  function acquireMovingTokenLayerV7(token) {
+    const cell = token && token.closest
+      ? token.closest(".board-cell")
+      : null;
+    if (!cell) return null;
+
+    let state = movingTokenLayerStates.get(cell);
+    if (!state) {
+      state = {
+        count: 0,
+        previousZIndex: cell.style.zIndex
+      };
+      movingTokenLayerStates.set(cell, state);
+    }
+
+    state.count += 1;
+    if (state.count === 1) {
+      cell.style.zIndex = "100";
+      cell.dataset.movingTokenLayer = "true";
+    }
+
+    return cell;
+  }
+
+  function releaseMovingTokenLayerV7(cell) {
+    if (!cell) return;
+
+    const state = movingTokenLayerStates.get(cell);
+    if (!state) return;
+
+    state.count = Math.max(0, state.count - 1);
+    if (state.count > 0) return;
+
+    cell.style.zIndex = state.previousZIndex;
+    delete cell.dataset.movingTokenLayer;
+    movingTokenLayerStates.delete(cell);
+  }
+
   function animateReparentedTokenV6(
     playerId,
     firstRect,
@@ -2822,6 +2863,10 @@
       return Promise.resolve();
     }
 
+    // 토큰 자체의 z-index만으로는 부모 board-cell stacking context를 벗어날 수 없다.
+    // 이동 중에는 현재 목적지 부모 셀을 다른 모든 일반 셀보다 위로 올린다.
+    const movingLayerCell = acquireMovingTokenLayerV7(token);
+
     const startCenterX = firstRect.left + (firstRect.width * 0.5);
     const startCenterY = firstRect.top + (firstRect.height * 0.5);
 
@@ -2834,6 +2879,7 @@
       startCenterY,
       0
     )) {
+      releaseMovingTokenLayerV7(movingLayerCell);
       return delay(durationMs);
     }
 
@@ -2849,6 +2895,7 @@
         if (frameId) window.cancelAnimationFrame(frameId);
         if (timeoutId) window.clearTimeout(timeoutId);
         token.style.transform = "";
+        releaseMovingTokenLayerV7(movingLayerCell);
         resolve();
       };
 

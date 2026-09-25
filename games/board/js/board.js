@@ -89,6 +89,8 @@
   let throwPresentationQueue = Promise.resolve();
   let roomTurnPlaybackQueue = Promise.resolve();
   const instructionFlashTimers = new Map();
+  // 이동 중인 말은 보드 셀 스프링과 분리해 한 칸 단위 고정 시간 애니메이션으로 처리한다.
+  const directTokenAnimations = new Set();
 
   const TOKEN_BASE_SIZE = 26;
   const INSTRUCTION_ZONE_RATIO = 0.70;
@@ -98,9 +100,6 @@
   const PLAYER_EDGE_PADDING = 5;
   const MOTION_EPSILON = 0.025;
   const VELOCITY_EPSILON = 0.04;
-  // P0 gap 허용오차(0.05px)에 충분한 정밀도를 유지하면서 이동 중 solver 부하를 줄인다.
-  const GEOMETRY_SEARCH_ITERATIONS = 14;
-  const WIDTH_SOLVE_ITERATIONS = 20;
 
   function normalizeCell(index) {
     const numeric = Number.parseInt(index, 10);
@@ -541,7 +540,7 @@
       candidate = cellGeometry(path, high, width, height);
     }
 
-    for (let iteration = 0; iteration < GEOMETRY_SEARCH_ITERATIONS; iteration += 1) {
+    for (let iteration = 0; iteration < 24; iteration += 1) {
       const middle = (low + high) * 0.5;
       const middleGeometry = cellGeometry(path, middle, width, height);
       const distance = polygonDistance(previous.corners, middleGeometry.corners);
@@ -625,7 +624,7 @@
       candidate = cellGeometry(path, low, width, height);
     }
 
-    for (let iteration = 0; iteration < GEOMETRY_SEARCH_ITERATIONS; iteration += 1) {
+    for (let iteration = 0; iteration < 24; iteration += 1) {
       const middle = (low + high) * 0.5;
       const middleGeometry = cellGeometry(path, middle, width, height);
       const distance = polygonDistance(middleGeometry.corners, next.corners);
@@ -836,7 +835,7 @@
       gap
     );
 
-    for (let iteration = 0; iteration < WIDTH_SOLVE_ITERATIONS; iteration += 1) {
+    for (let iteration = 0; iteration < 42; iteration += 1) {
       const middle = (low + high) * 0.5;
       const trial = placeLoopWithWidths(
         path,
@@ -951,7 +950,7 @@
       highTrial = trialFor(high);
     }
 
-    for (let iteration = 0; iteration < WIDTH_SOLVE_ITERATIONS; iteration += 1) {
+    for (let iteration = 0; iteration < 42; iteration += 1) {
       const middle = (low + high) * 0.5;
       const trial = trialFor(middle);
       const tooLarge =
@@ -1190,8 +1189,9 @@
       moving = advanceMotionState(state, deltaTime) || moving;
     }
 
-    for (const state of tokenMotionStates.values()) {
+    for (const [playerId, state] of tokenMotionStates.entries()) {
       if (!state.element.isConnected) continue;
+      if (directTokenAnimations.has(String(playerId))) continue;
       moving = advanceMotionState(state, deltaTime) || moving;
     }
 
@@ -1214,7 +1214,8 @@
     }
 
     if (!moving) {
-      for (const state of tokenMotionStates.values()) {
+      for (const [playerId, state] of tokenMotionStates.entries()) {
+        if (directTokenAnimations.has(String(playerId))) continue;
         if (stateNeedsMotion(state)) {
           moving = true;
           break;
@@ -1491,25 +1492,7 @@
     });
   }
 
-  function flushLayoutNow() {
-    if (layoutFrame) {
-      window.cancelAnimationFrame(layoutFrame);
-      layoutFrame = 0;
-    }
-
-    try {
-      layoutNow();
-      return true;
-    } catch (error) {
-      layoutFrame = 0;
-      console.error("board layout failed", error);
-      // 다음 일반 렌더 프레임에서 다시 시도하되 이동 큐를 기다리게 하지는 않는다.
-      scheduleLayout();
-      return false;
-    }
-  }
-
-  function waitForPaint(timeoutMs = 120) {
+  function waitForRenderFrame(timeoutMs = 120) {
     return new Promise((resolve) => {
       let settled = false;
       let frameId = 0;
@@ -1528,7 +1511,7 @@
     });
   }
 
-  function snapPlayerMotionToTarget(playerId) {
+  function snapTokenMotionToLatestTarget(playerId) {
     const motion = tokenMotionStates.get(String(playerId));
     if (!motion) return;
 
@@ -1541,35 +1524,68 @@
     applyMotionTransform(motion);
   }
 
-  function snapBoardMotionToTargets() {
-    for (const motion of cellMotionStates.values()) {
-      if (!motion.element.isConnected) continue;
-      motion.x = motion.targetX;
-      motion.y = motion.targetY;
-      motion.scale = motion.targetScale;
-      motion.vx = 0;
-      motion.vy = 0;
-      motion.vs = 0;
-      applyMotionTransform(motion);
-    }
-  }
+  function animatePlayerOneCell(playerId, durationMs = STEP_DELAY_MS) {
+    const id = String(playerId);
+    const motion = tokenMotionStates.get(id);
 
-  function snapAllTokenMotionToTargets() {
-    for (const motion of tokenMotionStates.values()) {
-      if (!motion.element.isConnected) continue;
-      motion.x = motion.targetX;
-      motion.y = motion.targetY;
-      motion.scale = motion.targetScale;
-      motion.vx = 0;
-      motion.vy = 0;
-      motion.vs = 0;
-      applyMotionTransform(motion);
+    if (!motion || !motion.element.isConnected) {
+      return delay(durationMs);
     }
-  }
 
-  function snapStepMotionToTargets() {
-    snapBoardMotionToTargets();
-    snapAllTokenMotionToTargets();
+    const startX = motion.x;
+    const startY = motion.y;
+    const startScale = motion.scale;
+    motion.vx = 0;
+    motion.vy = 0;
+    motion.vs = 0;
+    directTokenAnimations.add(id);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let startedAt = 0;
+      let frameId = 0;
+      let timeoutId = 0;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (frameId) window.cancelAnimationFrame(frameId);
+        if (timeoutId) window.clearTimeout(timeoutId);
+
+        snapTokenMotionToLatestTarget(id);
+        directTokenAnimations.delete(id);
+        scheduleMotion();
+        resolve();
+      };
+
+      const frame = (timestamp) => {
+        if (settled) return;
+        if (!startedAt) startedAt = timestamp;
+
+        const progress = clamp(
+          (timestamp - startedAt) / Math.max(1, durationMs),
+          0,
+          1
+        );
+        const eased = 1 - Math.pow(1 - progress, 3);
+
+        // 다른 플레이어 때문에 보드 목표가 변해도 매 프레임 최신 목적지를 사용한다.
+        motion.x = startX + ((motion.targetX - startX) * eased);
+        motion.y = startY + ((motion.targetY - startY) * eased);
+        motion.scale = startScale + ((motion.targetScale - startScale) * eased);
+        applyMotionTransform(motion);
+
+        if (progress >= 1) {
+          finish();
+          return;
+        }
+        frameId = window.requestAnimationFrame(frame);
+      };
+
+      frameId = window.requestAnimationFrame(frame);
+      // rAF가 정지/지연돼도 이동 큐가 영구 대기하지 않는다.
+      timeoutId = window.setTimeout(finish, durationMs + 180);
+    });
   }
 
   const BUBBLE_PIP_POSITIONS = {
@@ -2058,25 +2074,24 @@
         evaluatePhase();
       }
 
-      // 논리 위치를 바꾼 즉시 현재 프레임의 레이아웃/토큰 목표를 확정한다.
-      // 별도 완료 Promise를 기다리지 않으므로 레이아웃 실패가 이동 큐의 교착으로 이어지지 않는다.
-      ensurePlayerTokens();
-      renderGlobalState();
-      const committed = flushLayoutNow();
+      // 보드 Dock 재배치는 일반 rAF 레이아웃으로 맡긴다.
+      // 예약된 레이아웃 프레임이 먼저 실행되도록 한 프레임을 넘긴 뒤,
+      // 말 자체는 셀 스프링과 독립된 고정 시간 애니메이션으로 정확히 한 칸 이동한다.
+      renderPlayers();
+      await waitForRenderFrame();
 
-      // 성공한 커밋은 최소 한 번 실제 페인트 기회를 준 뒤 1칸 이동 시간을 보장한다.
-      // 실패한 커밋도 다음 예약 프레임에서 복구하되 논리 큐를 무한 대기시키지 않는다.
-      if (committed) await waitForPaint();
-      await delay(STEP_DELAY_MS);
+      const token = playerTokenElements.get(player.id);
+      if (token?.dataset.cellIndex !== String(player.position)) {
+        // 레이아웃 프레임이 일시 실패한 경우에만 한 번 재예약한다.
+        scheduleLayout();
+        await waitForRenderFrame();
+      }
 
-      // 다음 논리 스텝 전에 현재 스텝의 셀 재배치와 말을 모두 목표 상태에 확정한다.
-      // 이전 스텝의 보드 스프링이 다음 플레이어 이동 때 뒤늦게 따라붙는 현상을 막는다.
-      snapStepMotionToTargets();
-      await waitForPaint();
+      await animatePlayerOneCell(player.id, STEP_DELAY_MS);
     }
 
-    // 마지막 칸에서도 현재 보드/말 상태를 한 번 더 확정한다.
-    snapStepMotionToTargets();
+    // 최종 논리 위치의 최신 목표 좌표에 정확히 맞춘다.
+    snapTokenMotionToLatestTarget(player.id);
 
     if (!meta.suppressDestinationEvent) {
       const command = destinationCommand(player.position);

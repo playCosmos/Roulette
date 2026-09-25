@@ -1373,6 +1373,12 @@
       "--player-token-local-size",
       clamp(Math.min(baseWidth, baseHeight) * 0.46, 9, 31).toFixed(3) + "px"
     );
+    // player zone은 셀과 함께 scale되므로 화면 기준 5px 여백을 유지하려면
+    // local padding은 현재 셀 scale의 역수로 보정한다.
+    cell.style.setProperty(
+      "--player-edge-padding-local",
+      (PLAYER_EDGE_PADDING / Math.max(0.01, scale)).toFixed(3) + "px"
+    );
     cell.style.zIndex = String(Math.round(weight * 100) + (occupied ? 200 : 0));
 
     cell.dataset.occupied = String(occupied);
@@ -1755,11 +1761,13 @@
       if (!zone) continue;
 
       const visiblePlayers = players.slice(0, MAX_PLAYERS);
-      visiblePlayers.forEach((player) => {
+      visiblePlayers.forEach((player, playerIndex) => {
         const token = playerTokenElements.get(player.id);
         if (!token) return;
         if (token.parentElement !== zone) zone.append(token);
         token.dataset.cellIndex = String(cellIndex);
+        token.dataset.stackIndex = String(playerIndex);
+        token.dataset.stackCount = String(visiblePlayers.length);
         token.dataset.stacked = String(visiblePlayers.length > 1);
         token.dataset.cellOverflow = String(visiblePlayers.length >= 3);
 

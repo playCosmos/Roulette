@@ -264,21 +264,21 @@ body {
 /*
  * 비점유 지시문 칸은 셀 전체를 사용해 중앙 배치한다.
  * 플레이어가 도착하면 바깥쪽 70%로 이동해 안쪽 30%를 플레이어 공간으로 비운다.
- * START는 점유 여부와 무관하게 항상 셀 전체 중앙을 사용한다.
+ * START도 동일한 점유/비점유 위치 규칙을 따른다.
  */
-.board-cell[data-kind="instruction"][data-occupied="true"][data-instruction-edge="top"] .cell-instruction-zone {
+.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"][data-instruction-edge="top"] .cell-instruction-zone {
   bottom: var(--player-zone-ratio, 30%);
 }
 
-.board-cell[data-kind="instruction"][data-occupied="true"][data-instruction-edge="bottom"] .cell-instruction-zone {
+.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"][data-instruction-edge="bottom"] .cell-instruction-zone {
   top: var(--player-zone-ratio, 30%);
 }
 
-.board-cell[data-kind="instruction"][data-occupied="true"][data-instruction-edge="left"] .cell-instruction-zone {
+.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"][data-instruction-edge="left"] .cell-instruction-zone {
   right: var(--player-zone-ratio, 30%);
 }
 
-.board-cell[data-kind="instruction"][data-occupied="true"][data-instruction-edge="right"] .cell-instruction-zone {
+.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"][data-instruction-edge="right"] .cell-instruction-zone {
   left: var(--player-zone-ratio, 30%);
 }
 
@@ -314,7 +314,7 @@ body {
 }
 
 /* 플레이어가 없는 지시문 칸은 셀 중앙에서 더 크게 읽히게 한다. */
-.board-cell[data-kind="instruction"][data-occupied="false"] .cell-label {
+.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="false"] .cell-label {
   max-height: 3.65em;
   padding: clamp(4px, .34vw, 7px);
   color: rgba(255,255,255,.80);
@@ -325,7 +325,7 @@ body {
 }
 
 /* 점유되면 플레이어 공간 확보를 위해 기본 크기로 자연스럽게 복귀한다. */
-.board-cell[data-kind="instruction"][data-occupied="true"] .cell-label {
+.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"] .cell-label {
   font-size: var(--cell-label-font, 10px);
 }
 
@@ -334,8 +334,8 @@ body {
  * 공백이 있는 기본 지시문은 단어 단위로 우선 나누고,
  * 4글자 이상 붙은 문자열도 3글자 폭에서 강제로 다음 줄로 넘긴다.
  */
-.board-cell[data-kind="instruction"][data-occupied="true"][data-instruction-edge="left"] .cell-label,
-.board-cell[data-kind="instruction"][data-occupied="true"][data-instruction-edge="right"] .cell-label {
+.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"][data-instruction-edge="left"] .cell-label,
+.board-cell:is([data-kind="instruction"], [data-kind="start"])[data-occupied="true"][data-instruction-edge="right"] .cell-label {
   width: 3.15em;
   max-width: calc(100% - 4px);
   max-height: 3.55em;
@@ -346,7 +346,7 @@ body {
   -webkit-line-clamp: 3;
 }
 
-/* START는 점유 여부와 무관하게 항상 중앙 고정. */
+/* START도 동일한 위치 규칙을 따르되 강조 색과 굵기는 유지한다. */
 .board-cell[data-kind="start"] .cell-label {
   color: var(--accent);
   font-weight: 850;

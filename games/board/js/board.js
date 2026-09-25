@@ -2753,7 +2753,12 @@
     return token.getBoundingClientRect();
   }
 
-  function animateReparentedTokenV6(playerId, firstRect, durationMs = STEP_DELAY_MS) {
+  function animateReparentedTokenV6(
+    playerId,
+    firstRect,
+    durationMs = STEP_DELAY_MS,
+    isFinalStep = false
+  ) {
     const id = String(playerId);
     const token = playerTokenElements.get(id);
     if (!token || !token.isConnected || !firstRect) {
@@ -2774,10 +2779,6 @@
     const screenDy = firstRect.top - lastRect.top;
     const localDx = screenDx / parentScaleX;
     const localDy = screenDy / parentScaleY;
-    const scaleX = lastRect.width > 0 ? firstRect.width / lastRect.width : 1;
-    const scaleY = lastRect.height > 0 ? firstRect.height / lastRect.height : 1;
-    const startScale = Math.max(0.01, Math.min(scaleX, scaleY));
-
     if (INSTANT_MOVEMENT_MODE) {
       token.style.transform = "";
       return Promise.resolve();
@@ -2788,14 +2789,17 @@
         {
           transform:
             "translate3d(" + localDx.toFixed(3) + "px," +
-            localDy.toFixed(3) + "px,0) scale(" +
-            startScale.toFixed(5) + ")"
+            localDy.toFixed(3) + "px,0)"
         },
-        { transform: "translate3d(0,0,0) scale(1)" }
+        { transform: "translate3d(0,0,0)" }
       ],
       {
         duration: Math.max(1, durationMs),
-        easing: "cubic-bezier(.65,0,.35,1)",
+        // 중간 칸에서 매번 감속/재가속하지 않아 연속 이동감을 유지한다.
+        // 최종 칸만 완만하게 감속한다.
+        easing: isFinalStep
+          ? "cubic-bezier(.22,.61,.36,1)"
+          : "linear",
         fill: "none"
       }
     );
@@ -2849,7 +2853,8 @@
       await animateReparentedTokenV6(
         player.id,
         firstRect,
-        STEP_DELAY_MS
+        STEP_DELAY_MS,
+        moved === distance - 1
       );
 
       if (

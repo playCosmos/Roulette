@@ -2040,7 +2040,12 @@
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
-  async function movePlayerBy(playerId, steps, meta = {}) {
+  /*
+   * PRESERVED MOVEMENT V34
+   * 2026-09-25-34에서 사용하던 이동 구현을 회귀 비교용으로 그대로 보존한다.
+   * 현재 런타임에서는 호출하지 않는다.
+   */
+  async function movePlayerByPreservedV34(playerId, steps, meta = {}) {
     const player = state.players.get(String(playerId));
     if (!player) throw new Error("unknown player: " + playerId);
 
@@ -2081,6 +2086,253 @@
     }
 
     // 최종 논리 위치의 최신 목표 좌표에 정확히 맞춘다.
+    snapTokenMotionToLatestTarget(player.id);
+
+    if (!meta.suppressDestinationEvent) {
+      const command = destinationCommand(player.position);
+      const source = meta.source ? " (" + meta.source + ")" : "";
+
+      if (command) {
+        setEventMessage(player.name + ": " + command + source);
+        window.dispatchEvent(new CustomEvent("ramyani-board:command", {
+          detail: {
+            playerId: player.id,
+            position: player.position,
+            command,
+            source: meta.source || null
+          }
+        }));
+      } else {
+        setEventMessage(player.name + " → " + (player.position + 1) + "번 칸" + source);
+      }
+    }
+
+    return { ...player };
+  }
+
+  function captureTokenVisualState(playerId) {
+    const id = String(playerId);
+    const motion = tokenMotionStates.get(id);
+    if (!motion) return null;
+
+    motion.vx = 0;
+    motion.vy = 0;
+    motion.vs = 0;
+
+    return {
+      element: motion.element,
+      x: motion.x,
+      y: motion.y,
+      scale: motion.scale
+    };
+  }
+
+  function restoreTokenVisualState(playerId, visual) {
+    if (!visual) return;
+    const motion = tokenMotionStates.get(String(playerId));
+    if (!motion || !motion.element.isConnected) return;
+
+    motion.x = visual.x;
+    motion.y = visual.y;
+    motion.scale = visual.scale;
+    motion.vx = 0;
+    motion.vy = 0;
+    motion.vs = 0;
+    applyMotionTransform(motion);
+  }
+
+  function tokenTargetReady(playerId, expectedCell) {
+    const id = String(playerId);
+    const token = playerTokenElements.get(id);
+    const motion = tokenMotionStates.get(id);
+
+    return Boolean(
+      token &&
+      motion &&
+      motion.element.isConnected &&
+      token.dataset.cellIndex === String(expectedCell) &&
+      Number.isFinite(motion.targetX) &&
+      Number.isFinite(motion.targetY) &&
+      Number.isFinite(motion.targetScale)
+    );
+  }
+
+  function waitForTokenTarget(playerId, expectedCell, visual, timeoutMs = 140) {
+    const id = String(playerId);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let frameId = 0;
+      let timeoutId = 0;
+
+      const finish = (ready) => {
+        if (settled) return;
+        settled = true;
+        if (frameId) window.cancelAnimationFrame(frameId);
+        if (timeoutId) window.clearTimeout(timeoutId);
+
+        const motion = tokenMotionStates.get(id);
+        if (
+          ready &&
+          visual &&
+          motion &&
+          motion.element !== visual.element
+        ) {
+          // START/phase 전환으로 토큰 DOM이 재생성돼도 이전 화면 위치에서 이어서 이동한다.
+          restoreTokenVisualState(id, visual);
+        }
+        resolve(Boolean(ready));
+      };
+
+      const check = () => {
+        if (settled) return;
+        if (tokenTargetReady(id, expectedCell)) {
+          finish(true);
+          return;
+        }
+        frameId = window.requestAnimationFrame(check);
+      };
+
+      // 정상 경로는 예약된 layout rAF 한 번으로 목적지가 준비된다.
+      scheduleLayout();
+      frameId = window.requestAnimationFrame(check);
+
+      // rAF가 지연되거나 한 번 실패한 경우에만 기존 layoutNow를 동기 fallback으로 1회 사용한다.
+      timeoutId = window.setTimeout(() => {
+        if (settled) return;
+        if (!tokenTargetReady(id, expectedCell)) {
+          try {
+            layoutNow();
+          } catch (error) {
+            console.error("movement target layout failed", error);
+          }
+        }
+        finish(tokenTargetReady(id, expectedCell));
+      }, timeoutMs);
+    });
+  }
+
+  function animateTokenStepV2(playerId, visual, durationMs = STEP_DELAY_MS) {
+    const id = String(playerId);
+    const start = visual || captureTokenVisualState(id);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let startedAt = 0;
+      let frameId = 0;
+      let timeoutId = 0;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (frameId) window.cancelAnimationFrame(frameId);
+        if (timeoutId) window.clearTimeout(timeoutId);
+
+        snapTokenMotionToLatestTarget(id);
+        directTokenAnimations.delete(id);
+        scheduleMotion();
+        resolve();
+      };
+
+      if (!start) {
+        timeoutId = window.setTimeout(finish, durationMs);
+        return;
+      }
+
+      const frame = (timestamp) => {
+        if (settled) return;
+        if (!startedAt) startedAt = timestamp;
+
+        const motion = tokenMotionStates.get(id);
+        if (!motion || !motion.element.isConnected) {
+          frameId = window.requestAnimationFrame(frame);
+          return;
+        }
+
+        const progress = clamp(
+          (timestamp - startedAt) / Math.max(1, durationMs),
+          0,
+          1
+        );
+        const eased = progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - (Math.pow(-2 * progress + 2, 3) / 2);
+
+        // 목적지 보드 셀이 Dock 스프링으로 움직여도 최신 목표를 따라가되,
+        // 출발 좌표는 스텝 시작 순간에 고정해 한 칸 이동량이 축소되지 않게 한다.
+        motion.x = start.x + ((motion.targetX - start.x) * eased);
+        motion.y = start.y + ((motion.targetY - start.y) * eased);
+        motion.scale = start.scale + ((motion.targetScale - start.scale) * eased);
+        motion.vx = 0;
+        motion.vy = 0;
+        motion.vs = 0;
+        applyMotionTransform(motion);
+
+        if (progress >= 1) {
+          finish();
+          return;
+        }
+        frameId = window.requestAnimationFrame(frame);
+      };
+
+      frameId = window.requestAnimationFrame(frame);
+      // 탭/브라우저 rAF 정지 상황에서도 큐가 영구 대기하지 않는다.
+      timeoutId = window.setTimeout(finish, durationMs + 160);
+    });
+  }
+
+  async function movePlayerBy(playerId, steps, meta = {}) {
+    const player = state.players.get(String(playerId));
+    if (!player) throw new Error("unknown player: " + playerId);
+
+    const signedSteps = Number.parseInt(steps, 10) || 0;
+    const direction = signedSteps < 0 ? -1 : 1;
+    const distance = Math.abs(signedSteps);
+    if (!distance) return { ...player };
+
+    for (let moved = 0; moved < distance; moved += 1) {
+      const id = String(player.id);
+
+      // 가장 먼저 말을 공유 스프링에서 제외한다.
+      // 레이아웃 목적지를 계산하는 한 프레임 동안 말이 미리 움직이는 현상을 차단한다.
+      directTokenAnimations.add(id);
+      const visualStart = captureTokenVisualState(id);
+
+      const previous = player.position;
+      player.position = normalizeCell(player.position + direction);
+
+      if (
+        direction > 0 &&
+        previous === board.cellCount - 1 &&
+        player.position === 0
+      ) {
+        player.laps += 1;
+        state.totalLaps += 1;
+        evaluatePhase();
+      }
+
+      ensurePlayerTokens();
+      renderGlobalState();
+      scheduleLayout();
+
+      const targetReady = await waitForTokenTarget(
+        id,
+        player.position,
+        visualStart
+      );
+
+      if (!targetReady) {
+        // 목적지 계산 실패는 해당 스텝을 무한 대기시키지 않는다.
+        // 논리 위치는 유지하고 다음 일반 레이아웃에서 복구할 수 있도록 현재 프레임만 보정한다.
+        console.error(
+          "movement target unavailable",
+          { playerId: id, position: player.position }
+        );
+      }
+
+      await animateTokenStepV2(id, visualStart, STEP_DELAY_MS);
+    }
+
     snapTokenMotionToLatestTarget(player.id);
 
     if (!meta.suppressDestinationEvent) {

@@ -1315,7 +1315,6 @@
     if (!cell) return;
 
     const baseTypography = Math.sqrt(baseWidth * baseHeight);
-    const indexFontSize = clamp(baseTypography * 0.135, 8, 16);
     const labelFontSize = clamp(baseTypography * 0.105, 7, 14);
     const cellRadius = clamp(Math.min(baseWidth, baseHeight) * 0.09, 2, 10);
     const scale = geometry.width / Math.max(0.01, baseWidth);
@@ -1328,8 +1327,11 @@
     if (cell.style.width !== baseWidthText) cell.style.width = baseWidthText;
     if (cell.style.height !== baseHeightText) cell.style.height = baseHeightText;
 
-    cell.style.setProperty("--cell-index-font", indexFontSize.toFixed(3) + "px");
     cell.style.setProperty("--cell-label-font", labelFontSize.toFixed(3) + "px");
+    cell.style.setProperty(
+      "--cell-content-inverse-scale",
+      (1 / Math.max(0.01, scale)).toFixed(6)
+    );
     cell.style.setProperty("--cell-radius", cellRadius.toFixed(3) + "px");
     cell.style.zIndex = String(Math.round(weight * 100) + (occupied ? 200 : 0));
 
@@ -1663,39 +1665,14 @@
       const visiblePlayers = players.slice(0, MAX_PLAYERS);
       const playerZone = playerZoneForGeometry(geometry);
       const allowOverflow = visiblePlayers.length >= 3;
-      const horizontalPlayerZone =
-        playerZone.edge === "top" || playerZone.edge === "bottom";
-      const depthSpan = horizontalPlayerZone
-        ? playerZone.height
-        : playerZone.width;
-      const tangentSpan = horizontalPlayerZone
-        ? playerZone.width
-        : playerZone.height;
 
-      let tokenSize;
-      if (allowOverflow) {
-        // 3명부터는 기존 말 크기를 유지하고, 부족한 공간은 보드 안쪽으로 넘친다.
-        tokenSize = clamp(
-          Math.min(geometry.width, geometry.height) * 0.46,
-          18,
-          62
-        );
-      } else {
-        // 1~2명까지는 30% 플레이어 영역 안에 토큰 전체가 들어가야 한다.
-        const maxByDepth = Math.max(2, depthSpan - 4);
-        const maxByTangent = visiblePlayers.length === 2
-          ? Math.max(2, (tangentSpan - 8) / 1.52)
-          : Math.max(2, tangentSpan - 4);
-        tokenSize = Math.max(
-          2,
-          Math.min(
-            62,
-            Math.min(geometry.width, geometry.height) * 0.46,
-            maxByDepth,
-            maxByTangent
-          )
-        );
-      }
+      // 플레이어 토큰 크기는 70/30 내부 배치 비율과 분리한다.
+      // 이전과 동일하게 셀 전체 크기를 기준으로 산정한다.
+      const tokenSize = clamp(
+        Math.min(geometry.width, geometry.height) * 0.46,
+        18,
+        62
+      );
 
       const layout = tokenLayout(
         visiblePlayers.length,
@@ -1742,16 +1719,21 @@
           (tangentY * slot.tangent);
 
         if (!allowOverflow) {
-          // 1~2명은 토큰 전체가 셀의 30% 플레이어 영역 안에 있어야 한다.
+          // 1~2명은 기존 토큰 크기를 유지하되 셀 바깥으로는 나가지 않는다.
+          const cellMinX = geometry.centerX - (geometry.width * 0.5);
+          const cellMaxX = geometry.centerX + (geometry.width * 0.5);
+          const cellMinY = geometry.centerY - (geometry.height * 0.5);
+          const cellMaxY = geometry.centerY + (geometry.height * 0.5);
+
           centerX = clamp(
             centerX,
-            playerZone.minX + tokenRadius + edgePadding,
-            playerZone.maxX - tokenRadius - edgePadding
+            cellMinX + tokenRadius + edgePadding,
+            cellMaxX - tokenRadius - edgePadding
           );
           centerY = clamp(
             centerY,
-            playerZone.minY + tokenRadius + edgePadding,
-            playerZone.maxY - tokenRadius - edgePadding
+            cellMinY + tokenRadius + edgePadding,
+            cellMaxY - tokenRadius - edgePadding
           );
         }
 

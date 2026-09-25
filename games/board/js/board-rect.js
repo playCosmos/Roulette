@@ -77,6 +77,7 @@
   };
 
   const cellElements = new Map();
+  const playerZoneElements = new Map();
   const playerTokenElements = new Map();
   const cellMotionStates = new Map();
   const tokenMotionStates = new Map();
@@ -139,7 +140,7 @@
 
     refs.boardStage.dataset.layoutEngine = "rectilinear-loop-experimental";
     refs.boardStage.dataset.movementMode =
-      INSTANT_MOVEMENT_MODE ? "instant-diagnostic" : "animated-v4";
+      INSTANT_MOVEMENT_MODE ? "instant-cell-reparent" : "cell-reparent-flip-v6";
     refs.boardStage.dataset.phase = state.currentPhaseId;
     refs.boardStage.dataset.totalLaps = String(state.totalLaps);
     refs.boardStage.dataset.playerCount = String(state.players.size);
@@ -164,6 +165,7 @@
 
     refs.boardGrid.innerHTML = "";
     cellElements.clear();
+    playerZoneElements.clear();
     previousScaleWeights = null;
     neutralSolveCache = null;
 
@@ -196,17 +198,19 @@
       instructionZone.className = "cell-instruction-zone";
       instructionZone.append(label);
 
-      cell.append(instructionZone);
+      const playerZone = document.createElement("span");
+      playerZone.className = "cell-player-zone";
+      playerZone.dataset.cellIndex = String(index);
+      playerZone.dataset.count = "0";
+      playerZone.setAttribute("aria-hidden", "true");
+
+      cell.append(instructionZone, playerZone);
       refs.boardGrid.append(cell);
       cellElements.set(index, cell);
+      playerZoneElements.set(index, playerZone);
     }
 
-    const playerLayer = document.createElement("div");
-    playerLayer.className = "player-layer";
-    playerLayer.setAttribute("aria-hidden", "true");
-    refs.boardGrid.append(playerLayer);
-    refs.playerLayer = playerLayer;
-
+    refs.playerLayer = null;
     playerTokenElements.clear();
     renderPlayers();
   }
@@ -1365,6 +1369,10 @@
 
     cell.style.setProperty("--cell-label-font", labelFontSize.toFixed(3) + "px");
     cell.style.setProperty("--cell-radius", cellRadius.toFixed(3) + "px");
+    cell.style.setProperty(
+      "--player-token-local-size",
+      clamp(Math.min(baseWidth, baseHeight) * 0.46, 9, 31).toFixed(3) + "px"
+    );
     cell.style.zIndex = String(Math.round(weight * 100) + (occupied ? 200 : 0));
 
     cell.dataset.occupied = String(occupied);
@@ -1712,9 +1720,59 @@
     if (bubble) bubble.dataset.visible = "false";
   }
 
-  function ensurePlayerTokens() {
-    if (!refs.playerLayer) return;
+  function playerZoneForCell(cellIndex) {
+    return playerZoneElements.get(normalizeCell(cellIndex)) || null;
+  }
 
+  function updatePlayerZoneMetadata(occupancy = occupancyByCell()) {
+    for (let index = 0; index < board.cellCount; index += 1) {
+      const zone = playerZoneElements.get(index);
+      if (!zone) continue;
+      const players = occupancy.get(index) || [];
+      zone.dataset.count = String(players.length);
+      zone.dataset.overflow = String(players.length >= 3);
+    }
+  }
+
+  function moveTokenElementToCell(playerId, cellIndex) {
+    const id = String(playerId);
+    const token = playerTokenElements.get(id);
+    const zone = playerZoneForCell(cellIndex);
+    if (!token || !zone) return false;
+
+    if (token.parentElement !== zone) {
+      zone.append(token);
+    }
+    token.dataset.cellIndex = String(normalizeCell(cellIndex));
+    return true;
+  }
+
+  function syncPlayerTokenParents(occupancy = occupancyByCell()) {
+    updatePlayerZoneMetadata(occupancy);
+
+    for (const [cellIndex, players] of occupancy.entries()) {
+      const zone = playerZoneElements.get(cellIndex);
+      if (!zone) continue;
+
+      const visiblePlayers = players.slice(0, MAX_PLAYERS);
+      visiblePlayers.forEach((player) => {
+        const token = playerTokenElements.get(player.id);
+        if (!token) return;
+        if (token.parentElement !== zone) zone.append(token);
+        token.dataset.cellIndex = String(cellIndex);
+        token.dataset.stacked = String(visiblePlayers.length > 1);
+        token.dataset.cellOverflow = String(visiblePlayers.length >= 3);
+
+        const edge = cellElements.get(cellIndex)?.dataset.instructionEdge || "top";
+        token.dataset.bubbleSide =
+          edge === "top" ? "down" :
+          edge === "bottom" ? "up" :
+          edge === "left" ? "right" : "left";
+      });
+    }
+  }
+
+  function ensurePlayerTokens() {
     const activeIds = new Set();
 
     for (const player of state.players.values()) {
@@ -1724,11 +1782,16 @@
       if (!token) {
         token = createPlayerToken(player);
         playerTokenElements.set(player.id, token);
-        refs.playerLayer.append(token);
-        renderDemoEffectBadges(player.id);
       } else {
         updatePlayerToken(token, player);
       }
+
+      const zone = playerZoneForCell(player.position);
+      if (zone && token.parentElement !== zone) {
+        zone.append(token);
+      }
+      token.dataset.cellIndex = String(player.position);
+      renderDemoEffectBadges(player.id);
     }
 
     for (const [playerId, token] of playerTokenElements.entries()) {
@@ -1737,6 +1800,8 @@
       playerTokenElements.delete(playerId);
       tokenMotionStates.delete(playerId);
     }
+
+    syncPlayerTokenParents();
   }
 
   function tokenLayout(count, tokenSize, geometry, allowOverflow = false) {
@@ -1805,116 +1870,10 @@
   }
 
   function layoutPlayerTokens(placements, occupancy) {
+    // V6: 토큰은 전역 player-layer 좌표를 계산하지 않는다.
+    // 현재 논리 칸의 .cell-player-zone 자식으로만 유지한다.
     ensurePlayerTokens();
-    if (!refs.playerLayer) return;
-
-    const snap = refs.boardStage.dataset.layoutReady !== "true";
-
-    for (const [cellIndex, players] of occupancy.entries()) {
-      const geometry = placements[cellIndex];
-      if (!geometry) continue;
-
-      const visiblePlayers = players.slice(0, MAX_PLAYERS);
-      const playerZone = playerZoneForGeometry(geometry);
-      const allowOverflow = visiblePlayers.length >= 3;
-
-      // 플레이어 토큰 크기는 70/30 내부 배치 비율과 분리한다.
-      // 이전과 동일하게 셀 전체 크기를 기준으로 산정한다.
-      const tokenSize = clamp(
-        Math.min(geometry.width, geometry.height) * 0.46,
-        18,
-        62
-      );
-
-      const layout = tokenLayout(
-        visiblePlayers.length,
-        tokenSize,
-        allowOverflow ? geometry : playerZone,
-        allowOverflow
-      );
-
-      visiblePlayers.forEach((player, index) => {
-        const token = playerTokenElements.get(player.id);
-        if (!token) return;
-
-        const slot = layout.slots[index] || { tangent: 0, depth: 0 };
-
-        // 첫 줄은 보드 안쪽 테두리에 붙이고, 두 번째 줄은 셀 중앙 쪽으로
-        // 한 줄만 이동한다. tangent 방향으로 펼쳐 각 말의 식별성을 유지한다.
-        const tangentX = Math.cos(geometry.point.angle);
-        const tangentY = Math.sin(geometry.point.angle);
-        const inwardX = -tangentY;
-        const inwardY = tangentX;
-        const tokenRadius = tokenSize * 0.5;
-        const edgePadding = PLAYER_EDGE_PADDING;
-
-        // 플레이어 영역의 지시문 경계에서 약간 더 안쪽 여유를 둔다.
-        // 위/아래는 50%, 좌/우는 30% 플레이어 영역을 사용하며
-        // 3명 이상에서도 지시문 쪽이 아니라 보드 안쪽 방향으로만 확장한다.
-        const zoneDepth =
-          playerZone.edge === "top" || playerZone.edge === "bottom"
-            ? playerZone.height
-            : playerZone.width;
-        const boundaryX =
-          playerZone.centerX - (inwardX * zoneDepth * 0.5);
-        const boundaryY =
-          playerZone.centerY - (inwardY * zoneDepth * 0.5);
-        const inwardOffset = tokenRadius + edgePadding;
-
-        let centerX =
-          boundaryX +
-          (inwardX * (inwardOffset + slot.depth)) +
-          (tangentX * slot.tangent);
-        let centerY =
-          boundaryY +
-          (inwardY * (inwardOffset + slot.depth)) +
-          (tangentY * slot.tangent);
-
-        if (!allowOverflow) {
-          // 1~2명은 기존 토큰 크기를 유지하되 셀 바깥으로는 나가지 않는다.
-          const cellMinX = geometry.centerX - (geometry.width * 0.5);
-          const cellMaxX = geometry.centerX + (geometry.width * 0.5);
-          const cellMinY = geometry.centerY - (geometry.height * 0.5);
-          const cellMaxY = geometry.centerY + (geometry.height * 0.5);
-
-          centerX = clamp(
-            centerX,
-            cellMinX + tokenRadius + edgePadding,
-            cellMaxX - tokenRadius - edgePadding
-          );
-          centerY = clamp(
-            centerY,
-            cellMinY + tokenRadius + edgePadding,
-            cellMaxY - tokenRadius - edgePadding
-          );
-        }
-
-        token.dataset.cellIndex = String(cellIndex);
-        token.dataset.stacked = String(visiblePlayers.length > 1);
-        token.dataset.cellOverflow = String(allowOverflow);
-
-        if (Math.abs(inwardX) >= Math.abs(inwardY)) {
-          token.dataset.bubbleSide = inwardX >= 0 ? "right" : "left";
-        } else {
-          token.dataset.bubbleSide = inwardY >= 0 ? "down" : "up";
-        }
-        token.style.setProperty(
-          "--bubble-inverse-scale",
-          String(TOKEN_BASE_SIZE / Math.max(1, tokenSize))
-        );
-
-        setMotionTarget(
-          tokenMotionStates,
-          player.id,
-          token,
-          centerX - (TOKEN_BASE_SIZE * 0.5),
-          centerY - (TOKEN_BASE_SIZE * 0.5),
-          tokenSize / TOKEN_BASE_SIZE,
-          "token",
-          snap
-        );
-      });
-    }
+    syncPlayerTokenParents(occupancy);
   }
 
   function renderPlayers() {
@@ -2754,7 +2713,10 @@
       await waitForRenderFrame();
     }
 
-    // 레이아웃 계산 결과는 그대로 사용하고 화면 모션 상태만 즉시 최종값으로 확정한다.
+    // V6 instant: 토큰 DOM은 최종 논리 칸의 player zone으로 직접 이동한다.
+    ensurePlayerTokens();
+    moveTokenElementToCell(player.id, player.position);
+    syncPlayerTokenParents();
     snapAllMotionToTargetsInstant();
     await waitForRenderFrame();
 
@@ -2764,7 +2726,126 @@
   async function movePlayerStepsActive(playerId, steps) {
     return INSTANT_MOVEMENT_MODE
       ? movePlayerStepsInstant(playerId, steps)
-      : movePlayerStepsCoreV5(playerId, steps);
+      : movePlayerStepsCoreV6(playerId, steps);
+  }
+
+  function playerTokenRect(playerId) {
+    const token = playerTokenElements.get(String(playerId));
+    if (!token || !token.isConnected) return null;
+    return token.getBoundingClientRect();
+  }
+
+  function animateReparentedTokenV6(playerId, firstRect, durationMs = STEP_DELAY_MS) {
+    const id = String(playerId);
+    const token = playerTokenElements.get(id);
+    if (!token || !token.isConnected || !firstRect) {
+      return delay(durationMs);
+    }
+
+    const lastRect = token.getBoundingClientRect();
+    const cell = token.closest(".board-cell");
+    if (!cell) return delay(durationMs);
+
+    const cellRect = cell.getBoundingClientRect();
+    const localWidth = Math.max(0.0001, cell.offsetWidth || cellRect.width || 1);
+    const localHeight = Math.max(0.0001, cell.offsetHeight || cellRect.height || 1);
+    const parentScaleX = Math.max(0.0001, cellRect.width / localWidth);
+    const parentScaleY = Math.max(0.0001, cellRect.height / localHeight);
+
+    const screenDx = firstRect.left - lastRect.left;
+    const screenDy = firstRect.top - lastRect.top;
+    const localDx = screenDx / parentScaleX;
+    const localDy = screenDy / parentScaleY;
+    const scaleX = lastRect.width > 0 ? firstRect.width / lastRect.width : 1;
+    const scaleY = lastRect.height > 0 ? firstRect.height / lastRect.height : 1;
+    const startScale = Math.max(0.01, Math.min(scaleX, scaleY));
+
+    if (INSTANT_MOVEMENT_MODE) {
+      token.style.transform = "";
+      return Promise.resolve();
+    }
+
+    const animation = token.animate(
+      [
+        {
+          transform:
+            "translate3d(" + localDx.toFixed(3) + "px," +
+            localDy.toFixed(3) + "px,0) scale(" +
+            startScale.toFixed(5) + ")"
+        },
+        { transform: "translate3d(0,0,0) scale(1)" }
+      ],
+      {
+        duration: Math.max(1, durationMs),
+        easing: "cubic-bezier(.65,0,.35,1)",
+        fill: "none"
+      }
+    );
+
+    return animation.finished
+      .catch(() => undefined)
+      .then(() => {
+        token.style.transform = "";
+      });
+  }
+
+  async function movePlayerStepsCoreV6(playerId, steps) {
+    const player = state.players.get(String(playerId));
+    if (!player) throw new Error("unknown player: " + playerId);
+
+    const signedSteps = Number.parseInt(steps, 10) || 0;
+    const direction = signedSteps < 0 ? -1 : 1;
+    const distance = Math.abs(signedSteps);
+    if (!distance) return { ...player };
+
+    ensurePlayerTokens();
+
+    for (let moved = 0; moved < distance; moved += 1) {
+      const previous = player.position;
+      const next = normalizeCell(previous + direction);
+      const firstRect = playerTokenRect(player.id);
+
+      // 게임 상태를 먼저 한 칸 진행하고 토큰 DOM 자체를 목적지 셀 내부로 이동한다.
+      player.position = next;
+      ensurePlayerTokens();
+      moveTokenElementToCell(player.id, next);
+      syncPlayerTokenParents();
+      renderGlobalState();
+
+      // 셀/Dock 레이아웃은 기존 solver를 그대로 사용한다.
+      // 실패해도 토큰은 이미 논리 목적지 셀의 자식이므로 이동량은 영향을 받지 않는다.
+      try {
+        layoutNow();
+      } catch (error) {
+        console.error("movement layout step failed; token remains in destination cell", {
+          playerId: player.id,
+          from: previous,
+          to: next,
+          moved,
+          distance,
+          error
+        });
+        scheduleLayout();
+      }
+
+      await animateReparentedTokenV6(
+        player.id,
+        firstRect,
+        STEP_DELAY_MS
+      );
+
+      if (
+        direction > 0 &&
+        previous === board.cellCount - 1 &&
+        next === 0
+      ) {
+        player.laps += 1;
+        state.totalLaps += 1;
+        evaluatePhase();
+      }
+    }
+
+    return { ...player };
   }
 
   function movementFallbackTargetFromCurrentCell(playerId, cellIndex) {

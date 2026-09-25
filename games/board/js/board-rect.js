@@ -2185,8 +2185,8 @@
 
     if (type === "skip") {
       return {
-        label: "다음 주사위 무효",
-        command: "다음 주사위 무효",
+        label: "다음 던지기 무효",
+        command: "다음 던지기 무효",
         kind: "instruction",
         instructionType: "skip"
       };
@@ -2195,8 +2195,8 @@
     if (type === "multiplier") {
       const multiplier = 2 + Math.floor(Math.random() * 3);
       return {
-        label: "다음 주사위 " + multiplier + "배",
-        command: "다음 주사위 " + multiplier + "배",
+        label: "다음 던지기 " + multiplier + "배",
+        command: "다음 던지기 " + multiplier + "배",
         kind: "instruction",
         instructionType: "multiplier"
       };
@@ -2387,10 +2387,10 @@
             (action.direction === "backward" ? "뒤로" : "앞으로");
         }
       }
-      if (action.type === "skipThrow") return "다음 주사위 무효";
+      if (action.type === "skipThrow") return "다음 던지기 무효";
       if (action.type === "multiplyNextThrow") {
         const multiplier = Math.max(2, Number(action.multiplier) || 2);
-        return "다음 주사위 " + multiplier + "배";
+        return "다음 던지기 " + multiplier + "배";
       }
       if (action.type === "ignoreNextLanding") return "다음 칸 무효화";
       if (action.type === "moveToStart") return "START로 이동";
@@ -2568,7 +2568,7 @@
     if (!player) return;
 
     if (turn.openingThrowSkipped) {
-      setEventMessage((turn.playerName || player.name) + ": 다음 주사위 무효");
+      setEventMessage((turn.playerName || player.name) + ": 다음 던지기 무효");
       return;
     }
 

@@ -90,8 +90,8 @@
   let roomTurnPlaybackQueue = Promise.resolve();
 
   const TOKEN_BASE_SIZE = 26;
-  const INSTRUCTION_ZONE_RATIO = 0.35;
-  const PLAYER_ZONE_RATIO = 0.65;
+  const INSTRUCTION_ZONE_RATIO = 0.70;
+  const PLAYER_ZONE_RATIO = 0.30;
   const MOTION_EPSILON = 0.025;
   const VELOCITY_EPSILON = 0.04;
 
@@ -1595,7 +1595,7 @@
     }
   }
 
-  function tokenLayout(count, tokenSize, geometry) {
+  function tokenLayout(count, tokenSize, geometry, allowOverflow = false) {
     if (count <= 1) {
       return {
         tokenSize,
@@ -1635,14 +1635,16 @@
     const fitSpacing = maxRowCount > 1
       ? (availableSpan - tokenSize) / (maxRowCount - 1)
       : preferredSpacing;
-    const spacing = clamp(
-      Math.min(preferredSpacing, fitSpacing),
-      tokenSize * 0.52,
-      preferredSpacing
-    );
+    const spacing = allowOverflow
+      ? preferredSpacing
+      : clamp(
+          Math.min(preferredSpacing, fitSpacing),
+          tokenSize * 0.52,
+          preferredSpacing
+        );
 
-    // 두 번째 줄은 테두리에서 셀 중앙 쪽으로 이동한다.
-    // 말끼리는 약간 겹치도록 지름보다 작은 깊이 간격을 사용한다.
+    // 1~2명은 셀 내부에 유지한다.
+    // 3명 이상부터는 두 번째 줄이 보드 안쪽 방향으로 셀 밖까지 확장될 수 있다.
     const rowDepth = tokenSize * 0.72;
     const slots = [];
 
@@ -1650,7 +1652,7 @@
       for (let index = 0; index < rowCount; index += 1) {
         slots.push({
           tangent: (index - ((rowCount - 1) * 0.5)) * spacing,
-          depth: -(rowIndex * rowDepth)
+          depth: (allowOverflow ? 1 : -1) * (rowIndex * rowDepth)
         });
       }
     });
@@ -1670,28 +1672,46 @@
 
       const visiblePlayers = players.slice(0, MAX_PLAYERS);
       const playerZone = playerZoneForGeometry(geometry);
-      const depthSpan =
-        playerZone.edge === "top" || playerZone.edge === "bottom"
-          ? playerZone.height
-          : playerZone.width;
-      const depthRows = visiblePlayers.length >= 3 ? 2 : 1;
-      const maxTokenByDepth = Math.max(
-        6,
-        (depthSpan - 4) / (1 + ((depthRows - 1) * 0.72))
-      );
-      const baseTokenSize = Math.max(
-        6,
-        Math.min(
-          62,
-          Math.min(playerZone.width, playerZone.height) * 0.58,
-          maxTokenByDepth
-        )
-      );
-      const tokenSize = baseTokenSize;
+      const allowOverflow = visiblePlayers.length >= 3;
+      const horizontalPlayerZone =
+        playerZone.edge === "top" || playerZone.edge === "bottom";
+      const depthSpan = horizontalPlayerZone
+        ? playerZone.height
+        : playerZone.width;
+      const tangentSpan = horizontalPlayerZone
+        ? playerZone.width
+        : playerZone.height;
+
+      let tokenSize;
+      if (allowOverflow) {
+        // 3명부터는 기존 말 크기를 유지하고, 부족한 공간은 보드 안쪽으로 넘친다.
+        tokenSize = clamp(
+          Math.min(geometry.width, geometry.height) * 0.46,
+          18,
+          62
+        );
+      } else {
+        // 1~2명까지는 30% 플레이어 영역 안에 토큰 전체가 들어가야 한다.
+        const maxByDepth = Math.max(2, depthSpan - 4);
+        const maxByTangent = visiblePlayers.length === 2
+          ? Math.max(2, (tangentSpan - 8) / 1.52)
+          : Math.max(2, tangentSpan - 4);
+        tokenSize = Math.max(
+          2,
+          Math.min(
+            62,
+            Math.min(geometry.width, geometry.height) * 0.46,
+            maxByDepth,
+            maxByTangent
+          )
+        );
+      }
+
       const layout = tokenLayout(
         visiblePlayers.length,
         tokenSize,
-        playerZone
+        allowOverflow ? geometry : playerZone,
+        allowOverflow
       );
 
       visiblePlayers.forEach((player, index) => {
@@ -1709,47 +1729,45 @@
         const tokenRadius = tokenSize * 0.5;
         const edgePadding = 2;
 
-        const maxOffsetX =
-          Math.abs(inwardX) > 0.0001
-            ? Math.max(
-                0,
-                ((playerZone.width * 0.5) - tokenRadius - edgePadding) /
-                  Math.abs(inwardX)
-              )
-            : Infinity;
-        const maxOffsetY =
-          Math.abs(inwardY) > 0.0001
-            ? Math.max(
-                0,
-                ((playerZone.height * 0.5) - tokenRadius - edgePadding) /
-                  Math.abs(inwardY)
-              )
-            : Infinity;
-        const inwardOffset = Math.min(maxOffsetX, maxOffsetY);
+        // 플레이어 영역은 지시문과 맞닿은 경계에서 보드 안쪽으로 30%를 차지한다.
+        // 첫 줄을 이 경계 바로 안쪽에 두면 3명 이상에서 토큰이 커져도
+        // 지시문 영역 쪽이 아니라 보드 안쪽 방향으로만 넘치게 된다.
+        const zoneDepth =
+          playerZone.edge === "top" || playerZone.edge === "bottom"
+            ? playerZone.height
+            : playerZone.width;
+        const boundaryX =
+          playerZone.centerX - (inwardX * zoneDepth * 0.5);
+        const boundaryY =
+          playerZone.centerY - (inwardY * zoneDepth * 0.5);
+        const inwardOffset = tokenRadius + edgePadding;
 
         let centerX =
-          playerZone.centerX +
+          boundaryX +
           (inwardX * (inwardOffset + slot.depth)) +
           (tangentX * slot.tangent);
         let centerY =
-          playerZone.centerY +
+          boundaryY +
           (inwardY * (inwardOffset + slot.depth)) +
           (tangentY * slot.tangent);
 
-        // 토큰은 고정 65% 플레이어 영역 밖으로 절대 넘어가지 않는다.
-        centerX = clamp(
-          centerX,
-          playerZone.minX + tokenRadius + edgePadding,
-          playerZone.maxX - tokenRadius - edgePadding
-        );
-        centerY = clamp(
-          centerY,
-          playerZone.minY + tokenRadius + edgePadding,
-          playerZone.maxY - tokenRadius - edgePadding
-        );
+        if (!allowOverflow) {
+          // 1~2명은 토큰 전체가 셀의 30% 플레이어 영역 안에 있어야 한다.
+          centerX = clamp(
+            centerX,
+            playerZone.minX + tokenRadius + edgePadding,
+            playerZone.maxX - tokenRadius - edgePadding
+          );
+          centerY = clamp(
+            centerY,
+            playerZone.minY + tokenRadius + edgePadding,
+            playerZone.maxY - tokenRadius - edgePadding
+          );
+        }
 
         token.dataset.cellIndex = String(cellIndex);
         token.dataset.stacked = String(visiblePlayers.length > 1);
+        token.dataset.cellOverflow = String(allowOverflow);
 
         if (Math.abs(inwardX) >= Math.abs(inwardY)) {
           token.dataset.bubbleSide = inwardX >= 0 ? "right" : "left";

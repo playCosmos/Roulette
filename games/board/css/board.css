@@ -352,6 +352,20 @@ body {
   font-weight: 850;
 }
 
+/*
+ * START는 영문 5글자이므로 좌/우 세로칸 점유 시에도 한 줄을 유지한다.
+ * 일반 지시문의 3글자 폭 규칙보다 뒤에서 우선 적용한다.
+ */
+.board-cell[data-kind="start"][data-occupied="true"][data-instruction-edge="left"] .cell-label,
+.board-cell[data-kind="start"][data-occupied="true"][data-instruction-edge="right"] .cell-label {
+  width: 4.2em;
+  max-width: calc(100% - 2px);
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+  -webkit-line-clamp: 1;
+}
+
 .player-layer {
   position: absolute;
   inset: 0;

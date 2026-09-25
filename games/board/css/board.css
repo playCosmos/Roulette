@@ -187,8 +187,8 @@ body {
 
 .cell-index {
   position: absolute;
-  top: 4px;
-  left: 5px;
+  top: var(--cell-index-top, 4px);
+  left: var(--cell-index-left, 5px);
   z-index: 3;
   color: rgba(255,255,255,.46);
   font-size: 8px;

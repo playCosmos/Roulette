@@ -2753,58 +2753,117 @@
     return token.getBoundingClientRect();
   }
 
-  function animateReparentedTokenV6(playerId, firstRect, durationMs = STEP_DELAY_MS) {
+  function animateReparentedTokenV6(
+    playerId,
+    firstRect,
+    durationMs = STEP_DELAY_MS,
+    isFinalStep = false
+  ) {
     const id = String(playerId);
     const token = playerTokenElements.get(id);
     if (!token || !token.isConnected || !firstRect) {
       return delay(durationMs);
     }
 
-    const lastRect = token.getBoundingClientRect();
-    const cell = token.closest(".board-cell");
-    if (!cell) return delay(durationMs);
-
-    const cellRect = cell.getBoundingClientRect();
-    const localWidth = Math.max(0.0001, cell.offsetWidth || cellRect.width || 1);
-    const localHeight = Math.max(0.0001, cell.offsetHeight || cellRect.height || 1);
-    const parentScaleX = Math.max(0.0001, cellRect.width / localWidth);
-    const parentScaleY = Math.max(0.0001, cellRect.height / localHeight);
-
-    const screenDx = firstRect.left - lastRect.left;
-    const screenDy = firstRect.top - lastRect.top;
-    const localDx = screenDx / parentScaleX;
-    const localDy = screenDy / parentScaleY;
-    const scaleX = lastRect.width > 0 ? firstRect.width / lastRect.width : 1;
-    const scaleY = lastRect.height > 0 ? firstRect.height / lastRect.height : 1;
-    const startScale = Math.max(0.01, Math.min(scaleX, scaleY));
-
     if (INSTANT_MOVEMENT_MODE) {
       token.style.transform = "";
       return Promise.resolve();
     }
 
-    const animation = token.animate(
-      [
-        {
-          transform:
-            "translate3d(" + localDx.toFixed(3) + "px," +
-            localDy.toFixed(3) + "px,0) scale(" +
-            startScale.toFixed(5) + ")"
-        },
-        { transform: "translate3d(0,0,0) scale(1)" }
-      ],
-      {
-        duration: Math.max(1, durationMs),
-        easing: "cubic-bezier(.65,0,.35,1)",
-        fill: "none"
-      }
-    );
+    const startCenterX = firstRect.left + (firstRect.width * 0.5);
+    const startCenterY = firstRect.top + (firstRect.height * 0.5);
 
-    return animation.finished
-      .catch(() => undefined)
-      .then(() => {
+    return new Promise((resolve) => {
+      let settled = false;
+      let startedAt = 0;
+      let frameId = 0;
+      let timeoutId = 0;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (frameId) window.cancelAnimationFrame(frameId);
+        if (timeoutId) window.clearTimeout(timeoutId);
         token.style.transform = "";
-      });
+        resolve();
+      };
+
+      const frame = (timestamp) => {
+        if (settled) return;
+        if (!token.isConnected) {
+          finish();
+          return;
+        }
+
+        if (!startedAt) startedAt = timestamp;
+        const progress = clamp(
+          (timestamp - startedAt) / Math.max(1, durationMs),
+          0,
+          1
+        );
+        const eased = isFinalStep
+          ? 1 - Math.pow(1 - progress, 2)
+          : progress;
+
+        // 먼저 token transform만 제거해 현재 부모 셀 scale/이동이 적용된
+        // '자연 위치'를 읽는다. transform은 layout을 바꾸지 않으므로
+        // 같은 rAF 안에서 최종 보정 transform을 다시 적용한다.
+        token.style.transform = "translate3d(0,0,0)";
+        const naturalRect = token.getBoundingClientRect();
+        const targetCenterX =
+          naturalRect.left + (naturalRect.width * 0.5);
+        const targetCenterY =
+          naturalRect.top + (naturalRect.height * 0.5);
+
+        // 목적지 셀이 움직이거나 scale 중이어도 현재 자연 위치를 매 프레임
+        // endpoint로 사용한다. 따라서 부모 Dock 모션은 토큰 경로에 중복되지 않는다.
+        const desiredCenterX =
+          startCenterX + ((targetCenterX - startCenterX) * eased);
+        const desiredCenterY =
+          startCenterY + ((targetCenterY - startCenterY) * eased);
+
+        // CSS translate는 부모 좌표계에서 적용되므로 현재 화면 scale의 역수로 변환한다.
+        // 토큰 자체 크기/부모 scale 변화는 취소하지 않고 위치 offset만 보정한다.
+        const localWidth = Math.max(
+          0.0001,
+          token.offsetWidth || TOKEN_BASE_SIZE
+        );
+        const localHeight = Math.max(
+          0.0001,
+          token.offsetHeight || TOKEN_BASE_SIZE
+        );
+        const parentScaleX = Math.max(
+          0.0001,
+          naturalRect.width / localWidth
+        );
+        const parentScaleY = Math.max(
+          0.0001,
+          naturalRect.height / localHeight
+        );
+
+        const localDx =
+          (desiredCenterX - targetCenterX) / parentScaleX;
+        const localDy =
+          (desiredCenterY - targetCenterY) / parentScaleY;
+
+        token.style.transform =
+          "translate3d(" + localDx.toFixed(3) + "px," +
+          localDy.toFixed(3) + "px,0)";
+
+        if (progress >= 1) {
+          finish();
+          return;
+        }
+
+        frameId = window.requestAnimationFrame(frame);
+      };
+
+      frameId = window.requestAnimationFrame(frame);
+      timeoutId = window.setTimeout(
+        finish,
+        Math.max(900, durationMs * 4)
+      );
+    });
   }
 
   async function movePlayerStepsCoreV6(playerId, steps) {

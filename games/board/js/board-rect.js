@@ -17,8 +17,6 @@
   // 3~4명 중심의 강한 대비 프로파일.
   // 강조 칸이 둘레 공간을 더 가져가고 나머지 칸의 공통 base size가 줄어든다.
   const PLAYER_SCALE_PROFILE = [2.00, 1.36, 1.10];
-  const STACKED_PLAYER_BOOST = 0.34;
-  const MAX_STACKED_SCALE = 3.40;
 
   const params = new URLSearchParams(window.location.search);
   const DEMO_MODE = params.get("demo") === "1";
@@ -239,14 +237,6 @@
         const distance = circularDistance(cellIndex, position);
         if (distance >= PLAYER_SCALE_PROFILE.length) continue;
         weight = Math.max(weight, PLAYER_SCALE_PROFILE[distance]);
-      }
-
-      const stackedCount = occupancy.get(cellIndex)?.length || 0;
-      if (stackedCount > 1) {
-        weight = Math.min(
-          MAX_STACKED_SCALE,
-          weight + ((stackedCount - 1) * STACKED_PLAYER_BOOST)
-        );
       }
 
       return weight;

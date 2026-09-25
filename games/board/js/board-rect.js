@@ -73,7 +73,8 @@
   const refs = {
     boardStage: document.getElementById("boardStage"),
     boardGrid: document.getElementById("boardGrid"),
-    eventMessage: document.getElementById("eventMessage")
+    eventMessage: document.getElementById("eventMessage"),
+    movementLayer: null
   };
 
   const cellElements = new Map();
@@ -156,8 +157,23 @@
     }
   }
 
+  function ensureMovementLayer() {
+    if (!refs.boardStage) return null;
+    if (refs.movementLayer && refs.movementLayer.isConnected) {
+      return refs.movementLayer;
+    }
+
+    const layer = document.createElement("div");
+    layer.className = "player-movement-layer";
+    layer.setAttribute("aria-hidden", "true");
+    refs.boardStage.append(layer);
+    refs.movementLayer = layer;
+    return layer;
+  }
+
   function buildBoard() {
     if (!refs.boardGrid) return;
+    ensureMovementLayer();
 
     if (refs.boardStage) {
       refs.boardStage.dataset.layoutReady = "false";
@@ -2755,49 +2771,74 @@
       return delay(durationMs);
     }
 
+    const destinationZone = token.parentElement;
     const lastRect = token.getBoundingClientRect();
-    const cell = token.closest(".board-cell");
-    if (!cell) return delay(durationMs);
+    if (!destinationZone || !lastRect.width || !lastRect.height) {
+      return delay(durationMs);
+    }
 
-    const cellRect = cell.getBoundingClientRect();
-    const localWidth = Math.max(0.0001, cell.offsetWidth || cellRect.width || 1);
-    const localHeight = Math.max(0.0001, cell.offsetHeight || cellRect.height || 1);
-    const parentScaleX = Math.max(0.0001, cellRect.width / localWidth);
-    const parentScaleY = Math.max(0.0001, cellRect.height / localHeight);
-
-    const screenDx = firstRect.left - lastRect.left;
-    const screenDy = firstRect.top - lastRect.top;
-    const localDx = screenDx / parentScaleX;
-    const localDy = screenDy / parentScaleY;
     if (INSTANT_MOVEMENT_MODE) {
-      token.style.transform = "";
+      token.style.visibility = "";
       return Promise.resolve();
     }
 
+    const movementLayer = ensureMovementLayer();
+    if (!movementLayer) return delay(durationMs);
+
+    const stageRect = refs.boardStage.getBoundingClientRect();
+    const computed = window.getComputedStyle(token);
+
+    // 목적지 player-zone 안에서 최종 위치를 먼저 계산한 뒤 실제 토큰을
+    // 독립 이동 레이어로 옮긴다. 이동 중에는 부모 셀 transform의 영향을 받지 않는다.
+    movementLayer.append(token);
+    token.dataset.moving = "true";
+    token.style.position = "absolute";
+    token.style.left = (firstRect.left - stageRect.left) + "px";
+    token.style.top = (firstRect.top - stageRect.top) + "px";
+    token.style.width = firstRect.width + "px";
+    token.style.height = firstRect.height + "px";
+    token.style.margin = "0";
+    token.style.fontSize = computed.fontSize;
+    token.style.visibility = "visible";
+    token.style.transform = "translate3d(0,0,0)";
+
+    const dx = lastRect.left - firstRect.left;
+    const dy = lastRect.top - firstRect.top;
+
     const animation = token.animate(
       [
+        { transform: "translate3d(0,0,0)" },
         {
           transform:
-            "translate3d(" + localDx.toFixed(3) + "px," +
-            localDy.toFixed(3) + "px,0)"
-        },
-        { transform: "translate3d(0,0,0)" }
+            "translate3d(" + dx.toFixed(3) + "px," +
+            dy.toFixed(3) + "px,0)"
+        }
       ],
       {
         duration: Math.max(1, durationMs),
-        // 중간 칸에서 매번 감속/재가속하지 않아 연속 이동감을 유지한다.
-        // 최종 칸만 완만하게 감속한다.
         easing: isFinalStep
-          ? "cubic-bezier(.22,.61,.36,1)"
+          ? "cubic-bezier(.25,.75,.35,1)"
           : "linear",
-        fill: "none"
+        fill: "forwards"
       }
     );
 
     return animation.finished
       .catch(() => undefined)
       .then(() => {
+        if (animation.cancel) animation.cancel();
+
+        destinationZone.append(token);
+        token.dataset.moving = "false";
+        token.style.position = "";
+        token.style.left = "";
+        token.style.top = "";
+        token.style.width = "";
+        token.style.height = "";
+        token.style.margin = "";
+        token.style.fontSize = "";
         token.style.transform = "";
+        token.style.visibility = "";
       });
   }
 

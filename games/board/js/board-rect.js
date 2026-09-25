@@ -789,9 +789,9 @@
 
     const forwardFront = placements[forwardEnd];
     const backwardFront = placements[backwardEnd];
-    const closureGap = polygonDistance(
-      forwardFront.corners,
-      backwardFront.corners
+    const closureGap = rectGeometryDistance(
+      forwardFront,
+      backwardFront
     );
 
     // 역방향 front는 anchor보다 음의 방향에 있으므로 한 바퀴를 더해

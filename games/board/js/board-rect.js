@@ -84,6 +84,7 @@
   let lastMotionTime = 0;
   let previousScaleWeights = null;
   let neutralSolveCache = null;
+  const layoutWaiters = [];
   // 중앙 Throw 연출은 화면이 하나이므로 FIFO로 직렬화한다.
   // 결과 공개 이후의 말 이동은 기존 플레이어별 큐에서 독립적으로 진행된다.
   let throwPresentationQueue = Promise.resolve();
@@ -1461,11 +1462,70 @@
       refs.boardStage.getBoundingClientRect();
       refs.boardStage.dataset.layoutReady = "true";
     }
+
+    if (layoutWaiters.length) {
+      const waiters = layoutWaiters.splice(0, layoutWaiters.length);
+      for (const resolve of waiters) resolve();
+    }
   }
 
   function scheduleLayout() {
     if (layoutFrame) return;
     layoutFrame = window.requestAnimationFrame(layoutNow);
+  }
+
+  function waitForLayoutCommit() {
+    return new Promise((resolve) => {
+      layoutWaiters.push(resolve);
+      scheduleLayout();
+    });
+  }
+
+  function waitForPlayerMotionSettle(playerId, timeoutMs = 900) {
+    const id = String(playerId);
+    const startedAt = performance.now();
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let timeoutId = 0;
+
+      const finish = (snapToTarget = false) => {
+        if (settled) return;
+        settled = true;
+        if (timeoutId) window.clearTimeout(timeoutId);
+
+        const motion = tokenMotionStates.get(id);
+        if (snapToTarget && motion) {
+          motion.x = motion.targetX;
+          motion.y = motion.targetY;
+          motion.scale = motion.targetScale;
+          motion.vx = 0;
+          motion.vy = 0;
+          motion.vs = 0;
+          applyMotionTransform(motion);
+        }
+        resolve();
+      };
+
+      const check = () => {
+        if (settled) return;
+        const motion = tokenMotionStates.get(id);
+        if (!motion || !stateNeedsMotion(motion)) {
+          finish(false);
+          return;
+        }
+
+        scheduleMotion();
+        if ((performance.now() - startedAt) >= timeoutMs) {
+          finish(true);
+          return;
+        }
+        window.requestAnimationFrame(check);
+      };
+
+      timeoutId = window.setTimeout(() => finish(true), timeoutMs + 80);
+      check();
+    });
   }
 
   const BUBBLE_PIP_POSITIONS = {
@@ -1951,8 +2011,16 @@
       }
 
       renderPlayers();
+
+      // 각 논리 한 칸 이동이 최소 한 번은 실제 레이아웃 목표로 반영되게 한다.
+      // rAF가 밀려 여러 스텝이 한 프레임으로 합쳐지는 현상을 방지한다.
+      await waitForLayoutCommit();
       await delay(STEP_DELAY_MS);
     }
+
+    // 마지막 스텝의 말 스프링까지 정착한 뒤 이동 완료로 처리한다.
+    // 과부하 시 제한 시간 뒤 목표 위치로 스냅해 다음 턴에서 뒤늦게 따라가지 않게 한다.
+    await waitForPlayerMotionSettle(player.id);
 
     if (!meta.suppressDestinationEvent) {
       const command = destinationCommand(player.position);
@@ -2199,12 +2267,14 @@
 
     if (!DEMO_MODE) {
       root.dataset.visible = "false";
+      token.dataset.hasEffects = "false";
       return;
     }
 
     const effects = demoEffectStates.get(String(playerId));
     if (!effects) {
       root.dataset.visible = "false";
+      token.dataset.hasEffects = "false";
       return;
     }
 
@@ -2241,6 +2311,7 @@
     }
 
     root.dataset.visible = String(badges.length > 0);
+    token.dataset.hasEffects = String(badges.length > 0);
   }
 
   function flashDemoInstructionCell(cellIndex, mode = "triggered", duration = 560) {

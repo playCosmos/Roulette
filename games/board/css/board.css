@@ -183,35 +183,35 @@ body {
   display: flex;
 }
 
-/* 결과 말풍선과 겹치지 않도록 효과 배지는 항상 반대편에 둔다. */
+/* 효과 배지는 지시문 쪽을 가리지 않도록 항상 보드 안쪽 플레이어 방향에 둔다. */
 .player-token[data-bubble-side="down"] .player-effect-badges {
   left: 50%;
-  top: -8px;
-  transform: translate(-50%, -100%) scale(var(--bubble-inverse-scale, 1));
-  transform-origin: bottom center;
+  top: calc(100% + 5px);
+  transform: translateX(-50%) scale(var(--bubble-inverse-scale, 1));
+  transform-origin: top center;
 }
 
 .player-token[data-bubble-side="up"] .player-effect-badges {
   left: 50%;
-  bottom: -8px;
-  transform: translate(-50%, 100%) scale(var(--bubble-inverse-scale, 1));
-  transform-origin: top center;
+  bottom: calc(100% + 5px);
+  transform: translateX(-50%) scale(var(--bubble-inverse-scale, 1));
+  transform-origin: bottom center;
 }
 
 .player-token[data-bubble-side="left"] .player-effect-badges {
-  left: calc(100% + 8px);
-  top: 50%;
-  flex-direction: column;
-  transform: translateY(-50%) scale(var(--bubble-inverse-scale, 1));
-  transform-origin: center left;
-}
-
-.player-token[data-bubble-side="right"] .player-effect-badges {
-  right: calc(100% + 8px);
+  right: calc(100% + 5px);
   top: 50%;
   flex-direction: column;
   transform: translateY(-50%) scale(var(--bubble-inverse-scale, 1));
   transform-origin: center right;
+}
+
+.player-token[data-bubble-side="right"] .player-effect-badges {
+  left: calc(100% + 5px);
+  top: 50%;
+  flex-direction: column;
+  transform: translateY(-50%) scale(var(--bubble-inverse-scale, 1));
+  transform-origin: center left;
 }
 
 .player-effect-badge {

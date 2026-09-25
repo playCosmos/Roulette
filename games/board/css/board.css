@@ -463,8 +463,8 @@ body {
   left: 0;
   top: 0;
   z-index: 1;
-  width: 26px;
-  height: 26px;
+  width: var(--player-token-screen-size, 42px);
+  height: var(--player-token-screen-size, 42px);
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -476,7 +476,7 @@ body {
   box-shadow:
     0 4px 11px rgba(0,0,0,.46),
     0 0 0 1px rgba(0,0,0,.14);
-  font-size: 10px;
+  font-size: max(8px, calc(var(--player-token-screen-size, 42px) * .385));
   font-weight: 900;
   line-height: 1;
   transform: translate3d(-1000px,-1000px,0);

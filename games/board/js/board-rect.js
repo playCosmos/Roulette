@@ -1650,10 +1650,22 @@
 
       const visiblePlayers = players.slice(0, MAX_PLAYERS);
       const playerZone = playerZoneForGeometry(geometry);
-      const baseTokenSize = clamp(
-        Math.min(playerZone.width, playerZone.height) * 0.58,
-        18,
-        62
+      const depthSpan =
+        playerZone.edge === "top" || playerZone.edge === "bottom"
+          ? playerZone.height
+          : playerZone.width;
+      const depthRows = visiblePlayers.length >= 3 ? 2 : 1;
+      const maxTokenByDepth = Math.max(
+        6,
+        (depthSpan - 4) / (1 + ((depthRows - 1) * 0.72))
+      );
+      const baseTokenSize = Math.max(
+        6,
+        Math.min(
+          62,
+          Math.min(playerZone.width, playerZone.height) * 0.58,
+          maxTokenByDepth
+        )
       );
       const tokenSize = baseTokenSize;
       const layout = tokenLayout(

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="description" content="라먀니 게임즈 보드게임 방송 오버레이" />
+  <title>보드게임 오버레이 Rectilinear · 라먀니 게임즈</title>
+  <link rel="stylesheet" href="./css/board.css?v=20260925-22" />
+  <link rel="stylesheet" href="./css/throw-presentation.css?v=20260925-5" />
+</head>
+<body>
+  <main class="overlay-root">
+    <section class="board-stage-wrap" aria-label="16대9 보드게임 오버레이">
+      <div class="board-stage" id="boardStage">
+        <div class="board-grid" id="boardGrid" aria-label="직각 외곽 루프 보드 비교 버전"></div>
+        <div class="board-center" aria-hidden="true"></div>
+        <div class="throw-presentation" id="throwPresentation" data-visible="false" data-phase="idle" aria-hidden="true">
+          <div class="throw-presentation-panel">
+            <div class="throw-presentation-label" id="throwPresentationLabel"></div>
+            <div class="throw-presentation-stage" id="throwPresentationStage"></div>
+            <div class="throw-presentation-result" id="throwPresentationResult"></div>
+          </div>
+        </div>
+        <div class="sr-only" id="eventMessage" aria-live="polite">보드 준비 중</div>
+      </div>
+    </section>
+  </main>
+  <script src="./js/throw-presentation.js?v=20260925-8" defer></script>
+  <script src="./js/board-rect.js?v=20260925-49" defer></script>
+</body>
+</html>

@@ -170,8 +170,8 @@ body {
 }
 
 .player-effect-badges {
-  position: absolute;
-  z-index: 2200;
+  position: static;
+  z-index: 1;
   display: none;
   align-items: center;
   gap: 3px;
@@ -181,37 +181,6 @@ body {
 
 .player-effect-badges[data-visible="true"] {
   display: flex;
-}
-
-/* 효과 배지는 지시문 쪽을 가리지 않도록 항상 보드 안쪽 플레이어 방향에 둔다. */
-.player-token[data-bubble-side="down"] .player-effect-badges {
-  left: 50%;
-  top: calc(100% + 5px);
-  transform: translateX(-50%) scale(var(--bubble-inverse-scale, 1));
-  transform-origin: top center;
-}
-
-.player-token[data-bubble-side="up"] .player-effect-badges {
-  left: 50%;
-  bottom: calc(100% + 5px);
-  transform: translateX(-50%) scale(var(--bubble-inverse-scale, 1));
-  transform-origin: bottom center;
-}
-
-.player-token[data-bubble-side="left"] .player-effect-badges {
-  right: calc(100% + 5px);
-  top: 50%;
-  flex-direction: column;
-  transform: translateY(-50%) scale(var(--bubble-inverse-scale, 1));
-  transform-origin: center right;
-}
-
-.player-token[data-bubble-side="right"] .player-effect-badges {
-  left: calc(100% + 5px);
-  top: 50%;
-  flex-direction: column;
-  transform: translateY(-50%) scale(var(--bubble-inverse-scale, 1));
-  transform-origin: center left;
 }
 
 .player-effect-badge {

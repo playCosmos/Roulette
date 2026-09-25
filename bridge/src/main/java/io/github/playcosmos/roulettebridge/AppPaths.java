@@ -6,7 +6,11 @@ public final class AppPaths {
     private AppPaths() {}
 
     public static Path applicationRoot() {
-        String override = System.getenv("ROULETTE_BRIDGE_HOME");
+        String override = System.getenv("RAMYANI_GAME_SERVER_HOME");
+        if (override == null || override.isBlank()) {
+            // Backward compatibility with existing deployments.
+            override = System.getenv("ROULETTE_BRIDGE_HOME");
+        }
         if (override != null && !override.isBlank()) {
             return Path.of(override).toAbsolutePath().normalize();
         }

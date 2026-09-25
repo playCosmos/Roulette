@@ -1,4 +1,4 @@
-name: Bridge Build
+name: Ramyani Game Server Build
 
 on:
   push:
@@ -50,29 +50,29 @@ jobs:
           node --check games/board/js/board-rect.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build bridge
+      - name: Build server
         working-directory: bridge
         run: mvn --batch-mode --no-transfer-progress clean package
 
       - name: Verify phase D issuance
         working-directory: bridge
-        run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-d-probe
+        run: java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --phase-d-probe
 
       - name: Verify phase E archive
         working-directory: bridge
-        run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-e-probe
+        run: java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --phase-e-probe
 
       - name: Verify phase F recovery
         working-directory: bridge
-        run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-f-probe
+        run: java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --phase-f-probe
 
       - name: Verify board room persistence
         working-directory: bridge
-        run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --room-probe
+        run: java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --room-probe
 
       - name: Verify board game runtime
         working-directory: bridge
-        run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --board-runtime-probe
+        run: java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --board-runtime-probe
 
       - name: Probe configured SOOP streamer
         id: soop_probe
@@ -80,7 +80,7 @@ jobs:
         continue-on-error: true
         timeout-minutes: 2
         working-directory: bridge
-        run: java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --probe "${{ vars.SOOP_PROBE_STREAMER_ID }}"
+        run: java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --probe "${{ vars.SOOP_PROBE_STREAMER_ID }}"
 
       - name: Report probe result
         if: ${{ vars.SOOP_PROBE_STREAMER_ID != '' }}

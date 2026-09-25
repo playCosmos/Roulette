@@ -1,4 +1,4 @@
-name: Windows Package
+name: Ramyani Game Server Windows Package
 
 on:
   workflow_dispatch:
@@ -53,44 +53,44 @@ jobs:
           node --check games/board/js/board-rect.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build bridge
+      - name: Build server
         working-directory: bridge
         run: mvn --batch-mode --no-transfer-progress clean package
 
-      - name: Run bridge self-tests
+      - name: Run server self-tests
         working-directory: bridge
         shell: pwsh
         run: |
-          java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-d-probe
+          java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --phase-d-probe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-e-probe
+          java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --phase-e-probe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-f-probe
+          java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --phase-f-probe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --encoding-probe
+          java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --encoding-probe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --room-probe
+          java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --room-probe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --board-runtime-probe
+          java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --board-runtime-probe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build Windows portable app
         working-directory: bridge
         shell: pwsh
-        run: ./package-windows.ps1 -Version 0.1.13 -SkipBuild
+        run: ./package-windows.ps1 -Version 0.2.0 -SkipBuild
 
       - name: Verify packaged executable and config
         working-directory: bridge
         shell: pwsh
         run: |
-          $root = Resolve-Path "dist/RouletteBridge"
-          $exe = Join-Path $root "RouletteBridge.exe"
+          $root = Resolve-Path "dist/RamyaniGameServer"
+          $exe = Join-Path $root "RamyaniGameServer.exe"
           $config = Join-Path $root "config.json"
           $runtime = Join-Path $root "runtime/bin/server/jvm.dll"
-          if (-not (Test-Path $exe)) { throw "RouletteBridge.exe missing" }
+          if (-not (Test-Path $exe)) { throw "RamyaniGameServer.exe missing" }
           if (-not (Test-Path $config)) { throw "config.json missing" }
           if (-not (Test-Path $runtime)) { throw "bundled Java runtime missing" }
-          if (-not (Test-Path (Join-Path $root "restart-bridge.ps1"))) { throw "restart-bridge.ps1 missing from package" }
+          if (-not (Test-Path (Join-Path $root "restart-server.ps1"))) { throw "restart-server.ps1 missing from package" }
           $configJson = Get-Content $config -Raw | ConvertFrom-Json
           if (-not [string]::IsNullOrWhiteSpace([string]$configJson.streamerId)) { throw "distribution streamerId must be empty" }
           if ([string]$configJson.ticket.issuanceMode -ne "single_donation") { throw "distribution issuanceMode must default to single_donation" }
@@ -117,20 +117,20 @@ jobs:
           if (Test-Path (Join-Path $root "logs")) { throw "logs directory must not be pre-created in distribution" }
 
           $phaseF = Start-Process -FilePath $exe -ArgumentList "--phase-f-probe" -Wait -PassThru
-          if ($phaseF.ExitCode -ne 0) { throw "packaged RouletteBridge.exe self-test failed: $($phaseF.ExitCode)" }
+          if ($phaseF.ExitCode -ne 0) { throw "packaged RamyaniGameServer.exe self-test failed: $($phaseF.ExitCode)" }
           $encoding = Start-Process -FilePath $exe -ArgumentList "--encoding-probe" -Wait -PassThru
-          if ($encoding.ExitCode -ne 0) { throw "packaged RouletteBridge.exe encoding test failed: $($encoding.ExitCode)" }
+          if ($encoding.ExitCode -ne 0) { throw "packaged RamyaniGameServer.exe encoding test failed: $($encoding.ExitCode)" }
           $roomProbe = Start-Process -FilePath $exe -ArgumentList "--room-probe" -Wait -PassThru
-          if ($roomProbe.ExitCode -ne 0) { throw "packaged RouletteBridge.exe room test failed: $($roomProbe.ExitCode)" }
+          if ($roomProbe.ExitCode -ne 0) { throw "packaged RamyaniGameServer.exe room test failed: $($roomProbe.ExitCode)" }
           $runtimeProbe = Start-Process -FilePath $exe -ArgumentList "--board-runtime-probe" -Wait -PassThru
-          if ($runtimeProbe.ExitCode -ne 0) { throw "packaged RouletteBridge.exe board runtime test failed: $($runtimeProbe.ExitCode)" }
+          if ($runtimeProbe.ExitCode -ne 0) { throw "packaged RamyaniGameServer.exe board runtime test failed: $($runtimeProbe.ExitCode)" }
           Write-Host "Packaged EXE: $exe"
           Write-Host "Config: $config"
 
       - name: Upload Windows portable package
         uses: actions/upload-artifact@v4
         with:
-          name: RouletteBridge-Windows-x64-v0.1.13
-          path: bridge/dist/RouletteBridge/**
+          name: RamyaniGameServer-Windows-x64-v0.2.0
+          path: bridge/dist/RamyaniGameServer/**
           if-no-files-found: error
           retention-days: 30

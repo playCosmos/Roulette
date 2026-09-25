@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.0",
+    [string]$Version = "0.2.0",
     [switch]$SkipBuild
 )
 
@@ -9,9 +9,9 @@ $BridgeRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $BridgeRoot
 $DistRoot = Join-Path $BridgeRoot "dist"
 $InputRoot = Join-Path $BridgeRoot "package-input"
-$JarName = "roulette-bridge-0.1.0-SNAPSHOT.jar"
+$JarName = "ramyani-game-server-0.2.0-SNAPSHOT.jar"
 $JarPath = Join-Path $BridgeRoot "target\$JarName"
-$AppRoot = Join-Path $DistRoot "RouletteBridge"
+$AppRoot = Join-Path $DistRoot "RamyaniGameServer"
 
 if (-not $SkipBuild) {
     Push-Location $BridgeRoot
@@ -37,7 +37,7 @@ Copy-Item $JarPath (Join-Path $InputRoot $JarName)
 $jpackage = Get-Command jpackage -ErrorAction Stop
 & $jpackage.Source `
     --type app-image `
-    --name RouletteBridge `
+    --name RamyaniGameServer `
     --app-version $Version `
     --dest $DistRoot `
     --input $InputRoot `
@@ -52,12 +52,12 @@ if ($LASTEXITCODE -ne 0) {
     throw "jpackage failed with exit code $LASTEXITCODE"
 }
 
-if (-not (Test-Path (Join-Path $AppRoot "RouletteBridge.exe"))) {
+if (-not (Test-Path (Join-Path $AppRoot "RamyaniGameServer.exe"))) {
     throw "Packaged executable was not created"
 }
 
 Copy-Item (Join-Path $BridgeRoot "config.example.json") (Join-Path $AppRoot "config.json") -Force
-Copy-Item (Join-Path $BridgeRoot "restart-bridge.ps1") (Join-Path $AppRoot "restart-bridge.ps1") -Force
+Copy-Item (Join-Path $BridgeRoot "restart-server.ps1") (Join-Path $AppRoot "restart-server.ps1") -Force
 
 $WebRoot = Join-Path $AppRoot "web"
 New-Item -ItemType Directory -Path $WebRoot | Out-Null
@@ -89,10 +89,10 @@ Copy-Item (Join-Path $RepoRoot "assets") (Join-Path $WebRoot "assets") -Recurse 
 }
 
 $Readme = @"
-RouletteBridge Windows x64
+RamyaniGameServer Windows x64
 =========================
 
-1. Run RouletteBridge.exe. The bridge runs from the Windows notification area (system tray).
+1. Run RamyaniGameServer.exe. The server runs/g from the Windows notification area (system tray).
 2. On first run, if streamerId is empty, the admin page opens automatically.
 3. Edit config.json from the admin page. Settings that require a process restart are applied through the bundled restart script automatically.
 4. The admin page waits while the bridge restarts and reconnects to the new process automatically.
@@ -110,5 +110,5 @@ Set-Content -Path (Join-Path $AppRoot "README.txt") -Value $Readme -Encoding UTF
 
 Remove-Item $InputRoot -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "[package] created: $AppRoot"
-Write-Host "[package] executable: $(Join-Path $AppRoot 'RouletteBridge.exe')"
+Write-Host "[package] executable: $(Join-Path $AppRoot 'RamyaniGameServer.exe')"
 Write-Host "[package] config: $(Join-Path $AppRoot 'config.json')"

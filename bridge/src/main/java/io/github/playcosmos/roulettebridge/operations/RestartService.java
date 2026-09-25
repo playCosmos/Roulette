@@ -19,11 +19,11 @@ public final class RestartService {
 
     public RestartResult schedule() throws IOException {
         if (!scheduled.compareAndSet(false, true)) {
-            return new RestartResult(true, "restart already scheduled", applicationRoot.resolve("RouletteBridge.exe").toString());
+            return new RestartResult(true, "restart already scheduled", applicationRoot.resolve("RamyaniGameServer.exe").toString());
         }
 
-        Path executable = applicationRoot.resolve("RouletteBridge.exe");
-        Path script = applicationRoot.resolve("restart-bridge.ps1");
+        Path executable = applicationRoot.resolve("RamyaniGameServer.exe");
+        Path script = applicationRoot.resolve("restart-server.ps1");
         if (!Files.isRegularFile(executable)) {
             scheduled.set(false);
             return new RestartResult(false, "packaged executable not found; restart manually in development mode", executable.toString());
@@ -55,7 +55,7 @@ public final class RestartService {
         // browser-side save handling enough time to complete before terminating this
         // process; otherwise the file is saved correctly but the admin page can see a
         // network abort and incorrectly report "저장 실패".
-        Thread.ofPlatform().name("roulette-bridge-restart-exit").start(() -> {
+        Thread.ofPlatform().name("ramyani-game-server-restart-exit").start(() -> {
             try {
                 Thread.sleep(EXIT_DELAY_MILLIS);
             } catch (InterruptedException ignored) {

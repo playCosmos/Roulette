@@ -1,4 +1,4 @@
-# Roulette Bridge
+# Ramyani Game Server
 
 Windows에서 실행되는 SOOP 별풍선 자동 티켓 발급 브리지다. 기존 `index.html` 추첨 페이지와 분리되어 있으며 SOOP 이벤트 수신, 후원자별 누적, 자동 티켓 번호 확정, OBS 오버레이 룰렛 연출, PNG 영구 저장, 재실행 복구를 담당한다.
 
@@ -9,10 +9,10 @@ Windows에서 실행되는 SOOP 별풍선 자동 티켓 발급 브리지다. 기
 배포 루트:
 
 ```text
-RouletteBridge/
-├─ RouletteBridge.exe
+RamyaniGameServer/
+├─ RamyaniGameServer.exe
 ├─ config.json
-├─ restart-bridge.ps1
+├─ restart-server.ps1
 ├─ README.txt
 ├─ app/                 # 브리지 애플리케이션
 ├─ runtime/             # 내장 Java runtime
@@ -78,7 +78,7 @@ RouletteBridge/
 - HTTP/WebSocket 포트 또는 host 변경: 브리지 프로세스 재시작 필요
 - DB/티켓/web/backup/log 경로 변경: 브리지 프로세스 재시작 필요
 
-재시작이 필요한 설정은 사용자가 EXE를 다시 실행할 필요가 없다. `restart-bridge.ps1`가 현재 프로세스 PID가 완전히 종료될 때까지 기다린 뒤 같은 `RouletteBridge.exe`를 같은 application root에서 자동으로 다시 시작한다. 포트가 변경된 경우에도 관리자 페이지는 새 `/health` 주소를 확인한 뒤 새 관리자 주소로 자동 이동한다.
+재시작이 필요한 설정은 사용자가 EXE를 다시 실행할 필요가 없다. `restart-server.ps1`가 현재 프로세스 PID가 완전히 종료될 때까지 기다린 뒤 같은 `RamyaniGameServer.exe`를 같은 application root에서 자동으로 다시 시작한다. 포트가 변경된 경우에도 관리자 페이지는 새 `/health` 주소를 확인한 뒤 새 관리자 주소로 자동 이동한다.
 
 ## 관리자 페이지
 
@@ -308,7 +308,7 @@ tickets/
 ```bash
 cd bridge
 mvn clean package
-java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar
+java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar
 ```
 
 Windows portable app:
@@ -321,18 +321,18 @@ cd bridge
 ## Self-test
 
 ```bash
-java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-d-probe
-java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-e-probe
-java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --phase-f-probe
-java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --encoding-probe
-java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --room-probe
-java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --board-runtime-probe
+java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --phase-d-probe
+java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --phase-e-probe
+java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --phase-f-probe
+java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --encoding-probe
+java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --room-probe
+java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --board-runtime-probe
 ```
 
 SOOP 연결 probe:
 
 ```bash
-java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar --probe <streamerId>
+java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar --probe <streamerId>
 ```
 
 ## Windows CI 검증
@@ -344,8 +344,8 @@ Admin/Overlay JavaScript syntax check
 → Maven build
 → Phase D/E/F + encoding + board room + board runtime self-test
 → jpackage GUI/tray app-image 생성
-→ RouletteBridge.exe/config.json/bundled runtime 확인
-→ restart-bridge.ps1 포함 확인
+→ RamyaniGameServer.exe/config.json/bundled runtime 확인
+→ restart-server.ps1 포함 확인
 → admin/overlay/reconnect 자산 포함 확인
 → 배포 streamerId 빈 값 확인
 → 배포 ZIP에 logs/가 사전 생성되지 않았는지 확인
@@ -353,4 +353,4 @@ Admin/Overlay JavaScript syntax check
 → Windows x64 artifact 업로드
 ```
 
-따라서 artifact의 `RouletteBridge.exe`는 외부 Java 설치 없이 포함된 runtime으로 실행되는 Windows tray 배포본이다.
+따라서 artifact의 `RamyaniGameServer.exe`는 외부 Java 설치 없이 포함된 runtime으로 실행되는 Windows tray 배포본이다.

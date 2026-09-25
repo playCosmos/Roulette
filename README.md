@@ -1,6 +1,6 @@
 # 라먀니 게임즈
 
-Ramyani Games(라먀니 게임즈)는 SOOP 방송 연동 게임을 한 저장소에서 제공하는 게임 허브 프로젝트입니다. GitHub Pages 루트는 게임 선택 랜딩 페이지로 사용하고, 각 게임은 `games/` 아래 독립 페이지로 분리합니다. 현재 첫 게임은 기존 웹 룰렛/티켓 발급기인 **먀로또**이며, Windows용 `RouletteBridge`를 통해 SOOP 별풍선 후원 기반 자동 발급도 지원합니다.
+Ramyani Games(라먀니 게임즈)는 SOOP 방송 연동 게임을 한 저장소에서 제공하는 게임 허브 프로젝트입니다. GitHub Pages 루트는 게임 선택 랜딩 페이지로 사용하고, 각 게임은 `games/` 아래 독립 페이지로 분리합니다. 현재 첫 게임은 기존 웹 룰렛/티켓 발급기인 **먀로또**이며, Windows용 `RamyaniGameServer`를 통해 SOOP 별풍선 후원 기반 자동 발급도 지원합니다.
 
 ## 저장소 구조
 
@@ -132,17 +132,17 @@ Ramyani Games(라먀니 게임즈)는 SOOP 방송 연동 게임을 한 저장소
 
 ## Windows 배포본
 
-Windows에서는 GitHub Releases의 최신 `RouletteBridge-Windows-x64-v0.1.13.zip`을 받아 압축을 푼 뒤 `RouletteBridge.exe`를 실행합니다.
+Windows에서는 GitHub Releases의 최신 `RamyaniGameServer-Windows-x64-v0.1.13.zip`을 받아 압축을 푼 뒤 `RamyaniGameServer.exe`를 실행합니다.
 
 별도 Java 설치는 필요하지 않습니다. Java 25 기반 런타임이 배포본에 포함됩니다.
 
 배포 구조는 다음과 같습니다.
 
 ```text
-RouletteBridge/
-├─ RouletteBridge.exe
+RamyaniGameServer/
+├─ RamyaniGameServer.exe
 ├─ config.json
-├─ restart-bridge.ps1
+├─ restart-server.ps1
 ├─ README.txt
 ├─ app/
 ├─ runtime/
@@ -160,7 +160,7 @@ RouletteBridge/
 
 배포용 `config.json`의 `streamerId`는 비어 있습니다. 최초 실행 시 SOOP 연결을 시도하지 않고 관리자 페이지를 자동으로 엽니다. 사용자는 브라우저의 관리자 페이지에서 스트리머 ID와 필요한 설정을 입력하고 `config.json 저장`을 누르면 됩니다.
 
-스트리머/SOOP 연결 설정은 가능한 범위에서 즉시 적용합니다. 티켓 규칙, 서버 포트, 저장 경로처럼 현재 프로세스의 서비스 구성을 다시 만들어야 하는 설정은 저장 후 `restart-bridge.ps1`을 통해 `RouletteBridge.exe`가 자동으로 재실행됩니다. 사용자가 EXE를 직접 다시 실행할 필요는 없습니다.
+스트리머/SOOP 연결 설정은 가능한 범위에서 즉시 적용합니다. 티켓 규칙, 서버 포트, 저장 경로처럼 현재 프로세스의 서비스 구성을 다시 만들어야 하는 설정은 저장 후 `restart-server.ps1`을 통해 `RamyaniGameServer.exe`가 자동으로 재실행됩니다. 사용자가 EXE를 직접 다시 실행할 필요는 없습니다.
 
 ### 시스템 트레이 동작
 
@@ -402,7 +402,7 @@ ws://127.0.0.1:17821
 - `FAILED` 자동복구 제외
 - Windows `jpackage` GUI/Tray EXE 생성
 - 내장 Java runtime 존재 확인
-- `restart-bridge.ps1` 패키지 포함 확인
+- `restart-server.ps1` 패키지 포함 확인
 - 관리자 JS/CSS와 오버레이 재연결 자산 포함 확인
 - 배포 `streamerId` 빈 값 확인
 - 배포본에 `logs/`가 사전 생성되지 않는지 확인
@@ -609,7 +609,7 @@ assets/
 ├─ bridge/                        # Windows Java Bridge
 │  ├─ pom.xml
 │  ├─ config.example.json
-│  ├─ restart-bridge.ps1
+│  ├─ restart-server.ps1
 │  ├─ package-windows.ps1
 │  ├─ README.md
 │  └─ src/
@@ -631,7 +631,7 @@ Java Bridge 개발 실행은 다음과 같습니다.
 ```bash
 cd bridge
 mvn clean package
-java -jar target/roulette-bridge-0.1.0-SNAPSHOT.jar
+java -jar target/ramyani-game-server-0.2.0-SNAPSHOT.jar
 ```
 
-또는 배포본에서는 `RouletteBridge.exe`를 직접 실행합니다. 배포본은 콘솔 창 대신 Windows 시스템 트레이에서 동작합니다.
+또는 배포본에서는 `RamyaniGameServer.exe`를 직접 실행합니다. 배포본은 콘솔 창 대신 Windows 시스템 트레이에서 동작합니다.

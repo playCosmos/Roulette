@@ -317,7 +317,7 @@ public final class Main {
         };
 
         Runnable explicitExit = () -> {
-            Thread.ofPlatform().daemon(true).name("roulette-bridge-exit-watchdog").start(() -> {
+            Thread.ofPlatform().daemon(true).name("ramyani-game-server-exit-watchdog").start(() -> {
                 try {
                     Thread.sleep(EXPLICIT_EXIT_WATCHDOG_MILLIS);
                 } catch (InterruptedException ignored) {
@@ -334,7 +334,7 @@ public final class Main {
         };
 
         Runtime.getRuntime().addShutdownHook(
-            Thread.ofPlatform().name("roulette-bridge-shutdown").unstarted(stopServices)
+            Thread.ofPlatform().name("ramyani-game-server-shutdown").unstarted(stopServices)
         );
 
         TrayController tray = TrayController.install(

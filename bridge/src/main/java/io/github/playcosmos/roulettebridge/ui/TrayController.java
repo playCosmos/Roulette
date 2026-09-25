@@ -70,7 +70,7 @@ public final class TrayController implements AutoCloseable {
         exitItem.addActionListener(event -> requestExit());
         popup.add(exitItem);
 
-        trayIcon = new TrayIcon(createIcon(), "RouletteBridge", popup);
+        trayIcon = new TrayIcon(createIcon(), "RamyaniGameServer", popup);
         trayIcon.setImageAutoSize(true);
         trayIcon.addActionListener(event -> {
             if (!exitRequested.get()) open(adminUrl);
@@ -117,13 +117,13 @@ public final class TrayController implements AutoCloseable {
     private void requestExit() {
         if (!exitRequested.compareAndSet(false, true)) return;
         statusItem.setLabel("상태: 종료 중");
-        trayIcon.setToolTip("RouletteBridge · 종료 중");
+        trayIcon.setToolTip("RamyaniGameServer · 종료 중");
         reconnectItem.setEnabled(false);
         exitItem.setEnabled(false);
 
         // Never call System.exit() on the AWT tray event thread. Delegate the request and
         // return immediately so the shutdown coordinator can remove AWT resources safely.
-        Thread.ofPlatform().name("roulette-bridge-tray-exit-request").start(exitAction);
+        Thread.ofPlatform().name("ramyani-game-server-tray-exit-request").start(exitAction);
     }
 
     private void updateStatus(String status) {
@@ -143,7 +143,7 @@ public final class TrayController implements AutoCloseable {
             default -> "대기 중";
         };
         statusItem.setLabel("상태: " + label);
-        trayIcon.setToolTip("RouletteBridge · " + label);
+        trayIcon.setToolTip("RamyaniGameServer · " + label);
     }
 
     private static Image createIcon() {

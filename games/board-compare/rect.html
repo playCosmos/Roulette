@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rect Board Compare · Current vs Pre-marker</title>
+  <style>
+    html,body{margin:0;width:100%;height:100%;background:#090b10;color:#fff;font-family:system-ui,sans-serif}
+    .bar{height:44px;display:grid;grid-template-columns:1fr 1fr;align-items:center;text-align:center;background:#11151d;border-bottom:1px solid #303642;font-weight:700}
+    .wrap{height:calc(100% - 45px);display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#303642}
+    iframe{width:100%;height:100%;border:0;background:#000}
+  </style>
+</head>
+<body>
+  <div class="bar"><div>현재 Rect V8 marker overlay</div><div>보존 Rect V7 pre-marker</div></div>
+  <div class="wrap">
+    <iframe src="../../board/rect.html" title="현재 Rect V8"></iframe>
+    <iframe src="./pre-marker/rect.html" title="보존 Rect V7"></iframe>
+  </div>
+</body>
+</html>

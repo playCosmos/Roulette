@@ -1513,7 +1513,7 @@
     }
 
     previousScaleWeights = weights.slice();
-    refreshFixedPlayerTokenScreenSize();
+    refreshFixedPlayerTokenScreenSize(solved.placements, occupancy);
     layoutPlayerTokens(solved.placements, occupancy);
     scheduleMotion();
 
@@ -1884,34 +1884,33 @@
     }
   }
 
-  function refreshFixedPlayerTokenScreenSize() {
+  function refreshFixedPlayerTokenScreenSize(placements, occupancy) {
     if (!refs.boardStage || directTokenAnimations.size > 0) return;
+    if (!Array.isArray(placements) || !occupancy) return;
 
     let previousRenderedSize = 0;
 
-    for (const player of state.players.values()) {
-      const cellIndex = Number(player.position);
-      const cell = cellElements.get(cellIndex);
-      const motion = cellMotionStates.get(cellIndex);
-      if (!cell || !motion) continue;
+    for (const cellIndex of occupancy.keys()) {
+      const geometry = placements[Number(cellIndex)];
+      if (!geometry) continue;
 
-      const localSize = Number.parseFloat(
-        cell.style.getPropertyValue("--player-token-local-size")
+      // V7에서 실제 배치 계산에 사용하던 화면상 칸 크기를 그대로 사용한다.
+      // 말 크기 = 현재 화면 칸의 짧은 변 × 0.46, 화면 기준 18~62px.
+      const tokenSize = clamp(
+        Math.min(geometry.width, geometry.height) * 0.46,
+        18,
+        62
       );
-      const targetScale = Number(motion.targetScale);
-      if (!Number.isFinite(localSize) || !Number.isFinite(targetScale)) continue;
 
-      // V7까지 실제 말은 이 localSize를 가진 채 board-cell scale의 영향을 받았다.
-      // 따라서 localSize × targetScale가 정지 상태에서 보이던 실제 화면 크기다.
       previousRenderedSize = Math.max(
         previousRenderedSize,
-        localSize * Math.abs(targetScale)
+        tokenSize
       );
     }
 
     if (previousRenderedSize <= 0) return;
 
-    fixedPlayerTokenScreenSize = clamp(previousRenderedSize, 18, 62);
+    fixedPlayerTokenScreenSize = previousRenderedSize;
     refs.boardStage.style.setProperty(
       "--player-token-screen-size",
       fixedPlayerTokenScreenSize.toFixed(3) + "px"

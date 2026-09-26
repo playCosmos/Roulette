@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class BridgeDatabase implements DatabaseAccess {
-    private static final int CURRENT_SCHEMA_VERSION = 10;
+    private static final int CURRENT_SCHEMA_VERSION = 11;
     private final Path databasePath;
     private final String jdbcUrl;
 
@@ -153,6 +153,12 @@ public final class BridgeDatabase implements DatabaseAccess {
             applyMigration(connection, "/db/migration/V10__multi_active_room_policy.sql");
             setVersion(connection, 10);
             version = 10;
+        }
+
+        if (version < 11) {
+            applyMigration(connection, "/db/migration/V11__persistent_admin_auth.sql");
+            setVersion(connection, 11);
+            version = 11;
         }
 
         if (version != CURRENT_SCHEMA_VERSION) {

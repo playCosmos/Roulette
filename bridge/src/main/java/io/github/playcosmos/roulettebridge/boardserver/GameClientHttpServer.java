@@ -25,7 +25,6 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -45,16 +44,15 @@ public final class GameClientHttpServer implements AutoCloseable {
     private final BoardServerConfig config;
     private final HttpClient adminHttpClient;
     private final URI adminBaseUri;
-    private final AtomicReference<String> adminBootstrapToken =
-        new AtomicReference<>(randomToken(24));
-    private final ConcurrentHashMap<String, Instant> adminSessions =
-        new ConcurrentHashMap<>();
+    private final AdminAuthStore adminAuthStore;
+    private final AtomicReference<String> adminBootstrapToken;
 
     public GameClientHttpServer(
         BoardServerConfig config,
         Path workingDirectory,
         RoomService rooms,
-        BoardGameRuntimeEngine runtime
+        BoardGameRuntimeEngine runtime,
+        AdminAuthStore adminAuthStore
     ) throws IOException {
         var normalized = config.normalized();
         this.config = normalized;
@@ -64,6 +62,19 @@ public final class GameClientHttpServer implements AutoCloseable {
         );
         this.rooms = rooms;
         this.runtime = runtime;
+        this.adminAuthStore = adminAuthStore;
+        try {
+            this.adminBootstrapToken = new AtomicReference<>(
+                adminAuthStore.bootstrapTokenOrCreate(
+                    () -> randomToken(24)
+                )
+            );
+        } catch (java.sql.SQLException error) {
+            throw new IOException(
+                "failed to initialize persistent admin authentication",
+                error
+            );
+        }
         this.adminHttpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(3))
             .build();
@@ -130,21 +141,42 @@ public final class GameClientHttpServer implements AutoCloseable {
     }
 
     public int activeAdminSessionCount() {
-        cleanupExpiredSessions();
-        return adminSessions.size();
+        try {
+            return adminAuthStore.countActiveSessions(
+                Instant.now()
+            );
+        } catch (java.sql.SQLException error) {
+            System.err.println(
+                "[admin-auth] session count failed: "
+                    + error.getMessage()
+            );
+            return 0;
+        }
     }
 
     public int revokeAdminSessions() {
-        cleanupExpiredSessions();
-        int revoked = adminSessions.size();
-        adminSessions.clear();
-        return revoked;
+        try {
+            return adminAuthStore.revokeAllSessions();
+        } catch (java.sql.SQLException error) {
+            throw new IllegalStateException(
+                "failed to revoke admin sessions",
+                error
+            );
+        }
     }
 
     public String rotateAdminAccess() {
-        adminBootstrapToken.set(randomToken(24));
-        adminSessions.clear();
-        return adminBootstrapUrl();
+        String nextToken = randomToken(24);
+        try {
+            adminAuthStore.rotateBootstrapToken(nextToken);
+            adminBootstrapToken.set(nextToken);
+            return adminBootstrapUrl();
+        } catch (java.sql.SQLException error) {
+            throw new IllegalStateException(
+                "failed to rotate admin access",
+                error
+            );
+        }
     }
 
     private void health(HttpExchange exchange) throws IOException {
@@ -317,10 +349,19 @@ public final class GameClientHttpServer implements AutoCloseable {
         }
 
         String sessionId = randomToken(32);
-        adminSessions.put(
-            sessionId,
-            Instant.now().plus(SESSION_TTL)
-        );
+        try {
+            adminAuthStore.createSession(
+                sessionId,
+                Instant.now().plus(SESSION_TTL)
+            );
+        } catch (java.sql.SQLException error) {
+            sendJson(
+                exchange,
+                500,
+                Map.of("error", "administrator session storage failed")
+            );
+            return true;
+        }
 
         StringBuilder cookie = new StringBuilder();
         cookie.append(SESSION_COOKIE)
@@ -352,8 +393,6 @@ public final class GameClientHttpServer implements AutoCloseable {
     }
 
     private boolean isAdminSession(HttpExchange exchange) {
-        cleanupExpiredSessions();
-
         String cookie = exchange.getRequestHeaders().getFirst("Cookie");
         if (cookie == null || cookie.isBlank()) return false;
 
@@ -366,29 +405,34 @@ public final class GameClientHttpServer implements AutoCloseable {
             }
 
             String sessionId = value.substring(equals + 1);
-            Instant expiresAt = adminSessions.get(sessionId);
-            if (
-                expiresAt == null
-                || !expiresAt.isAfter(Instant.now())
-            ) {
-                if (expiresAt != null) adminSessions.remove(sessionId);
+            try {
+                Instant now = Instant.now();
+                Instant expiresAt =
+                    adminAuthStore.sessionExpiresAt(sessionId);
+                if (
+                    expiresAt == null
+                    || !expiresAt.isAfter(now)
+                ) {
+                    if (expiresAt != null) {
+                        adminAuthStore.deleteSession(sessionId);
+                    }
+                    return false;
+                }
+
+                adminAuthStore.refreshSession(
+                    sessionId,
+                    now.plus(SESSION_TTL)
+                );
+                return true;
+            } catch (java.sql.SQLException error) {
+                System.err.println(
+                    "[admin-auth] session validation failed: "
+                        + error.getMessage()
+                );
                 return false;
             }
-
-            adminSessions.put(
-                sessionId,
-                Instant.now().plus(SESSION_TTL)
-            );
-            return true;
         }
         return false;
-    }
-
-    private void cleanupExpiredSessions() {
-        Instant now = Instant.now();
-        adminSessions.entrySet().removeIf(
-            entry -> !entry.getValue().isAfter(now)
-        );
     }
 
     private void proxyToLocalAdmin(HttpExchange exchange) throws IOException {
@@ -830,7 +874,6 @@ public final class GameClientHttpServer implements AutoCloseable {
 
     @Override
     public void close() {
-        adminSessions.clear();
         server.stop(1);
     }
 }

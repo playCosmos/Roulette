@@ -74,7 +74,7 @@ jobs:
       - name: Build games server Windows app
         working-directory: bridge
         shell: pwsh
-        run: ./package-games-server-windows.ps1 -Version 0.7.1 -SkipBuild
+        run: ./package-games-server-windows.ps1 -Version 0.8.0 -SkipBuild
 
       - name: Verify games server package
         working-directory: bridge
@@ -83,6 +83,12 @@ jobs:
           $root = Resolve-Path "dist-games/RamyaniGamesServer"
           $exe = Join-Path $root "RamyaniGamesServer.exe"
           if (-not (Test-Path $exe)) { throw "RamyaniGamesServer.exe missing" }
+          $roomAdminHtml = Get-Content (Join-Path $root "web/board-admin.html") -Raw
+          if ($roomAdminHtml -match "<h2>서버 상태</h2>") { throw "room admin server status panel must be removed" }
+          if ($roomAdminHtml -match "boardRoomPlayerCount") { throw "numeric participant count UI must be removed" }
+          if ($roomAdminHtml -match "boardRoomSharedBalloonTrigger") { throw "legacy shared balloon UI must be removed" }
+          if ($roomAdminHtml -notmatch "boardRoomAddPlayer") { throw "participant add button missing" }
+          if ($roomAdminHtml -notmatch "boardServerRemoteAdminUrl") { throw "remote admin link must remain available" }
           if (-not (Test-Path (Join-Path $root "config.json"))) { throw "config.json missing" }
           if (-not (Test-Path (Join-Path $root "runtime/bin/server/jvm.dll"))) { throw "bundled runtime missing" }
           @(
@@ -118,7 +124,7 @@ jobs:
       - name: Upload games server package
         uses: actions/upload-artifact@v4
         with:
-          name: RamyaniGamesServer-Windows-x64-v0.7.1
+          name: RamyaniGamesServer-Windows-x64-v0.8.0
           path: bridge/dist-games/RamyaniGamesServer/**
           if-no-files-found: error
           retention-days: 30

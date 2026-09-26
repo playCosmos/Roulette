@@ -118,11 +118,13 @@ public final class ClientBoundaryProbe {
                 event -> {}
             );
 
+            var adminAuthStore = new AdminAuthStore(database);
             server = new GameClientHttpServer(
                 config,
                 root,
                 rooms,
-                runtime
+                runtime,
+                adminAuthStore
             );
             server.start();
             require(
@@ -283,6 +285,54 @@ public final class ClientBoundaryProbe {
                         "\"proxied\":true"
                     ),
                 "authenticated mutation must proxy to local admin"
+            );
+
+            String bootstrapBeforeRestart =
+                server.adminBootstrapUrl();
+            server.close();
+            server = new GameClientHttpServer(
+                config,
+                root,
+                rooms,
+                runtime,
+                new AdminAuthStore(database)
+            );
+            server.start();
+
+            require(
+                bootstrapBeforeRestart.equals(
+                    server.adminBootstrapUrl()
+                ),
+                "bootstrap token must persist across server restart"
+            );
+
+            var afterRestartAdminPage = client.send(
+                HttpRequest.newBuilder(
+                    base.resolve("/admin/board-admin.html")
+                )
+                .header("Cookie", sessionCookie)
+                .GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            );
+            require(
+                afterRestartAdminPage.statusCode() == 200,
+                "admin session must survive server restart"
+            );
+
+            var afterRestartState = client.send(
+                HttpRequest.newBuilder(
+                    base.resolve("/api/state")
+                )
+                .header("Cookie", sessionCookie)
+                .GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            );
+            require(
+                afterRestartState.statusCode() == 200
+                    && afterRestartState.body().contains(
+                        "\"source\":\"local-admin\""
+                    ),
+                "persisted admin session must authorize after restart"
             );
 
             System.out.println("[client-boundary-probe] PASS");

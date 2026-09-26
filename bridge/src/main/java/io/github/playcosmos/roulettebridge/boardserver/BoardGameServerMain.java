@@ -139,11 +139,13 @@ public final class BoardGameServerMain {
             (bid, event) -> {}
         );
 
+        var adminAuthStore = new AdminAuthStore(database);
         var clientHttp = new GameClientHttpServer(
             config,
             root,
             roomService,
-            runtime
+            runtime,
+            adminAuthStore
         );
         var http = new BoardGameHttpServer(
             config,

@@ -5,11 +5,9 @@
   const form = $("boardRoomForm");
   if (!form) return;
 
-  const playerCount = $("boardRoomPlayerCount");
   const playersRoot = $("boardRoomPlayers");
-  const sharedBalloonTrigger = $("boardRoomSharedBalloonTrigger");
-  const applySharedBalloonButton = $("boardRoomApplySharedBalloon");
-  const sharedBalloonState = $("boardRoomSharedBalloonState");
+  const addPlayerButton = $("boardRoomAddPlayer");
+  const playerLimitState = $("boardRoomPlayerLimitState");
   const sizingMode = $("boardRoomSizingMode");
   const dimensionsFields = $("boardRoomDimensionsFields");
   const cellCountField = $("boardRoomCellCountField");
@@ -76,82 +74,159 @@
     return payload;
   }
 
-  function syncSharedBalloonState() {
-    if (!sharedBalloonState) return;
-    const values = Array.from(
-      playersRoot.querySelectorAll('[data-field="balloonTrigger"]')
-    ).map((input) => Number(input.value)).filter(Number.isFinite);
+  function playerRows() {
+    return Array.from(
+      playersRoot.querySelectorAll(".board-room-player-row")
+    );
+  }
 
-    if (!values.length) {
-      sharedBalloonState.textContent = "참가자 없음";
-      sharedBalloonState.dataset.mode = "empty";
-      return;
+  function sharedBalloonCheckbox() {
+    return playersRoot.querySelector(
+      "#boardRoomSharedBalloonEnabled"
+    );
+  }
+
+  function p1BalloonInput() {
+    return playersRoot.querySelector(
+      '.board-room-player-row [data-field="balloonTrigger"]'
+    );
+  }
+
+  function syncPlayerLimitState() {
+    const count = playerRows().length;
+    if (playerLimitState) {
+      playerLimitState.textContent = count + " / 6명";
     }
-
-    const first = values[0];
-    const same = values.every((value) => value === first);
-    sharedBalloonState.textContent = same
-      ? "모두 " + first + "개"
-      : "참가자별 값 사용 중";
-    sharedBalloonState.dataset.mode = same ? "same" : "mixed";
-
-    if (same && sharedBalloonTrigger) {
-      sharedBalloonTrigger.value = String(first);
+    if (addPlayerButton) {
+      addPlayerButton.disabled = count >= 6;
+      addPlayerButton.title = count >= 6
+        ? "참가자는 최대 6명까지 추가할 수 있습니다."
+        : "";
     }
   }
 
-  function applySharedBalloonTrigger() {
-    if (!sharedBalloonTrigger) return;
-    const value = Number(sharedBalloonTrigger.value);
-    if (!Number.isInteger(value) || value < 1) {
-      showResult("공통 턴 실행 별풍선은 1 이상의 정수로 입력하세요.", "error-text");
-      sharedBalloonTrigger.focus();
-      return;
+  function syncSharedBalloonMode() {
+    const checkbox = sharedBalloonCheckbox();
+    const shared = checkbox?.checked === true;
+    const rows = playerRows();
+    const source = rows[0]?.querySelector(
+      '[data-field="balloonTrigger"]'
+    );
+    const sourceValue = source?.value || "100";
+
+    rows.forEach((row, index) => {
+      const input = row.querySelector(
+        '[data-field="balloonTrigger"]'
+      );
+      if (!input) return;
+      if (shared && index > 0) {
+        input.value = sourceValue;
+        input.disabled = true;
+        input.title = "P1의 ‘모두 동일’ 설정을 사용 중입니다.";
+      } else {
+        input.disabled = false;
+        input.title = "";
+      }
+    });
+  }
+
+  function renumberPlayers(sharedOverride) {
+    const previousShared =
+      typeof sharedOverride === "boolean"
+        ? sharedOverride
+        : (sharedBalloonCheckbox()?.checked ?? true);
+
+    playerRows().forEach((row, index) => {
+      const indexNode = row.querySelector(
+        ".board-room-player-index"
+      );
+      if (indexNode) indexNode.textContent = "P" + (index + 1);
+
+      const triggerLabel = row.querySelector(
+        "[data-balloon-label]"
+      );
+      if (!triggerLabel) return;
+
+      if (index === 0) {
+        triggerLabel.innerHTML = `
+          <span>턴 실행 별풍선</span>
+          <span class="board-room-shared-balloon-toggle">
+            <input id="boardRoomSharedBalloonEnabled" type="checkbox" ${previousShared ? "checked" : ""} />
+            모두 동일
+          </span>
+        `;
+      } else {
+        triggerLabel.textContent = "턴 실행 별풍선";
+      }
+    });
+    syncPlayerLimitState();
+    syncSharedBalloonMode();
+  }
+
+  function addPlayerRow(initial = {}) {
+    if (playerRows().length >= 6) return;
+
+    const row = document.createElement("div");
+    row.className = "board-room-player-row";
+    row.innerHTML = `
+      <button type="button" class="board-room-player-remove" data-remove-player aria-label="참가자 삭제">삭제</button>
+      <span class="board-room-player-index"></span>
+      <label>SOOP ID
+        <input data-field="soopId" autocomplete="off" maxlength="120" required value="${escapeAttribute(initial.soopId || "")}" />
+      </label>
+      <label>표시 이름
+        <input data-field="displayName" autocomplete="off" maxlength="80" value="${escapeAttribute(initial.displayName || "")}" placeholder="미입력 시 SOOP 현재 닉네임" />
+      </label>
+      <label class="board-room-balloon-field">
+        <span class="board-room-balloon-label" data-balloon-label>턴 실행 별풍선</span>
+        <input data-field="balloonTrigger" type="number" min="1" step="1" required value="${escapeAttribute(initial.balloonTrigger || "100")}" />
+      </label>
+      <span class="board-room-inline-status" data-live-status>생성 시 확인</span>
+    `;
+    playersRoot.append(row);
+    renumberPlayers();
+  }
+
+  function resetSinglePlayer(row) {
+    const soopId = row.querySelector('[data-field="soopId"]');
+    const displayName = row.querySelector(
+      '[data-field="displayName"]'
+    );
+    const balloonTrigger = row.querySelector(
+      '[data-field="balloonTrigger"]'
+    );
+    const liveStatus = row.querySelector("[data-live-status]");
+
+    if (soopId) soopId.value = "";
+    if (displayName) displayName.value = "";
+    if (balloonTrigger) balloonTrigger.value = "100";
+    if (liveStatus) {
+      liveStatus.textContent = "생성 시 확인";
+      liveStatus.removeAttribute("data-status");
     }
 
-    playersRoot.querySelectorAll('[data-field="balloonTrigger"]').forEach((input) => {
-      input.value = String(value);
-    });
-    syncSharedBalloonState();
-    showResult("모든 참가자의 턴 실행 별풍선을 " + value + "개로 맞췄습니다.", "success");
+    const checkbox = sharedBalloonCheckbox();
+    if (checkbox) checkbox.checked = true;
+    syncSharedBalloonMode();
+    soopId?.focus();
+  }
+
+  function removePlayerRow(row) {
+    const rows = playerRows();
+    if (rows.length <= 1) {
+      resetSinglePlayer(row);
+      return;
+    }
+    const shared = sharedBalloonCheckbox()?.checked ?? true;
+    row.remove();
+    renumberPlayers(shared);
   }
 
   function renderPlayers() {
-    const count = Math.max(1, Math.min(6, Number(playerCount.value) || 4));
-    playerCount.value = String(count);
-
-    const previous = Array.from(playersRoot.querySelectorAll(".board-room-player-row")).map((row) => ({
-      soopId: row.querySelector('[data-field="soopId"]')?.value || "",
-      displayName: row.querySelector('[data-field="displayName"]')?.value || "",
-      balloonTrigger: row.querySelector('[data-field="balloonTrigger"]')?.value || ""
-    }));
-
-    const sharedDefault = Math.max(
-      1,
-      Number.parseInt(sharedBalloonTrigger?.value || "100", 10) || 100
-    );
-
     playersRoot.innerHTML = "";
-    for (let i = 0; i < count; i += 1) {
-      const saved = previous[i] || {};
-      const row = document.createElement("div");
-      row.className = "board-room-player-row";
-      row.innerHTML = `
-        <span class="board-room-player-index">P${i + 1}</span>
-        <label>SOOP ID
-          <input data-field="soopId" autocomplete="off" maxlength="120" required value="${escapeAttribute(saved.soopId || "")}" />
-        </label>
-        <label>표시 이름
-          <input data-field="displayName" autocomplete="off" maxlength="80" value="${escapeAttribute(saved.displayName || "")}" placeholder="미입력 시 SOOP 현재 닉네임" />
-        </label>
-        <label>턴 실행 별풍선
-          <input data-field="balloonTrigger" type="number" min="1" step="1" required value="${escapeAttribute(saved.balloonTrigger || String(sharedDefault))}" />
-        </label>
-        <span class="board-room-inline-status" data-live-status>생성 시 확인</span>
-      `;
-      playersRoot.append(row);
+    for (let index = 0; index < 4; index += 1) {
+      addPlayerRow();
     }
-    syncSharedBalloonState();
   }
 
   function escapeAttribute(value) {
@@ -1017,16 +1092,33 @@
     }
   }
 
-  playerCount.addEventListener("change", renderPlayers);
-  applySharedBalloonButton?.addEventListener("click", applySharedBalloonTrigger);
-  sharedBalloonTrigger?.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter") return;
-    event.preventDefault();
-    applySharedBalloonTrigger();
+  addPlayerButton?.addEventListener("click", () => {
+    const p1Value = p1BalloonInput()?.value || "100";
+    addPlayerRow({ balloonTrigger: p1Value });
   });
+
+  playersRoot.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-remove-player]");
+    if (!button) return;
+    const row = button.closest(".board-room-player-row");
+    if (row) removePlayerRow(row);
+  });
+
+  playersRoot.addEventListener("change", (event) => {
+    if (event.target?.id === "boardRoomSharedBalloonEnabled") {
+      syncSharedBalloonMode();
+    }
+  });
+
   playersRoot.addEventListener("input", (event) => {
-    if (event.target?.dataset?.field === "balloonTrigger") {
-      syncSharedBalloonState();
+    if (event.target?.dataset?.field !== "balloonTrigger") return;
+    const firstRow = playerRows()[0];
+    if (
+      firstRow
+      && firstRow.contains(event.target)
+      && sharedBalloonCheckbox()?.checked
+    ) {
+      syncSharedBalloonMode();
     }
   });
   sizingMode.addEventListener("change", syncBoardSizing);

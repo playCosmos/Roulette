@@ -178,12 +178,12 @@ public final class ServerManagementProbe {
                 "active admin session count missing"
             );
             require(
-                state.body().contains("\"version\":\"0.7.0\""),
+                state.body().contains("\"version\":\"0.8.0\""),
                 "server version missing"
             );
             require(
                 state.body().contains(
-                    "\"roomAdminUiVersion\":\"0.7.1\""
+                    "\"roomAdminUiVersion\":\"0.8.0\""
                 ),
                 "room admin UI version missing"
             );

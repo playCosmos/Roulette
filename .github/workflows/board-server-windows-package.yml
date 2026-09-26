@@ -68,11 +68,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           java -cp target/ramyani-game-server-0.2.0-SNAPSHOT.jar io.github.playcosmos.roulettebridge.boardserver.ClientBoundaryProbe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -cp target/ramyani-game-server-0.2.0-SNAPSHOT.jar io.github.playcosmos.roulettebridge.boardserver.ServerManagementProbe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build games server Windows app
         working-directory: bridge
         shell: pwsh
-        run: ./package-games-server-windows.ps1 -Version 0.5.2 -SkipBuild
+        run: ./package-games-server-windows.ps1 -Version 0.6.0 -SkipBuild
 
       - name: Verify games server package
         working-directory: bridge
@@ -84,6 +86,7 @@ jobs:
           if (-not (Test-Path (Join-Path $root "config.json"))) { throw "config.json missing" }
           if (-not (Test-Path (Join-Path $root "runtime/bin/server/jvm.dll"))) { throw "bundled runtime missing" }
           @(
+            "web/server-management.html",
             "web/board-admin.html",
             "web/board-room.html",
             "web/soop/admin/soop-admin.css",
@@ -115,7 +118,7 @@ jobs:
       - name: Upload games server package
         uses: actions/upload-artifact@v4
         with:
-          name: RamyaniGamesServer-Windows-x64-v0.5.2
+          name: RamyaniGamesServer-Windows-x64-v0.6.0
           path: bridge/dist-games/RamyaniGamesServer/**
           if-no-files-found: error
           retention-days: 30

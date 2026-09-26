@@ -21,12 +21,20 @@ import java.util.function.Supplier;
 
 public final class BoardGameHttpServer implements AutoCloseable {
     private static final Gson GSON = new Gson();
+    private static final String VERSION = "0.6.0";
+    private static final int MAX_MANAGEMENT_BODY_BYTES = 16 * 1024;
 
     private final HttpServer server;
     private final Path webRoot;
     private final String instanceId = UUID.randomUUID().toString();
+    private final String startedAt = OffsetDateTime.now().toString();
     private final BoardServerConfig config;
     private final Supplier<String> remoteAdminUrl;
+    private final Supplier<String> localUserAdminUrl;
+    private final IntSupplier adminSessionCount;
+    private final Supplier<Integer> revokeAdminSessions;
+    private final Supplier<String> rotateAdminAccess;
+    private final Runnable reconnectSoop;
 
     public BoardGameHttpServer(
         BoardServerConfig config,
@@ -35,10 +43,20 @@ public final class BoardGameHttpServer implements AutoCloseable {
         IntSupplier websocketClientCount,
         Supplier<Map<String, Object>> soopState,
         RoomHttpHandler rooms,
-        Supplier<String> remoteAdminUrl
+        Supplier<String> remoteAdminUrl,
+        Supplier<String> localUserAdminUrl,
+        IntSupplier adminSessionCount,
+        Supplier<Integer> revokeAdminSessions,
+        Supplier<String> rotateAdminAccess,
+        Runnable reconnectSoop
     ) throws IOException {
         this.config = config.normalized();
         this.remoteAdminUrl = remoteAdminUrl;
+        this.localUserAdminUrl = localUserAdminUrl;
+        this.adminSessionCount = adminSessionCount;
+        this.revokeAdminSessions = revokeAdminSessions;
+        this.rotateAdminAccess = rotateAdminAccess;
+        this.reconnectSoop = reconnectSoop;
         this.webRoot = resolveWebRoot(workingDirectory, this.config.storage().webRoot());
         this.server = HttpServer.create(
             new InetSocketAddress(this.config.server().host(), this.config.server().port()),
@@ -73,7 +91,7 @@ public final class BoardGameHttpServer implements AutoCloseable {
             String websocketUrl = websocketUrl(exchange, clientBaseUrl);
 
             payload.put("product", "RamyaniGamesServer");
-            payload.put("version", "0.5.2");
+            payload.put("version", VERSION);
             payload.put("instanceId", instanceId);
             payload.put("streamerId", this.config.streamerId());
             payload.put("database", databasePath.toString());
@@ -94,6 +112,15 @@ public final class BoardGameHttpServer implements AutoCloseable {
             sendJson(exchange, 200, payload);
         });
 
+        server.createContext(
+            "/api/server-management",
+            exchange -> serverManagement(
+                exchange,
+                databasePath,
+                websocketClientCount,
+                soopState
+            )
+        );
         server.createContext("/api/board/rooms", rooms);
         server.createContext("/", this::serveStatic);
     }
@@ -105,6 +132,138 @@ public final class BoardGameHttpServer implements AutoCloseable {
             server.getAddress().getHostString() + ":" + server.getAddress().getPort()
         );
         System.out.println("[board-http] web root: " + webRoot);
+    }
+
+    private void serverManagement(
+        HttpExchange exchange,
+        Path databasePath,
+        IntSupplier websocketClientCount,
+        Supplier<Map<String, Object>> soopState
+    ) throws IOException {
+        String method = exchange.getRequestMethod();
+        if ("GET".equalsIgnoreCase(method)) {
+            sendJson(
+                exchange,
+                200,
+                managementState(
+                    exchange,
+                    databasePath,
+                    websocketClientCount,
+                    soopState
+                )
+            );
+            return;
+        }
+
+        if (!"POST".equalsIgnoreCase(method)) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+
+        byte[] body = exchange.getRequestBody()
+            .readNBytes(MAX_MANAGEMENT_BODY_BYTES + 1);
+        if (body.length > MAX_MANAGEMENT_BODY_BYTES) {
+            sendJson(
+                exchange,
+                413,
+                Map.of("error", "management request is too large")
+            );
+            return;
+        }
+
+        String action;
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> request = GSON.fromJson(
+                new String(body, StandardCharsets.UTF_8),
+                Map.class
+            );
+            action = request == null
+                ? null
+                : String.valueOf(request.getOrDefault("action", ""));
+        } catch (Exception error) {
+            sendJson(exchange, 400, Map.of("error", "invalid JSON"));
+            return;
+        }
+
+        var result = new LinkedHashMap<String, Object>();
+        switch (action == null ? "" : action) {
+            case "revokeAdminSessions" -> {
+                int revoked = revokeAdminSessions.get();
+                result.put("action", action);
+                result.put("revokedSessions", revoked);
+            }
+            case "rotateAdminAccess" -> {
+                String nextUrl = rotateAdminAccess.get();
+                result.put("action", action);
+                result.put("remoteAdminUrl", nextUrl);
+                result.put("revokedSessions", true);
+            }
+            case "reconnectSoop" -> {
+                reconnectSoop.run();
+                result.put("action", action);
+                result.put("requested", true);
+            }
+            default -> {
+                sendJson(
+                    exchange,
+                    400,
+                    Map.of("error", "unsupported management action")
+                );
+                return;
+            }
+        }
+
+        result.put(
+            "state",
+            managementState(
+                exchange,
+                databasePath,
+                websocketClientCount,
+                soopState
+            )
+        );
+        sendJson(exchange, 200, result);
+    }
+
+    private Map<String, Object> managementState(
+        HttpExchange exchange,
+        Path databasePath,
+        IntSupplier websocketClientCount,
+        Supplier<Map<String, Object>> soopState
+    ) {
+        var payload = new LinkedHashMap<String, Object>();
+        String clientBaseUrl = clientBaseUrl(exchange);
+        String websocketUrl = websocketUrl(exchange, clientBaseUrl);
+
+        payload.put("product", "RamyaniGamesServer");
+        payload.put("version", VERSION);
+        payload.put("instanceId", instanceId);
+        payload.put("startedAt", startedAt);
+        payload.put("time", OffsetDateTime.now().toString());
+        payload.put("streamerId", this.config.streamerId());
+        payload.put("database", databasePath.toString());
+        payload.put("webRoot", webRoot.toString());
+        payload.put("adminHost", this.config.server().host());
+        payload.put("adminPort", this.config.server().port());
+        payload.put("clientHost", this.config.server().clientHost());
+        payload.put("clientPort", this.config.server().clientPort());
+        payload.put("websocketPort", this.config.server().websocketPort());
+        payload.put("websocketClients", websocketClientCount.getAsInt());
+        payload.put("activeAdminSessions", adminSessionCount.getAsInt());
+        payload.put("adminSessionHours", 12);
+        payload.put("clientBaseUrl", clientBaseUrl);
+        payload.put("websocketUrl", websocketUrl);
+        payload.put("remoteAdminUrl", remoteAdminUrl.get());
+        payload.put("localUserAdminUrl", localUserAdminUrl.get());
+        payload.put(
+            "sharingConfigured",
+            !this.config.server().publicBaseUrl().isBlank()
+                && !this.config.server().publicWebSocketUrl().isBlank()
+        );
+        payload.put("soop", soopState.get());
+        return payload;
     }
 
     private void serveStatic(HttpExchange exchange) throws IOException {
@@ -119,7 +278,7 @@ public final class BoardGameHttpServer implements AutoCloseable {
 
         String rawPath = exchange.getRequestURI().getPath();
         String decoded = URLDecoder.decode(rawPath == null ? "/" : rawPath, StandardCharsets.UTF_8);
-        if ("/".equals(decoded)) decoded = "/board-admin.html";
+        if ("/".equals(decoded)) decoded = "/server-management.html";
 
         Path requested = webRoot.resolve(decoded.substring(1)).normalize();
         if (!requested.startsWith(webRoot) || !Files.isRegularFile(requested)) {

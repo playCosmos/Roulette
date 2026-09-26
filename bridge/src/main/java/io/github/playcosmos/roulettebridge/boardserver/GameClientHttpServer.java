@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class GameClientHttpServer implements AutoCloseable {
     private static final Gson GSON = new Gson();
@@ -44,7 +45,8 @@ public final class GameClientHttpServer implements AutoCloseable {
     private final BoardServerConfig config;
     private final HttpClient adminHttpClient;
     private final URI adminBaseUri;
-    private final String adminBootstrapToken;
+    private final AtomicReference<String> adminBootstrapToken =
+        new AtomicReference<>(randomToken(24));
     private final ConcurrentHashMap<String, Instant> adminSessions =
         new ConcurrentHashMap<>();
 
@@ -68,8 +70,6 @@ public final class GameClientHttpServer implements AutoCloseable {
         this.adminBaseUri = URI.create(
             "http://127.0.0.1:" + normalized.server().port()
         );
-        this.adminBootstrapToken = randomToken(24);
-
         this.server = HttpServer.create(
             new InetSocketAddress(
                 normalized.server().clientHost(),
@@ -124,9 +124,27 @@ public final class GameClientHttpServer implements AutoCloseable {
 
     private String encodedAdminBootstrapToken() {
         return URLEncoder.encode(
-            adminBootstrapToken,
+            adminBootstrapToken.get(),
             StandardCharsets.UTF_8
         );
+    }
+
+    public int activeAdminSessionCount() {
+        cleanupExpiredSessions();
+        return adminSessions.size();
+    }
+
+    public int revokeAdminSessions() {
+        cleanupExpiredSessions();
+        int revoked = adminSessions.size();
+        adminSessions.clear();
+        return revoked;
+    }
+
+    public String rotateAdminAccess() {
+        adminBootstrapToken.set(randomToken(24));
+        adminSessions.clear();
+        return adminBootstrapUrl();
     }
 
     private void health(HttpExchange exchange) throws IOException {
@@ -293,7 +311,7 @@ public final class GameClientHttpServer implements AutoCloseable {
         );
         if (supplied == null) return false;
 
-        if (!constantTimeEquals(supplied, adminBootstrapToken)) {
+        if (!constantTimeEquals(supplied, adminBootstrapToken.get())) {
             sendAdminAuthenticationRequired(exchange);
             return true;
         }

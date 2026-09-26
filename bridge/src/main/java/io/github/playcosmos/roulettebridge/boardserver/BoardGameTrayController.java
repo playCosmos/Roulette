@@ -19,7 +19,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 public final class BoardGameTrayController implements AutoCloseable {
-    private final String adminUrl;
+    private final String serverManagementUrl;
+    private final String userAdminUrl;
     private final Supplier<String> statusSupplier;
     private final Runnable reconnectAction;
     private final Runnable exitAction;
@@ -29,12 +30,14 @@ public final class BoardGameTrayController implements AutoCloseable {
     private final MenuItem statusItem;
 
     private BoardGameTrayController(
-        String adminUrl,
+        String serverManagementUrl,
+        String userAdminUrl,
         Supplier<String> statusSupplier,
         Runnable reconnectAction,
         Runnable exitAction
     ) throws AWTException {
-        this.adminUrl = adminUrl;
+        this.serverManagementUrl = serverManagementUrl;
+        this.userAdminUrl = userAdminUrl;
         this.statusSupplier = statusSupplier;
         this.reconnectAction = reconnectAction;
         this.exitAction = exitAction;
@@ -45,9 +48,15 @@ public final class BoardGameTrayController implements AutoCloseable {
         popup.add(statusItem);
         popup.addSeparator();
 
-        var openAdmin = new MenuItem("게임 서버 관리 페이지 열기");
-        openAdmin.addActionListener(event -> open(adminUrl));
-        popup.add(openAdmin);
+        var openServerManagement = new MenuItem("서버 관리 페이지 열기");
+        openServerManagement.addActionListener(
+            event -> open(serverManagementUrl)
+        );
+        popup.add(openServerManagement);
+
+        var openUserAdmin = new MenuItem("게임 운영 페이지 열기");
+        openUserAdmin.addActionListener(event -> open(userAdminUrl));
+        popup.add(openUserAdmin);
 
         var reconnect = new MenuItem("SOOP 재연결");
         reconnect.addActionListener(event -> {
@@ -63,7 +72,7 @@ public final class BoardGameTrayController implements AutoCloseable {
         trayIcon = new TrayIcon(createIcon(), "RamyaniGamesServer", popup);
         trayIcon.setImageAutoSize(true);
         trayIcon.addActionListener(event -> {
-            if (!exitRequested.get()) open(adminUrl);
+            if (!exitRequested.get()) open(serverManagementUrl);
         });
         SystemTray.getSystemTray().add(trayIcon);
 
@@ -78,14 +87,21 @@ public final class BoardGameTrayController implements AutoCloseable {
     }
 
     public static BoardGameTrayController install(
-        String adminUrl,
+        String serverManagementUrl,
+        String userAdminUrl,
         Supplier<String> statusSupplier,
         Runnable reconnectAction,
         Runnable exitAction
     ) {
         if (!SystemTray.isSupported()) return null;
         try {
-            return new BoardGameTrayController(adminUrl, statusSupplier, reconnectAction, exitAction);
+            return new BoardGameTrayController(
+                serverManagementUrl,
+                userAdminUrl,
+                statusSupplier,
+                reconnectAction,
+                exitAction
+            );
         } catch (Exception error) {
             System.err.println("[board-tray] " + error.getMessage());
             return null;

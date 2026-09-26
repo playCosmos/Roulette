@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.5.2",
+    [string]$Version = "0.6.0",
     [switch]$SkipBuild
 )
 
@@ -61,6 +61,7 @@ Copy-Item (Join-Path $BridgeRoot "board-config.example.json") (Join-Path $AppRoo
 
 $WebRoot = Join-Path $AppRoot "web"
 New-Item -ItemType Directory -Path $WebRoot -Force | Out-Null
+Copy-Item (Join-Path $RepoRoot "server-management.html") (Join-Path $WebRoot "server-management.html") -Force
 Copy-Item (Join-Path $RepoRoot "board-admin.html") (Join-Path $WebRoot "board-admin.html") -Force
 Copy-Item (Join-Path $RepoRoot "board-room.html") (Join-Path $WebRoot "board-room.html") -Force
 
@@ -92,9 +93,10 @@ RamyaniGamesServer Windows x64
 서버
 ----
 1. RamyaniGamesServer.exe를 실행합니다.
-2. 사용자용 관리자 UI는 17832의 /admin/ 경로를 사용합니다.
-3. 실제 관리 백엔드는 127.0.0.1:17830에만 바인딩되며 내부 프록시용으로 유지됩니다.
-4. 보드게임 DB: data/board-game.db
+2. 실제 서버 관리 UI: http://127.0.0.1:17830/
+3. 게임 운영자용 관리자 UI는 17832의 /admin/ 경로를 사용합니다.
+4. 17830은 서버 PC 로컬 전용이며 활성 관리자 세션/접속/인증 링크/SOOP 상태를 관리합니다.
+5. 보드게임 DB: data/board-game.db
 
 클라이언트 / 원격 운영
 ---------------------

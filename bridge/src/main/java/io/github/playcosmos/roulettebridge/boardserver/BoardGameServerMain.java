@@ -148,13 +148,21 @@ public final class BoardGameServerMain {
             websocket::connectedClients,
             soopState::snapshot,
             roomHttp,
-            clientHttp::adminBootstrapUrl
+            clientHttp::adminBootstrapUrl,
+            clientHttp::localAdminBootstrapUrl,
+            clientHttp::activeAdminSessionCount,
+            clientHttp::revokeAdminSessions,
+            clientHttp::rotateAdminAccess,
+            soop::reconnectNow
         );
         http.start();
         clientHttp.start();
         soop.start();
 
         String adminUrl = clientHttp.localAdminBootstrapUrl();
+        String serverManagementUrl = "http://127.0.0.1:"
+            + config.server().port() + "/";
+        System.out.println("[server-management] " + serverManagementUrl);
         System.out.println("[board-admin] " + adminUrl);
         System.out.println(
             "[board-client] http://" + config.server().clientHost()
@@ -209,6 +217,7 @@ public final class BoardGameServerMain {
         );
 
         var tray = BoardGameTrayController.install(
+            serverManagementUrl,
             adminUrl,
             soopState::status,
             soop::reconnectNow,

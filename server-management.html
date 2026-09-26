@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Ramyani Games Server · 서버 관리</title>
+  <style>
+    :root{
+      font-family:Inter,Pretendard,"Noto Sans KR",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      color:#e9edf3;background:#090c10
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:#090c10;color:#e9edf3}
+    button,input{font:inherit}
+    main{width:min(1180px,calc(100% - 32px));margin:24px auto 48px}
+    header{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:18px}
+    .eyebrow{margin:0 0 6px;color:#7e8b9a;font-size:11px;font-weight:900;letter-spacing:.14em}
+    h1{margin:0;font-size:28px}
+    header p{margin:8px 0 0;color:#8f9aa8;line-height:1.6}
+    .local-badge{padding:7px 10px;border:1px solid #385268;border-radius:999px;background:#101a23;color:#9fc8e8;font-size:11px;font-weight:900;white-space:nowrap}
+    .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+    .card,.panel{border:1px solid #2c333d;border-radius:13px;background:#11151b}
+    .card{padding:14px}
+    .card span{display:block;color:#7f8a98;font-size:11px;font-weight:800}
+    .card strong{display:block;margin-top:7px;font-size:21px;overflow-wrap:anywhere}
+    .card small{display:block;margin-top:5px;color:#6f7a87;font-size:10px}
+    .panel{margin-top:12px;padding:16px}
+    .panel h2{margin:0 0 5px;font-size:16px}
+    .panel>p{margin:0 0 14px;color:#84909e;font-size:12px;line-height:1.6}
+    .details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .detail{padding:10px 11px;border:1px solid #252c34;border-radius:9px;background:#0d1116}
+    .detail span{display:block;color:#778391;font-size:10px;font-weight:800}
+    .detail code,.detail strong{display:block;margin-top:5px;color:#d6dde6;font-size:12px;overflow-wrap:anywhere}
+    .url-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:9px}
+    .url-row input{min-width:0;padding:9px 10px;border:1px solid #303944;border-radius:8px;background:#0b0f14;color:#d8dee7;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px}
+    button{padding:9px 12px;border:1px solid #3a4653;border-radius:8px;background:#19212a;color:#e6ebf1;font-weight:800;cursor:pointer}
+    button:hover{background:#202a35}
+    button:disabled{opacity:.5;cursor:wait}
+    .actions{display:flex;flex-wrap:wrap;gap:8px}
+    .danger{border-color:#694044;background:#2a1719;color:#f1b7bb}
+    .warning{border-color:#655936;background:#241f13;color:#e0ca88}
+    .success{border-color:#355f44;background:#132219;color:#9ed9af}
+    .result{min-height:20px;margin-top:12px!important;color:#97a3b1!important}
+    .result[data-tone="error"]{color:#e8a2a6!important}
+    .result[data-tone="success"]{color:#97d5aa!important}
+    .notice{margin-top:12px;padding:11px 12px;border:1px solid #5c5234;border-radius:9px;background:#201c12;color:#cfbc7f;font-size:11px;line-height:1.6}
+    @media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.details{grid-template-columns:1fr}}
+    @media(max-width:560px){main{width:min(100% - 20px,1180px);margin-top:14px}.grid{grid-template-columns:1fr}header{flex-direction:column}.url-row{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <p class="eyebrow">RAMYANI / GAMES SERVER / LOCAL MANAGEMENT</p>
+      <h1>서버 관리</h1>
+      <p>이 페이지는 실제 서버 PC의 로컬 관리 포트 17830 전용입니다. 게임 운영자와 참가자는 17832를 사용합니다.</p>
+    </div>
+    <div class="local-badge">127.0.0.1 : 17830</div>
+  </header>
+
+  <section class="grid">
+    <article class="card">
+      <span>활성 관리자 세션</span>
+      <strong id="adminSessions">-</strong>
+      <small>브라우저 인증 세션 기준</small>
+    </article>
+    <article class="card">
+      <span>WebSocket 접속</span>
+      <strong id="wsClients">-</strong>
+      <small>현재 연결된 게임/OBS 클라이언트</small>
+    </article>
+    <article class="card">
+      <span>SOOP 상태</span>
+      <strong id="soopStatus">-</strong>
+      <small id="streamerId">Streamer ID 확인 중</small>
+    </article>
+    <article class="card">
+      <span>서버 가동 시간</span>
+      <strong id="uptime">-</strong>
+      <small id="version">버전 확인 중</small>
+    </article>
+  </section>
+
+  <section class="panel">
+    <h2>서버 상태</h2>
+    <p>실제 백엔드와 사용자용 포트의 상태를 확인합니다.</p>
+    <div class="details">
+      <div class="detail"><span>인스턴스 ID</span><code id="instanceId">-</code></div>
+      <div class="detail"><span>시작 시각</span><strong id="startedAt">-</strong></div>
+      <div class="detail"><span>관리 백엔드</span><strong id="adminEndpoint">-</strong></div>
+      <div class="detail"><span>사용자 HTTP</span><strong id="clientEndpoint">-</strong></div>
+      <div class="detail"><span>WebSocket</span><strong id="wsEndpoint">-</strong></div>
+      <div class="detail"><span>Database</span><code id="database">-</code></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>게임 운영자 접속</h2>
+    <p>실제 게임 운영자는 17832의 인증된 관리자 페이지를 사용합니다. 원격 링크에는 인증 토큰이 포함되므로 신뢰하는 운영자에게만 전달하세요.</p>
+    <div class="url-row">
+      <input id="remoteAdminUrl" readonly aria-label="원격 관리자 인증 링크" />
+      <button id="copyRemoteAdmin">원격 링크 복사</button>
+    </div>
+    <div class="url-row">
+      <input id="localUserAdminUrl" readonly aria-label="서버 PC 사용자 관리자 링크" />
+      <button id="openUserAdmin">사용자 관리자 열기</button>
+    </div>
+    <div class="notice">관리자 인증 링크 재발급을 실행하면 현재 로그인된 모든 관리자 세션과 이전에 전달한 인증 링크가 즉시 무효화됩니다. 재발급 후에는 새 링크를 운영자에게 다시 전달해야 합니다.</div>
+  </section>
+
+  <section class="panel">
+    <h2>관리 작업</h2>
+    <p>서버 자체 상태에 영향을 주는 작업입니다. 룸 생성·턴 진행·말 위치 보정은 17832 사용자 관리자 페이지에서 수행합니다.</p>
+    <div class="actions">
+      <button id="revokeSessions" class="warning">모든 관리자 세션 해제</button>
+      <button id="rotateAccess" class="danger">관리자 인증 링크 재발급</button>
+      <button id="reconnectSoop">SOOP 재연결</button>
+      <button id="refreshNow">지금 새로고침</button>
+    </div>
+    <p class="result" id="result" aria-live="polite">상태를 불러오는 중입니다.</p>
+  </section>
+</main>
+<script>
+(() => {
+  const ids = (id) => document.getElementById(id);
+  let lastState = null;
+  let refreshTimer = 0;
+
+  function formatTime(value) {
+    if (!value) return "-";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  }
+
+  function formatUptime(startedAt) {
+    const started = new Date(startedAt).getTime();
+    if (!Number.isFinite(started)) return "-";
+    const seconds = Math.max(0, Math.floor((Date.now() - started) / 1000));
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (days) return days + "일 " + hours + "시간";
+    if (hours) return hours + "시간 " + minutes + "분";
+    return minutes + "분";
+  }
+
+  function setResult(message, tone = "") {
+    const node = ids("result");
+    node.textContent = message;
+    node.dataset.tone = tone;
+  }
+
+  function render(state) {
+    lastState = state;
+    ids("adminSessions").textContent = String(state.activeAdminSessions ?? 0);
+    ids("wsClients").textContent = String(state.websocketClients ?? 0);
+    ids("soopStatus").textContent = state.soop?.status || "-";
+    ids("streamerId").textContent = "Streamer ID · " + (state.streamerId || "미설정");
+    ids("uptime").textContent = formatUptime(state.startedAt);
+    ids("version").textContent = "RamyaniGamesServer v" + (state.version || "-");
+    ids("instanceId").textContent = state.instanceId || "-";
+    ids("startedAt").textContent = formatTime(state.startedAt);
+    ids("adminEndpoint").textContent =
+      (state.adminHost || "127.0.0.1") + ":" + (state.adminPort || 17830);
+    ids("clientEndpoint").textContent =
+      (state.clientHost || "0.0.0.0") + ":" + (state.clientPort || 17832);
+    ids("wsEndpoint").textContent = state.websocketUrl || "-";
+    ids("database").textContent = state.database || "-";
+    ids("remoteAdminUrl").value = state.remoteAdminUrl || "";
+    ids("localUserAdminUrl").value = state.localUserAdminUrl || "";
+  }
+
+  async function refresh(silent = false) {
+    try {
+      const response = await fetch("/api/server-management", { cache: "no-store" });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const state = await response.json();
+      render(state);
+      if (!silent) setResult("서버 상태를 갱신했습니다.", "success");
+    } catch (error) {
+      if (!silent) setResult("상태 조회 실패: " + error.message, "error");
+    }
+  }
+
+  async function action(name, button, confirmText) {
+    if (confirmText && !window.confirm(confirmText)) return;
+    const previous = button.textContent;
+    button.disabled = true;
+    button.textContent = "처리 중…";
+    try {
+      const response = await fetch("/api/server-management", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: name })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || ("HTTP " + response.status));
+      if (body.state) render(body.state);
+
+      if (name === "revokeAdminSessions") {
+        setResult("관리자 세션 " + (body.revokedSessions ?? 0) + "개를 해제했습니다.", "success");
+      } else if (name === "rotateAdminAccess") {
+        setResult("관리자 인증 링크를 새로 발급했습니다. 기존 세션과 이전 링크는 무효입니다.", "success");
+      } else if (name === "reconnectSoop") {
+        setResult("SOOP 재연결을 요청했습니다.", "success");
+      }
+    } catch (error) {
+      setResult("관리 작업 실패: " + error.message, "error");
+    } finally {
+      button.disabled = false;
+      button.textContent = previous;
+    }
+  }
+
+  ids("copyRemoteAdmin").addEventListener("click", async () => {
+    const value = ids("remoteAdminUrl").value.trim();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setResult("원격 관리자 인증 링크를 복사했습니다.", "success");
+    } catch (_) {
+      ids("remoteAdminUrl").focus();
+      ids("remoteAdminUrl").select();
+      document.execCommand("copy");
+      setResult("원격 관리자 인증 링크를 복사했습니다.", "success");
+    }
+  });
+
+  ids("openUserAdmin").addEventListener("click", () => {
+    const value = ids("localUserAdminUrl").value.trim();
+    if (value) window.open(value, "_blank", "noopener");
+  });
+
+  ids("revokeSessions").addEventListener("click", () => action(
+    "revokeAdminSessions",
+    ids("revokeSessions"),
+    "현재 로그인된 모든 원격 관리자 세션을 해제하시겠습니까?\n기존 인증 링크 자체는 계속 사용할 수 있습니다."
+  ));
+
+  ids("rotateAccess").addEventListener("click", () => action(
+    "rotateAdminAccess",
+    ids("rotateAccess"),
+    "관리자 인증 링크를 재발급하시겠습니까?\n현재 관리자 세션과 이전에 전달한 인증 링크가 모두 무효화됩니다."
+  ));
+
+  ids("reconnectSoop").addEventListener("click", () => action(
+    "reconnectSoop",
+    ids("reconnectSoop")
+  ));
+
+  ids("refreshNow").addEventListener("click", () => refresh(false));
+
+  refresh(false);
+  refreshTimer = window.setInterval(() => refresh(true), 2000);
+  window.addEventListener("beforeunload", () => window.clearInterval(refreshTimer), { once: true });
+})();
+</script>
+</body>
+</html>

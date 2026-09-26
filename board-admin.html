@@ -73,9 +73,6 @@
             <label>룸 이름
               <input name="roomName" autocomplete="off" value="Board Room" maxlength="120" />
             </label>
-            <label>참가자 수
-              <input id="boardRoomPlayerCount" type="number" min="1" max="6" step="1" value="4" />
-            </label>
             <label>룸 유지 시간(분)
               <input name="retentionMinutes" type="number" min="1" max="480" step="1" value="240" />
             </label>
@@ -93,7 +90,12 @@
 
         <fieldset>
           <legend>참가자 / 후원 트리거</legend>
-          <p class="board-room-rule-note">각 참가자의 SOOP ID와 일치하는 후원 중, 설정한 ‘턴 실행 별풍선’ 개수와 정확히 같은 단일 후원만 해당 참가자의 턴을 실행합니다.</p>
+          <div class="board-room-participant-settings">
+            <label>참가자 수
+              <input id="boardRoomPlayerCount" type="number" min="1" max="6" step="1" value="4" />
+            </label>
+            <p class="board-room-rule-note">각 참가자의 SOOP ID와 일치하는 후원 중, 설정한 ‘턴 실행 별풍선’ 개수와 정확히 같은 단일 후원만 해당 참가자의 턴을 실행합니다.</p>
+          </div>
           <div class="board-room-trigger-bulk">
             <div class="board-room-trigger-bulk-copy">
               <strong>공통 턴 실행 별풍선</strong>

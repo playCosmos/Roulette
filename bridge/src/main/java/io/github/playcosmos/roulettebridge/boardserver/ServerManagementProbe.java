@@ -183,7 +183,7 @@ public final class ServerManagementProbe {
             );
             require(
                 state.body().contains(
-                    "\"roomAdminUiVersion\":\"0.7.0\""
+                    "\"roomAdminUiVersion\":\"0.7.1\""
                 ),
                 "room admin UI version missing"
             );

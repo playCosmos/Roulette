@@ -4,11 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark" />
-  <title>Ramyani Board Game Server</title>
+  <title>Ramyani Games Server · Board</title>
   <link rel="stylesheet" href="./soop/admin/soop-admin.css" />
   <link rel="stylesheet" href="./soop/admin/board-room-admin.css" />
   <style>
-    .board-server-status { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:16px; }
+    .board-server-status { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; margin-bottom:16px; }
     .board-server-status > div { padding:12px; border:1px solid #282e36; border-radius:10px; background:#0d1014; }
     .board-server-status span { display:block; color:#85909e; font-size:11px; }
     .board-server-status strong { display:block; margin-top:4px; overflow-wrap:anywhere; }
@@ -19,9 +19,9 @@
   <main class="admin-shell">
     <header class="admin-header">
       <div>
-        <p class="eyebrow">RAMYANI / BOARD GAME SERVER</p>
-        <h1>보드게임 서버 관리</h1>
-        <p>룰렛/티켓 발급 기능과 분리된 보드게임 전용 서버입니다.</p>
+        <p class="eyebrow">RAMYANI / GAMES SERVER / BOARD</p>
+        <h1>보드게임 룸 생성</h1>
+        <p>게임 서버가 룸 상태와 방송용 클라이언트를 제공하고, 참가자는 공유받은 오버레이 URL을 OBS 브라우저 소스로 사용합니다.</p>
       </div>
       <div class="connection" id="boardServerConnection">서버 확인 중</div>
     </header>
@@ -38,6 +38,8 @@
         <div><span>Streamer ID</span><strong id="boardServerStreamer">-</strong></div>
         <div><span>WebSocket</span><strong id="boardServerWs">-</strong></div>
         <div><span>Database</span><strong id="boardServerDb">-</strong></div>
+        <div><span>클라이언트 주소</span><strong id="boardServerClientUrl">-</strong></div>
+        <div><span>외부 공유</span><strong id="boardServerShareState">확인 중</strong></div>
       </div>
       <input id="overlayUrlInput" type="hidden" />
     </section>
@@ -46,7 +48,7 @@
       <div class="panel-heading">
         <div>
           <h2>보드게임 룸 생성</h2>
-          <p>룸별 설정은 SQLite에 저장합니다. 생성 시 참가자별 SOOP 방송 상태를 확인하고, 서버가 만든 실제 보드 프리뷰를 확인한 뒤 배치를 확정합니다. DRAFT 룸은 여러 개 만들 수 있지만 동시에 활성화되는 룸은 최대 1개입니다.</p>
+          <p>룸별 설정은 SQLite에 저장합니다. 생성 시 참가자별 SOOP 방송 상태를 확인하고, 서버가 만든 실제 보드 프리뷰를 확인한 뒤 배치를 확정합니다. DRAFT 룸은 여러 개 만들 수 있고, 현재 보드게임 모듈은 한 번에 1개의 룸만 활성화합니다.</p>
         </div>
       </div>
 
@@ -77,7 +79,20 @@
 
         <fieldset>
           <legend>참가자 / 후원 트리거</legend>
-          <p class="board-room-rule-note">각 참가자의 SOOP ID와 정확히 일치하는 후원 이벤트만 사용합니다. 입력한 별풍선 수와 정확히 같은 단일 후원만 해당 참가자의 던지기 이벤트가 됩니다.</p>
+          <p class="board-room-rule-note">각 참가자의 SOOP ID와 일치하는 후원 중, 설정한 ‘턴 실행 별풍선’ 개수와 정확히 같은 단일 후원만 해당 참가자의 턴을 실행합니다.</p>
+          <div class="board-room-trigger-bulk">
+            <div class="board-room-trigger-bulk-copy">
+              <strong>공통 턴 실행 별풍선</strong>
+              <span>모든 참가자에게 같은 값을 한 번에 적용할 수 있습니다. 이후 참가자별로 다시 조정할 수도 있습니다.</span>
+            </div>
+            <div class="board-room-trigger-bulk-actions">
+              <label>별풍선
+                <input id="boardRoomSharedBalloonTrigger" type="number" min="1" step="1" value="100" />
+              </label>
+              <button type="button" id="boardRoomApplySharedBalloon">모두 적용</button>
+              <span class="board-room-trigger-bulk-state" id="boardRoomSharedBalloonState">모두 100개</span>
+            </div>
+          </div>
           <div class="board-room-player-list" id="boardRoomPlayers"></div>
         </fieldset>
 
@@ -230,8 +245,12 @@
           document.getElementById("boardServerStreamer").textContent = state.streamerId || "미설정";
           document.getElementById("boardServerWs").textContent = state.websocketUrl || "-";
           document.getElementById("boardServerDb").textContent = state.database || "-";
+          document.getElementById("boardServerClientUrl").textContent = state.clientBaseUrl || "-";
+          const share = document.getElementById("boardServerShareState");
+          share.textContent = state.sharingConfigured ? "공개 URL 설정됨" : "로컬/직접 주소 사용";
+          share.dataset.ready = state.sharingConfigured ? "true" : "false";
           const carrier = document.getElementById("overlayUrlInput");
-          carrier.value = location.origin + "/?ws=" + encodeURIComponent(state.websocketUrl || "");
+          carrier.value = (state.clientBaseUrl || location.origin) + "/?ws=" + encodeURIComponent(state.websocketUrl || "");
         } catch (error) {
           badge.textContent = "서버 연결 대기";
         }

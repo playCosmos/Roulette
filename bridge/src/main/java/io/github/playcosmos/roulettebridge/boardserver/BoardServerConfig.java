@@ -9,7 +9,16 @@ public record BoardServerConfig(
     public static BoardServerConfig defaults() {
         return new BoardServerConfig(
             "",
-            new Server("127.0.0.1", 17830, 17831, true),
+            new Server(
+                "127.0.0.1",
+                17830,
+                17831,
+                true,
+                "0.0.0.0",
+                17832,
+                "",
+                ""
+            ),
             new Storage("./data/board-game.db", "./web", "./logs"),
             new Soop(true, 30)
         );
@@ -27,12 +36,50 @@ public record BoardServerConfig(
         );
     }
 
-    public record Server(String host, int port, int websocketPort, boolean openBrowserOnStart) {
+    public record Server(
+        String host,
+        int port,
+        int websocketPort,
+        boolean openBrowserOnStart,
+        String clientHost,
+        int clientPort,
+        String publicBaseUrl,
+        String publicWebSocketUrl
+    ) {
         Server normalized() {
-            String h = host == null || host.isBlank() ? "127.0.0.1" : host.trim();
-            int p = port > 0 && port <= 65535 ? port : 17830;
-            int ws = websocketPort > 0 && websocketPort <= 65535 ? websocketPort : p + 1;
-            return new Server(h, p, ws, openBrowserOnStart);
+            String adminHost = valueOrDefault(host, "127.0.0.1");
+            int adminPort = validPort(port, 17830);
+            int wsPort = validPort(websocketPort, 17831);
+            String publicHost = valueOrDefault(clientHost, "0.0.0.0");
+            int publicPort = validPort(clientPort, 17832);
+
+            return new Server(
+                adminHost,
+                adminPort,
+                wsPort,
+                openBrowserOnStart,
+                publicHost,
+                publicPort,
+                normalizeBaseUrl(publicBaseUrl),
+                normalizeBaseUrl(publicWebSocketUrl)
+            );
+        }
+
+        private static int validPort(int value, int fallback) {
+            return value > 0 && value <= 65535 ? value : fallback;
+        }
+
+        private static String valueOrDefault(String value, String fallback) {
+            return value == null || value.isBlank() ? fallback : value.trim();
+        }
+
+        private static String normalizeBaseUrl(String value) {
+            if (value == null || value.isBlank()) return "";
+            String normalized = value.trim();
+            while (normalized.endsWith("/")) {
+                normalized = normalized.substring(0, normalized.length() - 1);
+            }
+            return normalized;
         }
     }
 

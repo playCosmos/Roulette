@@ -42,12 +42,12 @@ public final class BoardGameServerMain {
         var database = new BoardGameDatabase(root.resolve(config.storage().databasePath()));
         database.initialize();
 
-        System.out.println("[board-server] root=" + root);
-        System.out.println("[board-server] config=" + configPath);
-        System.out.println("[board-server] database=" + database.path());
+        System.out.println("[games-server] root=" + root);
+        System.out.println("[games-server] config=" + configPath);
+        System.out.println("[games-server] database=" + database.path());
 
         var websocket = new BoardGameWebSocketServer(
-            config.server().host(),
+            config.server().clientHost(),
             config.server().websocketPort()
         );
         websocket.start();
@@ -58,7 +58,7 @@ public final class BoardGameServerMain {
         );
         int recovered = runtime.recoverQueuedDonations();
         if (recovered > 0) {
-            System.out.println("[board-server] recovered queued donations=" + recovered);
+            System.out.println("[games-server] recovered queued donations=" + recovered);
         }
 
         var roomService = new RoomService(database);
@@ -143,11 +143,28 @@ public final class BoardGameServerMain {
             soopState::snapshot,
             roomHttp
         );
+        var clientHttp = new GameClientHttpServer(
+            config,
+            root,
+            roomService,
+            runtime
+        );
         http.start();
+        clientHttp.start();
         soop.start();
 
-        String adminUrl = "http://127.0.0.1:" + config.server().port() + "/board-admin.html";
+        String adminUrl = "http://127.0.0.1:"
+            + config.server().port() + "/board-admin.html";
         System.out.println("[board-admin] " + adminUrl);
+        System.out.println(
+            "[board-client] http://" + config.server().clientHost()
+                + ":" + config.server().clientPort()
+        );
+        if (!config.server().publicBaseUrl().isBlank()) {
+            System.out.println(
+                "[board-client-public] " + config.server().publicBaseUrl()
+            );
+        }
 
         var shutdown = new CountDownLatch(1);
         var shutdownStarted = new AtomicBoolean(false);
@@ -161,6 +178,7 @@ public final class BoardGameServerMain {
             }
             lifecycleExecutor.shutdownNow();
             try { http.close(); } catch (Exception ignored) {}
+            try { clientHttp.close(); } catch (Exception ignored) {}
             try { websocket.stop(2000); }
             catch (InterruptedException error) { Thread.currentThread().interrupt(); }
             catch (Exception ignored) {}
@@ -208,7 +226,10 @@ public final class BoardGameServerMain {
     }
 
     private static Path applicationRoot() {
-        String override = System.getenv("RAMYANI_BOARD_GAME_SERVER_HOME");
+        String override = System.getenv("RAMYANI_GAMES_SERVER_HOME");
+        if (override == null || override.isBlank()) {
+            override = System.getenv("RAMYANI_BOARD_GAME_SERVER_HOME");
+        }
         if (override != null && !override.isBlank()) {
             return Path.of(override).toAbsolutePath().normalize();
         }
@@ -231,7 +252,7 @@ public final class BoardGameServerMain {
                 Desktop.getDesktop().browse(URI.create(url));
             }
         } catch (Exception error) {
-            System.err.println("[board-server] browser open failed: " + error.getMessage());
+            System.err.println("[games-server] browser open failed: " + error.getMessage());
         }
     }
 }

@@ -234,3 +234,70 @@
     margin-left: 0;
   }
 }
+
+
+.room-share-panel {
+  border-color: #354759 !important;
+  background:
+    linear-gradient(135deg, rgba(43, 61, 78, .28), transparent 52%),
+    #0c1015;
+}
+
+.room-share-panel .panel-heading {
+  align-items: center;
+}
+
+.room-share-badge {
+  padding: 5px 9px;
+  border: 1px solid #496177;
+  border-radius: 999px;
+  color: #9cb8d1;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.room-share-url-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.room-share-url-row input {
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+
+.room-share-hint {
+  margin-top: 9px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #11161c;
+  color: #8995a3;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.room-share-hint[data-tone="ready"] {
+  border: 1px solid #355f44;
+  color: #91d3a6;
+  background: #102018;
+}
+
+.room-share-hint[data-tone="warning"] {
+  border: 1px solid #655936;
+  color: #d9c17e;
+  background: #211d12;
+}
+
+@media (max-width: 800px) {
+  .room-share-url-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .room-share-url-row input {
+    grid-column: 1 / -1;
+  }
+}

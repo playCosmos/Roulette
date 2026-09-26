@@ -7,6 +7,9 @@
 
   const playerCount = $("boardRoomPlayerCount");
   const playersRoot = $("boardRoomPlayers");
+  const sharedBalloonTrigger = $("boardRoomSharedBalloonTrigger");
+  const applySharedBalloonButton = $("boardRoomApplySharedBalloon");
+  const sharedBalloonState = $("boardRoomSharedBalloonState");
   const sizingMode = $("boardRoomSizingMode");
   const dimensionsFields = $("boardRoomDimensionsFields");
   const cellCountField = $("boardRoomCellCountField");
@@ -73,6 +76,46 @@
     return payload;
   }
 
+  function syncSharedBalloonState() {
+    if (!sharedBalloonState) return;
+    const values = Array.from(
+      playersRoot.querySelectorAll('[data-field="balloonTrigger"]')
+    ).map((input) => Number(input.value)).filter(Number.isFinite);
+
+    if (!values.length) {
+      sharedBalloonState.textContent = "참가자 없음";
+      sharedBalloonState.dataset.mode = "empty";
+      return;
+    }
+
+    const first = values[0];
+    const same = values.every((value) => value === first);
+    sharedBalloonState.textContent = same
+      ? "모두 " + first + "개"
+      : "참가자별 값 사용 중";
+    sharedBalloonState.dataset.mode = same ? "same" : "mixed";
+
+    if (same && sharedBalloonTrigger) {
+      sharedBalloonTrigger.value = String(first);
+    }
+  }
+
+  function applySharedBalloonTrigger() {
+    if (!sharedBalloonTrigger) return;
+    const value = Number(sharedBalloonTrigger.value);
+    if (!Number.isInteger(value) || value < 1) {
+      showResult("공통 턴 실행 별풍선은 1 이상의 정수로 입력하세요.", "error-text");
+      sharedBalloonTrigger.focus();
+      return;
+    }
+
+    playersRoot.querySelectorAll('[data-field="balloonTrigger"]').forEach((input) => {
+      input.value = String(value);
+    });
+    syncSharedBalloonState();
+    showResult("모든 참가자의 턴 실행 별풍선을 " + value + "개로 맞췄습니다.", "success");
+  }
+
   function renderPlayers() {
     const count = Math.max(1, Math.min(6, Number(playerCount.value) || 4));
     playerCount.value = String(count);
@@ -82,6 +125,11 @@
       displayName: row.querySelector('[data-field="displayName"]')?.value || "",
       balloonTrigger: row.querySelector('[data-field="balloonTrigger"]')?.value || ""
     }));
+
+    const sharedDefault = Math.max(
+      1,
+      Number.parseInt(sharedBalloonTrigger?.value || "100", 10) || 100
+    );
 
     playersRoot.innerHTML = "";
     for (let i = 0; i < count; i += 1) {
@@ -96,13 +144,14 @@
         <label>표시 이름
           <input data-field="displayName" autocomplete="off" maxlength="80" value="${escapeAttribute(saved.displayName || "")}" placeholder="미입력 시 SOOP 현재 닉네임" />
         </label>
-        <label>정확 별풍선
-          <input data-field="balloonTrigger" type="number" min="1" step="1" required value="${escapeAttribute(saved.balloonTrigger || String((i + 1) * 100))}" />
+        <label>턴 실행 별풍선
+          <input data-field="balloonTrigger" type="number" min="1" step="1" required value="${escapeAttribute(saved.balloonTrigger || String(sharedDefault))}" />
         </label>
         <span class="board-room-inline-status" data-live-status>생성 시 확인</span>
       `;
       playersRoot.append(row);
     }
+    syncSharedBalloonState();
   }
 
   function escapeAttribute(value) {
@@ -647,6 +696,18 @@
     });
   }
 
+  function clientBaseUrl() {
+    const raw = bridgeOverlayUrl?.value?.trim();
+    if (raw) {
+      try {
+        const parsed = new URL(raw, window.location.href);
+        return parsed.origin;
+      } catch (_) {
+      }
+    }
+    return window.location.origin;
+  }
+
   function currentWebSocketUrl() {
     const raw = bridgeOverlayUrl?.value?.trim();
     if (raw) {
@@ -655,16 +716,18 @@
         const configured = parsed.searchParams.get("ws");
         if (configured) return configured;
       } catch (_) {
-        // Fall back to the default bridge websocket address below.
       }
     }
-    return "ws://" + window.location.hostname + ":17821";
+    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+    return scheme + "://" + window.location.hostname + ":17831";
   }
 
   function roomOverlayUrl(snapshot) {
     const style = snapshot?.config?.board?.layoutStyle || "rounded";
-    const page = style === "rect" ? "./games/board/rect.html" : "./games/board/index.html";
-    const url = new URL(page, window.location.href);
+    const page = style === "rect"
+      ? "/games/board/rect.html"
+      : "/games/board/index.html";
+    const url = new URL(page, clientBaseUrl());
     url.searchParams.set("roomId", snapshot.roomId);
     url.searchParams.set("board", "committed");
     url.searchParams.set("ws", currentWebSocketUrl());
@@ -921,6 +984,17 @@
   }
 
   playerCount.addEventListener("change", renderPlayers);
+  applySharedBalloonButton?.addEventListener("click", applySharedBalloonTrigger);
+  sharedBalloonTrigger?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    applySharedBalloonTrigger();
+  });
+  playersRoot.addEventListener("input", (event) => {
+    if (event.target?.dataset?.field === "balloonTrigger") {
+      syncSharedBalloonState();
+    }
+  });
   sizingMode.addEventListener("change", syncBoardSizing);
   diceEnabled.addEventListener("change", syncMovement);
   yutEnabled.addEventListener("change", syncMovement);

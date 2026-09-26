@@ -45,7 +45,7 @@ public final class BoardGameTrayController implements AutoCloseable {
         popup.add(statusItem);
         popup.addSeparator();
 
-        var openAdmin = new MenuItem("보드게임 관리 페이지 열기");
+        var openAdmin = new MenuItem("게임 서버 관리 페이지 열기");
         openAdmin.addActionListener(event -> open(adminUrl));
         popup.add(openAdmin);
 
@@ -60,7 +60,7 @@ public final class BoardGameTrayController implements AutoCloseable {
         exit.addActionListener(event -> requestExit());
         popup.add(exit);
 
-        trayIcon = new TrayIcon(createIcon(), "RamyaniBoardGameServer", popup);
+        trayIcon = new TrayIcon(createIcon(), "RamyaniGamesServer", popup);
         trayIcon.setImageAutoSize(true);
         trayIcon.addActionListener(event -> {
             if (!exitRequested.get()) open(adminUrl);
@@ -95,7 +95,7 @@ public final class BoardGameTrayController implements AutoCloseable {
     private void requestExit() {
         if (!exitRequested.compareAndSet(false, true)) return;
         statusItem.setLabel("상태: 종료 중");
-        Thread.ofPlatform().name("board-server-tray-exit").start(exitAction);
+        Thread.ofPlatform().name("games-server-tray-exit").start(exitAction);
     }
 
     private void updateStatus(String status) {
@@ -113,7 +113,7 @@ public final class BoardGameTrayController implements AutoCloseable {
             default -> "대기 중";
         };
         statusItem.setLabel("상태: " + label);
-        trayIcon.setToolTip("RamyaniBoardGameServer · " + label);
+        trayIcon.setToolTip("RamyaniGamesServer · " + label);
     }
 
     private static Image createIcon() {

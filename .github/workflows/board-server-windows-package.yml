@@ -1,4 +1,4 @@
-name: Ramyani Board Game Server Windows Package
+name: Ramyani Games Server Windows Package
 
 on:
   workflow_dispatch:
@@ -15,6 +15,7 @@ on:
       - "soop/admin/board-room-operation.css"
       - "soop/admin/board-room-operation.js"
       - ".github/workflows/board-server-windows-package.yml"
+      - "bridge/package-games-server-windows.ps1"
 
 permissions:
   contents: read
@@ -65,19 +66,21 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           java -cp target/ramyani-game-server-0.2.0-SNAPSHOT.jar io.github.playcosmos.roulettebridge.room.RoomOperationProbe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -cp target/ramyani-game-server-0.2.0-SNAPSHOT.jar io.github.playcosmos.roulettebridge.boardserver.ClientBoundaryProbe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build board-game-only Windows app
+      - name: Build games server Windows app
         working-directory: bridge
         shell: pwsh
-        run: ./package-board-server-windows.ps1 -Version 0.3.1 -SkipBuild
+        run: ./package-games-server-windows.ps1 -Version 0.4.0 -SkipBuild
 
-      - name: Verify board-only package
+      - name: Verify games server package
         working-directory: bridge
         shell: pwsh
         run: |
-          $root = Resolve-Path "dist-board/RamyaniBoardGameServer"
-          $exe = Join-Path $root "RamyaniBoardGameServer.exe"
-          if (-not (Test-Path $exe)) { throw "RamyaniBoardGameServer.exe missing" }
+          $root = Resolve-Path "dist-games/RamyaniGamesServer"
+          $exe = Join-Path $root "RamyaniGamesServer.exe"
+          if (-not (Test-Path $exe)) { throw "RamyaniGamesServer.exe missing" }
           if (-not (Test-Path (Join-Path $root "config.json"))) { throw "config.json missing" }
           if (-not (Test-Path (Join-Path $root "runtime/bin/server/jvm.dll"))) { throw "bundled runtime missing" }
           @(
@@ -109,10 +112,10 @@ jobs:
           $probe = Start-Process -FilePath $exe -ArgumentList "--board-server-probe" -Wait -PassThru
           if ($probe.ExitCode -ne 0) { throw "packaged board server probe failed: $($probe.ExitCode)" }
 
-      - name: Upload board-game-only package
+      - name: Upload games server package
         uses: actions/upload-artifact@v4
         with:
-          name: RamyaniBoardGameServer-Windows-x64-v0.3.1
-          path: bridge/dist-board/RamyaniBoardGameServer/**
+          name: RamyaniGamesServer-Windows-x64-v0.4.0
+          path: bridge/dist-games/RamyaniGamesServer/**
           if-no-files-found: error
           retention-days: 30

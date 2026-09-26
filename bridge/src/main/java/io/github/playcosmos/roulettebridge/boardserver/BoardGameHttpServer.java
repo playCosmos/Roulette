@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpServer;
 import io.github.playcosmos.roulettebridge.room.RoomHttpHandler;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -51,7 +52,7 @@ public final class BoardGameHttpServer implements AutoCloseable {
             }
             sendJson(exchange, 200, Map.of(
                 "status", "ok",
-                "product", "RamyaniBoardGameServer",
+                "product", "RamyaniGamesServer",
                 "instanceId", instanceId,
                 "time", OffsetDateTime.now().toString()
             ));
@@ -65,17 +66,25 @@ public final class BoardGameHttpServer implements AutoCloseable {
                 return;
             }
             var payload = new LinkedHashMap<String, Object>();
-            payload.put("product", "RamyaniBoardGameServer");
-            payload.put("version", "0.3.1");
+            String clientBaseUrl = clientBaseUrl(exchange);
+            String websocketUrl = websocketUrl(exchange, clientBaseUrl);
+
+            payload.put("product", "RamyaniGamesServer");
+            payload.put("version", "0.4.0");
             payload.put("instanceId", instanceId);
             payload.put("streamerId", this.config.streamerId());
             payload.put("database", databasePath.toString());
             payload.put("webRoot", webRoot.toString());
             payload.put("websocketClients", websocketClientCount.getAsInt());
+            payload.put("clientBaseUrl", clientBaseUrl);
+            payload.put("websocketUrl", websocketUrl);
             payload.put(
-                "websocketUrl",
-                "ws://" + this.config.server().host() + ":" + this.config.server().websocketPort()
+                "sharingConfigured",
+                !this.config.server().publicBaseUrl().isBlank()
+                    && !this.config.server().publicWebSocketUrl().isBlank()
             );
+            payload.put("clientPort", this.config.server().clientPort());
+            payload.put("websocketPort", this.config.server().websocketPort());
             payload.put("soop", soopState.get());
             sendJson(exchange, 200, payload);
         });
@@ -126,6 +135,79 @@ public final class BoardGameHttpServer implements AutoCloseable {
         try (var output = exchange.getResponseBody()) {
             output.write(body);
         }
+    }
+
+    private String clientBaseUrl(HttpExchange exchange) {
+        String configured = config.server().publicBaseUrl();
+        if (configured != null && !configured.isBlank()) {
+            return stripTrailingSlash(configured);
+        }
+
+        String host = requestHost(exchange);
+        String hostname = hostNameOnly(host);
+        return "http://" + formatHost(hostname)
+            + ":" + config.server().clientPort();
+    }
+
+    private String websocketUrl(
+        HttpExchange exchange,
+        String clientBaseUrl
+    ) {
+        String configured = config.server().publicWebSocketUrl();
+        if (configured != null && !configured.isBlank()) {
+            return stripTrailingSlash(configured);
+        }
+
+        String hostname = hostNameOnly(requestHost(exchange));
+        String scheme = clientBaseUrl.startsWith("https://") ? "wss" : "ws";
+        return scheme + "://" + formatHost(hostname)
+            + ":" + config.server().websocketPort();
+    }
+
+    private static String requestHost(HttpExchange exchange) {
+        String forwarded = exchange.getRequestHeaders().getFirst(
+            "X-Forwarded-Host"
+        );
+        if (forwarded != null && !forwarded.isBlank()) {
+            int comma = forwarded.indexOf(',');
+            return (comma >= 0 ? forwarded.substring(0, comma) : forwarded)
+                .trim();
+        }
+
+        String host = exchange.getRequestHeaders().getFirst("Host");
+        if (host != null && !host.isBlank()) return host.trim();
+
+        return "127.0.0.1";
+    }
+
+    private static String hostNameOnly(String host) {
+        try {
+            URI uri = URI.create("http://" + host);
+            String hostname = uri.getHost();
+            if (hostname != null && !hostname.isBlank()) return hostname;
+        } catch (RuntimeException ignored) {
+        }
+
+        int colon = host.lastIndexOf(':');
+        if (colon > 0 && host.indexOf(':') == colon) {
+            return host.substring(0, colon);
+        }
+        return host;
+    }
+
+    private static String formatHost(String host) {
+        if (host.contains(":") && !host.startsWith("[")) {
+            return "[" + host + "]";
+        }
+        return host;
+    }
+
+    private static String stripTrailingSlash(String value) {
+        String result = value.trim();
+        while (result.endsWith("/")) {
+            result = result.substring(0, result.length() - 1);
+        }
+        return result;
     }
 
     private static Path resolveWebRoot(Path workingDirectory, String configured) {

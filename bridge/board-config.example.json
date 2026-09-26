@@ -4,7 +4,11 @@
     "host": "127.0.0.1",
     "port": 17830,
     "websocketPort": 17831,
-    "openBrowserOnStart": true
+    "openBrowserOnStart": true,
+    "clientHost": "0.0.0.0",
+    "clientPort": 17832,
+    "publicBaseUrl": "",
+    "publicWebSocketUrl": ""
   },
   "storage": {
     "databasePath": "./data/board-game.db",

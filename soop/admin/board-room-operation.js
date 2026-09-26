@@ -9,6 +9,11 @@
   const meta = $("roomOperationMeta");
   const statusBadge = $("roomOperationStatus");
   const result = $("roomOperationResult");
+  const shareUrlInput = $("roomShareUrl");
+  const shareCopyButton = $("roomShareCopyButton");
+  const shareOpenButton = $("roomShareOpenButton");
+  const shareSystemButton = $("roomShareSystemButton");
+  const shareHint = $("roomShareHint");
   const pauseButton = $("roomPauseButton");
   const resumeButton = $("roomResumeButton");
   const extendMinutes = $("roomExtendMinutes");
@@ -98,6 +103,89 @@
     if (action.type === "moveToStart") return "START 이동";
     if (action.type === "extraThrow") return "한 번 더";
     return action.type || "표시";
+  }
+
+  function overlayUrl() {
+    if (!roomId || !serverState?.clientBaseUrl) return "";
+    const style = room?.config?.board?.layoutStyle || "rounded";
+    const path = style === "rect"
+      ? "/games/board/rect.html"
+      : "/games/board/index.html";
+    const url = new URL(path, serverState.clientBaseUrl);
+    url.searchParams.set("roomId", roomId);
+    url.searchParams.set("board", "committed");
+    if (serverState.websocketUrl) {
+      url.searchParams.set("ws", serverState.websocketUrl);
+    }
+    return url.toString();
+  }
+
+  function renderShareInfo() {
+    if (!shareUrlInput || !shareHint) return;
+    const url = overlayUrl();
+    shareUrlInput.value = url;
+
+    const configured = Boolean(serverState?.sharingConfigured);
+    const localOnly = /(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(url);
+
+    if (!url) {
+      shareHint.textContent = "클라이언트 주소를 아직 만들 수 없습니다.";
+      shareHint.dataset.tone = "warning";
+      return;
+    }
+
+    if (configured) {
+      shareHint.textContent =
+        "외부 공유 URL 설정 완료 · 모든 참가자에게 이 주소 하나를 전달하면 됩니다.";
+      shareHint.dataset.tone = "ready";
+    } else if (localOnly) {
+      shareHint.textContent =
+        "현재 주소는 이 PC에서만 유효합니다. 다른 참가자에게 보내려면 config.json의 publicBaseUrl / publicWebSocketUrl을 설정하세요.";
+      shareHint.dataset.tone = "warning";
+    } else {
+      shareHint.textContent =
+        "직접 접속 주소를 사용 중입니다. 참가자 PC에서 이 주소가 열리는지 먼저 테스트하세요.";
+      shareHint.dataset.tone = "warning";
+    }
+  }
+
+  async function copyShareUrl() {
+    const value = shareUrlInput?.value?.trim();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      showResult("참가자 공용 오버레이 주소를 복사했습니다.", "success");
+    } catch (_) {
+      shareUrlInput.focus();
+      shareUrlInput.select();
+      document.execCommand("copy");
+      showResult("참가자 공용 오버레이 주소를 복사했습니다.", "success");
+    }
+  }
+
+  function openShareUrl() {
+    const value = shareUrlInput?.value?.trim();
+    if (value) window.open(value, "_blank", "noopener,noreferrer");
+  }
+
+  async function systemShareUrl() {
+    const value = shareUrlInput?.value?.trim();
+    if (!value) return;
+    if (!navigator.share) {
+      await copyShareUrl();
+      return;
+    }
+    try {
+      await navigator.share({
+        title: room?.config?.name || "Ramyani 보드게임",
+        text: "OBS 브라우저 소스에 이 주소를 사용하세요.",
+        url: value
+      });
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        showResult("공유 실패: " + error.message, "error-text");
+      }
+    }
   }
 
   function renderHeader() {
@@ -204,7 +292,7 @@
         <td>P${index + 1}</td>
         <td>${escapeHtml(player.displayName)}</td>
         <td><code>${escapeHtml(player.soopId)}</code></td>
-        <td>${Number(player.balloonTrigger) || 0}</td>
+        <td>${Number(player.balloonTrigger) || 0}개</td>
       </tr>
     `).join("");
 
@@ -232,7 +320,7 @@
       <h3>플레이어 / 별풍선 트리거</h3>
       <div class="room-fixed-table-wrap">
         <table class="room-fixed-table">
-          <thead><tr><th></th><th>표시 이름</th><th>SOOP ID</th><th>별풍선</th></tr></thead>
+          <thead><tr><th></th><th>표시 이름</th><th>SOOP ID</th><th>턴 실행 별풍선</th></tr></thead>
           <tbody>${playerRows}</tbody>
         </table>
       </div>
@@ -259,6 +347,7 @@
 
   function render() {
     renderHeader();
+    renderShareInfo();
     renderPlayers();
     renderFixedSettings();
     ensureBoardFrame();
@@ -449,6 +538,7 @@
   async function loadServerState() {
     try {
       serverState = await fetchJson("/api/state");
+      renderShareInfo();
       ensureBoardFrame();
       connectSocket();
     } catch (error) {
@@ -480,6 +570,13 @@
       window.setTimeout(connectSocket, 1000);
     });
     socket.addEventListener("error", () => {});
+  }
+
+  shareCopyButton?.addEventListener("click", copyShareUrl);
+  shareOpenButton?.addEventListener("click", openShareUrl);
+  shareSystemButton?.addEventListener("click", systemShareUrl);
+  if (shareSystemButton && !navigator.share) {
+    shareSystemButton.textContent = "주소 복사";
   }
 
   pauseButton.addEventListener("click", pauseRoom);

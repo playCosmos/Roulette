@@ -10,7 +10,8 @@
   const sizingMode = $("boardRoomSizingMode");
   const dimensionsFields = $("boardRoomDimensionsFields");
   const cellCountField = $("boardRoomCellCountField");
-  const generator = $("boardRoomGenerator");
+  const diceEnabled = $("boardRoomDiceEnabled");
+  const yutEnabled = $("boardRoomYutEnabled");
   const diceFields = $("boardRoomDiceFields");
   const yutFields = $("boardRoomYutFields");
   const instructionRows = $("boardRoomInstructionRows");
@@ -162,15 +163,25 @@
 
   function updateInstructionListItem(row) {
     if (!instructionList || !row?.dataset?.editorKey) return;
-    const button = Array.from(
+    const item = Array.from(
       instructionList.querySelectorAll("[data-instruction-key]")
     ).find((candidate) => candidate.dataset.instructionKey === row.dataset.editorKey);
-    if (!button) return;
+    if (!item) return;
     const title = instructionTitle(row);
-    const label = button.querySelector("[data-list-label]");
-    const id = button.querySelector("[data-list-id]");
+    const label = item.querySelector("[data-list-label]");
+    const id = item.querySelector("[data-list-id]");
+    const enabled = row.dataset.enabled !== "false";
+    item.classList.toggle("disabled", !enabled);
+    const toggle = item.querySelector(".board-room-instruction-enabled");
+    if (toggle) toggle.checked = enabled;
     if (label) label.textContent = title.label;
     if (id) id.textContent = title.id;
+  }
+
+  function setInstructionEnabled(row, enabled) {
+    row.dataset.enabled = enabled ? "true" : "false";
+    row.classList.toggle("disabled", !enabled);
+    updateInstructionListItem(row);
   }
 
   function rebuildInstructionList() {
@@ -183,7 +194,7 @@
     if (!rows.length) {
       const empty = document.createElement("div");
       empty.className = "board-room-instruction-list-empty";
-      empty.textContent = "추가된 지시문이 없습니다.";
+      empty.textContent = "지시문이 없습니다.";
       instructionList.append(empty);
       selectInstruction(null);
       return;
@@ -194,10 +205,22 @@
         row.dataset.editorKey = "instruction-" + (++instructionEditorSequence);
       }
       const title = instructionTitle(row);
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "board-room-instruction-list-item";
-      button.dataset.instructionKey = row.dataset.editorKey;
+      const item = document.createElement("div");
+      item.className = "board-room-instruction-list-item";
+      item.dataset.instructionKey = row.dataset.editorKey;
+
+      const enabled = document.createElement("input");
+      enabled.type = "checkbox";
+      enabled.className = "board-room-instruction-enabled";
+      enabled.checked = row.dataset.enabled !== "false";
+      enabled.title = "활성 / 비활성";
+      enabled.addEventListener("change", () => {
+        setInstructionEnabled(row, enabled.checked);
+      });
+
+      const select = document.createElement("button");
+      select.type = "button";
+      select.className = "board-room-instruction-select";
 
       const label = document.createElement("strong");
       label.dataset.listLabel = "";
@@ -207,9 +230,10 @@
       id.dataset.listId = "";
       id.textContent = title.id;
 
-      button.append(label, id);
-      button.addEventListener("click", () => selectInstruction(row));
-      instructionList.append(button);
+      select.append(label, id);
+      select.addEventListener("click", () => selectInstruction(row));
+      item.append(enabled, select);
+      instructionList.append(item);
     });
 
     if (!selectedInstructionRow || !selectedInstructionRow.isConnected) {
@@ -219,51 +243,93 @@
     }
   }
 
-  function addInstruction(kind) {
+  function addInstruction(kind, options = {}) {
     const presets = {
-      forward: { id: "MOVE_FORWARD", label: "{n}칸 앞으로", action: "move", direction: "forward" },
-      backward: { id: "MOVE_BACKWARD", label: "{n}칸 뒤로", action: "move", direction: "backward" },
-      start: { id: "MOVE_TO_START", label: "START로 이동", action: "moveToStart" },
-      skip: { id: "SKIP_NEXT_THROW", label: "다음 던지기 무효", action: "skipThrow" },
-      multiplier: { id: "MULTIPLY_NEXT_THROW", label: "다음 주사위 {m}배", action: "multiplyNextThrow" },
-      ignoreLanding: { id: "IGNORE_NEXT_LANDING", label: "다음 칸 무효화", action: "ignoreNextLanding" },
-      random: { id: "RANDOM_CELL", label: "랜덤칸", action: "randomCell", randomCell: true },
-      custom: { id: "CUSTOM", label: "사용자 지시문", action: "display" }
+      forward: {
+        id: "MOVE_FORWARD",
+        label: "{n}칸 앞으로",
+        action: "move",
+        direction: "forward",
+        allocationMode: "ratio",
+        allocationValue: 10
+      },
+      backward: {
+        id: "MOVE_BACKWARD",
+        label: "{n}칸 뒤로",
+        action: "move",
+        direction: "backward",
+        allocationMode: "ratio",
+        allocationValue: 10
+      },
+      skip: {
+        id: "SKIP_NEXT_THROW",
+        label: "다음 주사위 무효",
+        action: "skipThrow",
+        allocationMode: "count",
+        allocationValue: 1
+      },
+      multiplier: {
+        id: "MULTIPLY_NEXT_THROW",
+        label: "다음 주사위 {m}배",
+        action: "multiplyNextThrow",
+        allocationMode: "count",
+        allocationValue: 1
+      },
+      ignoreLanding: {
+        id: "IGNORE_NEXT_LANDING",
+        label: "다음 칸 무효화",
+        action: "ignoreNextLanding",
+        allocationMode: "count",
+        allocationValue: 1
+      },
+      custom: {
+        id: "CUSTOM",
+        label: "사용자 지시문",
+        action: "display",
+        allocationMode: "count",
+        allocationValue: 1
+      }
     };
+
     const preset = presets[kind] || presets.custom;
+    const builtIn = Boolean(options.builtIn);
     const id = uniqueInstructionId(preset.id);
     const row = document.createElement("div");
     row.className = "board-room-instruction-row";
     row.dataset.editorKey = "instruction-" + (++instructionEditorSequence);
     row.dataset.actionType = preset.action;
-    row.dataset.randomPlaceholder = preset.randomCell ? "true" : "false";
+    row.dataset.randomPlaceholder = "false";
+    row.dataset.builtIn = builtIn ? "true" : "false";
+    row.dataset.enabled = "true";
     row.innerHTML = `
       <div class="board-room-instruction-head">
-        <strong>${escapeAttribute(preset.label)}</strong>
-        <button type="button" class="board-room-small-button" data-action="remove">삭제</button>
+        <div>
+          <strong>${escapeAttribute(preset.label)}</strong>
+          ${builtIn ? '<span class="board-room-built-in-badge">기본</span>' : ""}
+        </div>
+        <button type="button" class="board-room-small-button" data-action="remove" ${builtIn ? "hidden" : ""}>삭제</button>
       </div>
       <div class="board-room-instruction-grid">
         <label>ID
-          <input data-field="instructionId" value="${escapeAttribute(id)}" maxlength="80" required />
+          <input data-field="instructionId" value="${escapeAttribute(id)}" maxlength="80" required ${builtIn ? "readonly" : ""} />
         </label>
         <label>표시 문구
           <input data-field="label" value="${escapeAttribute(preset.label)}" maxlength="120" required />
         </label>
         <label>배치 방식
           <select data-field="allocationMode">
-            <option value="ratio">비율</option>
-            <option value="count">수량</option>
+            <option value="ratio" ${preset.allocationMode === "ratio" ? "selected" : ""}>비율</option>
+            <option value="count" ${preset.allocationMode === "count" ? "selected" : ""}>수량</option>
           </select>
         </label>
         <label>배치 값
-          <input data-field="allocationValue" type="number" min="0" max="100" step="1" value="${preset.randomCell ? 4 : 10}" required />
+          <input data-field="allocationValue" type="number" min="0" max="100" step="1" value="${preset.allocationValue}" required />
         </label>
       </div>
       <div class="board-room-instruction-options">
-        <label class="check-label" data-random-cell-toggle ${preset.randomCell ? "" : "hidden"}><input data-field="rerollOnVacate" type="checkbox" ${preset.randomCell ? "checked disabled" : ""} />랜덤칸 위치</label>
         <label class="check-label"><input data-field="poolEnabled" type="checkbox" />랜덤 후보에 포함</label>
         <label class="pool-weight">랜덤 가중치
-          <input data-field="poolWeight" type="number" min="0.0001" step="0.1" value="10" />
+          <input data-field="poolWeight" type="number" min="0.0001" step="0.1" value="${preset.allocationValue}" />
         </label>
       </div>
       <div class="board-room-action-options"></div>
@@ -272,8 +338,24 @@
     instructionRows.append(row);
     renderActionOptions(row, preset);
     syncInstructionRow(row);
+
+    if (!options.deferList) {
+      rebuildInstructionList();
+      selectInstruction(row);
+    }
+
+    return row;
+  }
+
+  function seedDefaultInstructions() {
+    if (instructionRows.querySelector(".board-room-instruction-row")) return;
+    ["forward", "backward", "skip", "multiplier", "ignoreLanding"].forEach((kind) => {
+      addInstruction(kind, { builtIn: true, deferList: true });
+    });
     rebuildInstructionList();
-    selectInstruction(row);
+    selectInstruction(
+      instructionRows.querySelector(".board-room-instruction-row")
+    );
   }
 
   function renderActionOptions(row, preset) {
@@ -375,9 +457,17 @@
   }
 
   function syncMovement() {
-    const mode = generator.value;
-    diceFields.hidden = mode === "yut";
-    yutFields.hidden = mode === "dice";
+    diceFields.hidden = !diceEnabled.checked;
+    yutFields.hidden = !yutEnabled.checked;
+  }
+
+  function selectedMovementGenerator() {
+    const dice = diceEnabled.checked;
+    const yut = yutEnabled.checked;
+    if (dice && yut) return "mixed";
+    if (dice) return "dice";
+    if (yut) return "yut";
+    throw new Error("주사위 또는 윷 중 하나 이상 활성화하세요.");
   }
 
   function syncPauseDonationPolicy() {
@@ -457,11 +547,14 @@
   function collectRequest() {
     const instructions = Array.from(
       instructionRows.querySelectorAll(".board-room-instruction-row")
-    ).map(collectInstruction);
+    )
+      .filter((row) => row.dataset.enabled !== "false")
+      .map(collectInstruction);
 
     const customPool = [];
     if (randomPoolMode.value === "custom") {
       instructionRows.querySelectorAll(".board-room-instruction-row").forEach((row) => {
+        if (row.dataset.enabled === "false") return;
         if (!row.querySelector('[data-field="poolEnabled"]').checked) return;
         customPool.push({
           instructionId: row.querySelector('[data-field="instructionId"]').value.trim(),
@@ -494,7 +587,7 @@
       players: collectPlayers(),
       board,
       movement: {
-        generator: generator.value,
+        generator: selectedMovementGenerator(),
         diceCount: Number(form.elements.namedItem("diceCount").value),
         extraThrowOnDouble: form.elements.namedItem("extraThrowOnDouble").checked,
         extraThrowOnYut: form.elements.namedItem("extraThrowOnYutMo").checked,
@@ -826,7 +919,8 @@
 
   playerCount.addEventListener("change", renderPlayers);
   sizingMode.addEventListener("change", syncBoardSizing);
-  generator.addEventListener("change", syncMovement);
+  diceEnabled.addEventListener("change", syncMovement);
+  yutEnabled.addEventListener("change", syncMovement);
   form.elements.namedItem("pauseDonationMode")?.addEventListener("change", syncPauseDonationPolicy);
   randomPoolMode.addEventListener("change", syncAllInstructionRows);
 
@@ -861,7 +955,10 @@
   });
 
   document.querySelectorAll("[data-add-board-instruction]").forEach((button) => {
-    button.addEventListener("click", () => addInstruction(button.dataset.addBoardInstruction));
+    button.addEventListener("click", () => {
+      if (button.dataset.addBoardInstruction !== "custom") return;
+      addInstruction("custom");
+    });
   });
 
   form.addEventListener("submit", createRoom);
@@ -894,6 +991,7 @@
   syncBoardSizing();
   syncMovement();
   syncPauseDonationPolicy();
+  seedDefaultInstructions();
   syncAllInstructionRows();
   rebuildInstructionList();
   syncExtensionAvailability();

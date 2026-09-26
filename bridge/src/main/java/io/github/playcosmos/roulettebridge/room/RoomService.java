@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.IntSupplier;
 
 import static io.github.playcosmos.roulettebridge.room.RoomModels.*;
 
@@ -40,15 +41,55 @@ public final class RoomService {
     private final RoomLayoutGenerator layoutGenerator = new RoomLayoutGenerator();
     private final FixedInstructionCycleValidator cycleValidator = new FixedInstructionCycleValidator();
     private final ParticipantLiveChecker liveChecker;
+    private final IntSupplier activeRoomLimitSupplier;
 
     public RoomService(DatabaseAccess database) {
-        this(database, new SoopParticipantLiveService());
+        this(database, new SoopParticipantLiveService(), () -> 1);
     }
 
-    public RoomService(DatabaseAccess database, ParticipantLiveChecker liveChecker) {
+    public RoomService(
+        DatabaseAccess database,
+        ParticipantLiveChecker liveChecker
+    ) {
+        this(database, liveChecker, () -> 1);
+    }
+
+    public RoomService(
+        DatabaseAccess database,
+        IntSupplier activeRoomLimitSupplier
+    ) {
+        this(
+            database,
+            new SoopParticipantLiveService(),
+            activeRoomLimitSupplier
+        );
+    }
+
+    public RoomService(
+        DatabaseAccess database,
+        ParticipantLiveChecker liveChecker,
+        IntSupplier activeRoomLimitSupplier
+    ) {
         this.database = database;
         this.liveChecker = liveChecker;
+        this.activeRoomLimitSupplier =
+            activeRoomLimitSupplier == null
+                ? () -> 1
+                : activeRoomLimitSupplier;
     }
+
+    public record ActiveRoomSummary(
+        String roomId,
+        String name,
+        String lifecycleState,
+        int playerCount,
+        String activatedAt,
+        String expiresAt,
+        String createdAt,
+        String updatedAt,
+        String pauseDonationMode,
+        int queuedDonations
+    ) {}
 
     public ValidationResult validate(CreateRoomRequest request) {
         var errors = new ArrayList<ValidationError>();
@@ -315,11 +356,15 @@ public final class RoomService {
         try (var connection = database.open()) {
             connection.setAutoCommit(false);
             try {
-                String activeRoomId = findActiveRoomId(connection, roomId);
-                if (activeRoomId != null) {
+                int activeRoomLimit = activeRoomLimit();
+                int activeRoomCount = countActiveRooms(connection);
+                if (activeRoomCount >= activeRoomLimit) {
                     connection.rollback();
                     throw new IllegalStateException(
-                        "another board room is already active: " + activeRoomId
+                        "active board room limit reached: "
+                            + activeRoomCount
+                            + "/"
+                            + activeRoomLimit
                     );
                 }
 
@@ -328,12 +373,14 @@ public final class RoomService {
                     SET status = 'READY',
                         lifecycle_state = 'ACTIVE',
                         committed_board_json = ?,
+                        activated_at = COALESCE(activated_at, ?),
                         updated_at = ?
                     WHERE room_id = ? AND status = 'DRAFT'
                     """)) {
                     statement.setString(1, previewJson);
                     statement.setString(2, now);
-                    statement.setString(3, roomId);
+                    statement.setString(3, now);
+                    statement.setString(4, roomId);
                     if (statement.executeUpdate() != 1) {
                         throw new IllegalStateException("room preview changed concurrently");
                     }
@@ -345,12 +392,6 @@ public final class RoomService {
                 throw error;
             } catch (SQLException error) {
                 connection.rollback();
-                if (isSingleActiveRoomConstraint(error)) {
-                    throw new IllegalStateException(
-                        "another board room became active concurrently",
-                        error
-                    );
-                }
                 throw error;
             } finally {
                 connection.setAutoCommit(true);
@@ -499,23 +540,109 @@ public final class RoomService {
         if ("TERMINATED".equals(current.lifecycle().state())) return current;
 
         String now = OffsetDateTime.now().toString();
-        try (var connection = database.open();
-             var statement = connection.prepareStatement("""
-                 UPDATE board_room
-                 SET lifecycle_state = 'TERMINATED',
-                     pause_requested_at = NULL,
-                     pause_grace_until = NULL,
-                     terminated_at = ?,
-                     updated_at = ?
-                 WHERE room_id = ?
-                   AND lifecycle_state <> 'TERMINATED'
-                 """)) {
-            statement.setString(1, now);
-            statement.setString(2, now);
-            statement.setString(3, roomId);
-            statement.executeUpdate();
+        try (var connection = database.open()) {
+            connection.setAutoCommit(false);
+            try {
+                try (var statement = connection.prepareStatement("""
+                    UPDATE board_room
+                    SET lifecycle_state = 'TERMINATED',
+                        pause_requested_at = NULL,
+                        pause_grace_until = NULL,
+                        terminated_at = ?,
+                        updated_at = ?
+                    WHERE room_id = ?
+                      AND lifecycle_state <> 'TERMINATED'
+                    """)) {
+                    statement.setString(1, now);
+                    statement.setString(2, now);
+                    statement.setString(3, roomId);
+                    statement.executeUpdate();
+                }
+
+                try (var statement = connection.prepareStatement("""
+                    UPDATE board_game_deferred_donation
+                    SET state = 'IGNORED'
+                    WHERE room_id = ?
+                      AND state = 'QUEUED'
+                    """)) {
+                    statement.setString(1, roomId);
+                    statement.executeUpdate();
+                }
+
+                connection.commit();
+            } catch (SQLException error) {
+                connection.rollback();
+                throw error;
+            } finally {
+                connection.setAutoCommit(true);
+            }
         }
         return find(roomId);
+    }
+
+    public synchronized List<ActiveRoomSummary> listActiveRoomSummaries()
+        throws SQLException {
+        terminateExpiredRooms();
+
+        var result = new ArrayList<ActiveRoomSummary>();
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 SELECT br.room_id,
+                        br.lifecycle_state,
+                        br.activated_at,
+                        br.expires_at,
+                        br.created_at,
+                        br.updated_at,
+                        br.pause_donation_mode,
+                        br.config_json,
+                        (
+                          SELECT COUNT(*)
+                          FROM board_game_deferred_donation q
+                          WHERE q.room_id = br.room_id
+                            AND q.state = 'QUEUED'
+                        ) AS queued_donations
+                 FROM board_room br
+                 WHERE br.status = 'READY'
+                   AND br.lifecycle_state IN ('ACTIVE', 'PAUSED')
+                   AND br.expires_at IS NOT NULL
+                   AND datetime(br.expires_at) > datetime('now')
+                 ORDER BY COALESCE(br.activated_at, br.updated_at) ASC,
+                          br.created_at ASC,
+                          br.room_id ASC
+                 """);
+             var rows = statement.executeQuery()) {
+            while (rows.next()) {
+                var config = GSON.fromJson(
+                    rows.getString("config_json"),
+                    NormalizedRoomConfig.class
+                );
+                result.add(new ActiveRoomSummary(
+                    rows.getString("room_id"),
+                    config == null ? "Room" : config.name(),
+                    rows.getString("lifecycle_state"),
+                    config == null || config.players() == null
+                        ? 0
+                        : config.players().size(),
+                    rows.getString("activated_at"),
+                    rows.getString("expires_at"),
+                    rows.getString("created_at"),
+                    rows.getString("updated_at"),
+                    rows.getString("pause_donation_mode"),
+                    rows.getInt("queued_donations")
+                ));
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    public int activeRoomLimit() {
+        int value;
+        try {
+            value = activeRoomLimitSupplier.getAsInt();
+        } catch (RuntimeException ignored) {
+            value = 1;
+        }
+        return Math.max(1, value);
     }
 
     public int terminateExpiredRooms() throws SQLException {
@@ -579,30 +706,20 @@ public final class RoomService {
         }
     }
 
-    private static String findActiveRoomId(
-        java.sql.Connection connection,
-        String excludedRoomId
+    private static int countActiveRooms(
+        java.sql.Connection connection
     ) throws SQLException {
         try (var statement = connection.prepareStatement("""
-            SELECT room_id
+            SELECT COUNT(*)
             FROM board_room
             WHERE status = 'READY'
               AND lifecycle_state IN ('ACTIVE', 'PAUSED')
-              AND room_id <> ?
-            ORDER BY updated_at DESC
-            LIMIT 1
-            """)) {
-            statement.setString(1, excludedRoomId);
-            try (var rows = statement.executeQuery()) {
-                return rows.next() ? rows.getString(1) : null;
-            }
+              AND expires_at IS NOT NULL
+              AND datetime(expires_at) > datetime('now')
+            """);
+             var rows = statement.executeQuery()) {
+            return rows.next() ? rows.getInt(1) : 0;
         }
-    }
-
-    private static boolean isSingleActiveRoomConstraint(SQLException error) {
-        String message = error.getMessage();
-        return message != null
-            && message.contains("UNIQUE constraint failed");
     }
 
     private static String allocateRoomCode(

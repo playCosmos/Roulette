@@ -26,21 +26,25 @@ public final class BoardGameRuntimeProbe {
             var database = new BridgeDatabase(root.resolve("probe.db"));
             database.initialize();
 
-            var rooms = new RoomService(database, players -> players.stream()
-                .map(player -> new PlayerConfig(
-                    player.soopId(),
-                    player.displayName(),
-                    player.profileImageUrl(),
-                    player.balloonTrigger(),
-                    new PlayerLiveStatus(
-                        "LIVE",
-                        "probe-bno",
-                        "Probe",
-                        "2026-09-25T00:00:00+09:00",
-                        null
-                    )
-                ))
-                .toList());
+            var rooms = new RoomService(
+                database,
+                players -> players.stream()
+                    .map(player -> new PlayerConfig(
+                        player.soopId(),
+                        player.displayName(),
+                        player.profileImageUrl(),
+                        player.balloonTrigger(),
+                        new PlayerLiveStatus(
+                            "LIVE",
+                            "probe-bno",
+                            "Probe",
+                            "2026-09-25T00:00:00+09:00",
+                            null
+                        )
+                    ))
+                    .toList(),
+                () -> 2
+            );
 
             var request = new CreateRoomRequest(
                 "Runtime Probe",
@@ -403,6 +407,39 @@ public final class BoardGameRuntimeProbe {
             require(finalSnapshot.sequence() == 7, "built-in effects must advance sequence through seven");
             require(finalSnapshot.players().get(0).nextThrowMultiplier() == 1, "multiplier must be one-shot");
             require(finalSnapshot.players().get(0).ignoreNextLandingEffects() == 0, "landing ignore must be one-shot");
+
+            var secondRoom = rooms.create(request);
+            rooms.commitPreview(secondRoom.roomId());
+            require(
+                rooms.listActiveRoomSummaries().size() == 2,
+                "runtime probe must allow two active rooms at limit two"
+            );
+
+            var multiRoomDonation = runtime.process(new SoopDonation(
+                "streamer",
+                "soop-a",
+                "A",
+                100,
+                9,
+                "runtime-probe-multi-room",
+                10_000L
+            ));
+            require(
+                multiRoomDonation.matchedRooms() == 2,
+                "one matching donation must discover both active rooms"
+            );
+            require(
+                multiRoomDonation.processedRooms() == 2
+                    && multiRoomDonation.events().size() == 2,
+                "both matching active rooms must process independently"
+            );
+            require(
+                multiRoomDonation.events().stream()
+                    .map(BoardGameRuntimeEngine.BoardTurnEvent::roomId)
+                    .distinct()
+                    .count() == 2,
+                "multi-room donation must emit one event per room"
+            );
 
             System.out.println("[board-runtime-probe] PASS room=" + created.roomId());
             return 0;

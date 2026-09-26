@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.github.playcosmos.roulettebridge.room.RoomHttpHandler;
+import io.github.playcosmos.roulettebridge.room.RoomService;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -11,7 +12,12 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -21,8 +27,8 @@ import java.util.function.Supplier;
 
 public final class BoardGameHttpServer implements AutoCloseable {
     private static final Gson GSON = new Gson();
-    private static final String VERSION = "0.6.1";
-    private static final String ROOM_ADMIN_UI_VERSION = "0.6.1";
+    private static final String VERSION = "0.7.0";
+    private static final String ROOM_ADMIN_UI_VERSION = "0.7.0";
     private static final int MAX_MANAGEMENT_BODY_BYTES = 16 * 1024;
 
     private final HttpServer server;
@@ -36,6 +42,8 @@ public final class BoardGameHttpServer implements AutoCloseable {
     private final Supplier<Integer> revokeAdminSessions;
     private final Supplier<String> rotateAdminAccess;
     private final Runnable reconnectSoop;
+    private final RoomService roomService;
+    private final ServerPolicyService serverPolicies;
 
     public BoardGameHttpServer(
         BoardServerConfig config,
@@ -44,6 +52,8 @@ public final class BoardGameHttpServer implements AutoCloseable {
         IntSupplier websocketClientCount,
         Supplier<Map<String, Object>> soopState,
         RoomHttpHandler rooms,
+        RoomService roomService,
+        ServerPolicyService serverPolicies,
         Supplier<String> remoteAdminUrl,
         Supplier<String> localUserAdminUrl,
         IntSupplier adminSessionCount,
@@ -52,6 +62,8 @@ public final class BoardGameHttpServer implements AutoCloseable {
         Runnable reconnectSoop
     ) throws IOException {
         this.config = config.normalized();
+        this.roomService = roomService;
+        this.serverPolicies = serverPolicies;
         this.remoteAdminUrl = remoteAdminUrl;
         this.localUserAdminUrl = localUserAdminUrl;
         this.adminSessionCount = adminSessionCount;
@@ -110,6 +122,20 @@ public final class BoardGameHttpServer implements AutoCloseable {
             payload.put("websocketPort", this.config.server().websocketPort());
             payload.put("remoteAdminUrl", remoteAdminUrl.get());
             payload.put("remoteAdminSessionHours", 12);
+            try {
+                var activeRooms = roomService.listActiveRoomSummaries();
+                payload.put(
+                    "activeRoomLimit",
+                    serverPolicies.activeRoomLimit()
+                );
+                payload.put("activeRoomCount", activeRooms.size());
+            } catch (Exception error) {
+                payload.put(
+                    "activeRoomLimit",
+                    serverPolicies.activeRoomLimit()
+                );
+                payload.put("activeRoomCount", 0);
+            }
             payload.put("soop", soopState.get());
             sendJson(exchange, 200, payload);
         });
@@ -175,15 +201,15 @@ public final class BoardGameHttpServer implements AutoCloseable {
         }
 
         String action;
+        Map<String, Object> request;
         try {
             @SuppressWarnings("unchecked")
-            Map<String, Object> request = GSON.fromJson(
+            Map<String, Object> parsed = GSON.fromJson(
                 new String(body, StandardCharsets.UTF_8),
                 Map.class
             );
-            action = request == null
-                ? null
-                : String.valueOf(request.getOrDefault("action", ""));
+            request = parsed == null ? Map.of() : parsed;
+            action = String.valueOf(request.getOrDefault("action", ""));
         } catch (Exception error) {
             sendJson(exchange, 400, Map.of("error", "invalid JSON"));
             return;
@@ -206,6 +232,65 @@ public final class BoardGameHttpServer implements AutoCloseable {
                 reconnectSoop.run();
                 result.put("action", action);
                 result.put("requested", true);
+            }
+            case "setActiveRoomLimit" -> {
+                int value;
+                try {
+                    value = integerValue(
+                        request.get("activeRoomLimit"),
+                        "activeRoomLimit"
+                    );
+                    value = serverPolicies.setActiveRoomLimit(value);
+                } catch (IllegalArgumentException error) {
+                    sendJson(
+                        exchange,
+                        400,
+                        Map.of("error", safeMessage(error))
+                    );
+                    return;
+                } catch (Exception error) {
+                    sendJson(
+                        exchange,
+                        500,
+                        Map.of("error", "failed to update active room limit")
+                    );
+                    return;
+                }
+                result.put("action", action);
+                result.put("activeRoomLimit", value);
+                result.put("existingRoomsUnchanged", true);
+            }
+            case "terminateRoom" -> {
+                String roomId = String.valueOf(
+                    request.getOrDefault("roomId", "")
+                ).trim();
+                if (roomId.isBlank()) {
+                    sendJson(
+                        exchange,
+                        400,
+                        Map.of("error", "roomId is required")
+                    );
+                    return;
+                }
+                try {
+                    var terminated = roomService.terminate(roomId);
+                    result.put("action", action);
+                    result.put("terminatedRoomId", terminated.roomId());
+                } catch (java.util.NoSuchElementException error) {
+                    sendJson(
+                        exchange,
+                        404,
+                        Map.of("error", safeMessage(error))
+                    );
+                    return;
+                } catch (Exception error) {
+                    sendJson(
+                        exchange,
+                        400,
+                        Map.of("error", safeMessage(error))
+                    );
+                    return;
+                }
             }
             default -> {
                 sendJson(
@@ -265,8 +350,126 @@ public final class BoardGameHttpServer implements AutoCloseable {
             !this.config.server().publicBaseUrl().isBlank()
                 && !this.config.server().publicWebSocketUrl().isBlank()
         );
+
+        try {
+            var activeRooms = roomService.listActiveRoomSummaries();
+            var summaries = new ArrayList<Map<String, Object>>(
+                activeRooms.size()
+            );
+            Instant now = Instant.now();
+            for (var room : activeRooms) {
+                var summary = new LinkedHashMap<String, Object>();
+                summary.put("roomId", room.roomId());
+                summary.put("name", room.name());
+                summary.put("lifecycleState", room.lifecycleState());
+                summary.put("playerCount", room.playerCount());
+                summary.put("activatedAt", room.activatedAt());
+                summary.put("createdAt", room.createdAt());
+                summary.put("updatedAt", room.updatedAt());
+                summary.put("expiresAt", room.expiresAt());
+                summary.put(
+                    "pauseDonationMode",
+                    room.pauseDonationMode()
+                );
+                summary.put(
+                    "queuedDonations",
+                    room.queuedDonations()
+                );
+
+                Instant activatedAt = managementInstant(
+                    room.activatedAt()
+                );
+                Instant expiresAt = managementInstant(
+                    room.expiresAt()
+                );
+                long elapsedSeconds = activatedAt == null
+                    ? 0L
+                    : Math.max(
+                        0L,
+                        Duration.between(activatedAt, now).getSeconds()
+                    );
+                Long remainingSeconds = expiresAt == null
+                    ? null
+                    : Math.max(
+                        0L,
+                        Duration.between(now, expiresAt).getSeconds()
+                    );
+                summary.put("elapsedSeconds", elapsedSeconds);
+                summary.put("remainingSeconds", remainingSeconds);
+                summaries.add(summary);
+            }
+
+            int activeRoomLimit = serverPolicies.activeRoomLimit();
+            payload.put("activeRoomLimit", activeRoomLimit);
+            payload.put("activeRoomCount", summaries.size());
+            payload.put(
+                "activeRoomOverLimit",
+                summaries.size() > activeRoomLimit
+            );
+            payload.put("activeRooms", summaries);
+        } catch (Exception error) {
+            payload.put("activeRoomLimit", serverPolicies.activeRoomLimit());
+            payload.put("activeRoomCount", 0);
+            payload.put("activeRoomOverLimit", false);
+            payload.put("activeRooms", java.util.List.of());
+            payload.put("activeRoomsError", safeMessage(error));
+        }
+
         payload.put("soop", soopState.get());
         return payload;
+    }
+
+    private static Instant managementInstant(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.trim();
+        try {
+            return OffsetDateTime.parse(normalized).toInstant();
+        } catch (java.time.format.DateTimeParseException ignored) {
+        }
+        try {
+            return Instant.parse(normalized);
+        } catch (java.time.format.DateTimeParseException ignored) {
+        }
+        try {
+            return LocalDateTime.parse(
+                normalized.replace(' ', 'T')
+            ).toInstant(ZoneOffset.UTC);
+        } catch (java.time.format.DateTimeParseException ignored) {
+            return null;
+        }
+    }
+
+    private static int integerValue(
+        Object value,
+        String field
+    ) {
+        if (value instanceof Number number) {
+            double raw = number.doubleValue();
+            int integer = (int) raw;
+            if (raw != integer) {
+                throw new IllegalArgumentException(
+                    field + " must be an integer"
+                );
+            }
+            return integer;
+        }
+        if (value instanceof String text) {
+            try {
+                return Integer.parseInt(text.trim());
+            } catch (NumberFormatException error) {
+                throw new IllegalArgumentException(
+                    field + " must be an integer"
+                );
+            }
+        }
+        throw new IllegalArgumentException(field + " is required");
+    }
+
+    private static String safeMessage(Throwable error) {
+        String message = error.getMessage();
+        return message == null || message.isBlank()
+            ? error.getClass().getSimpleName()
+            : message;
     }
 
     private void serveStatic(HttpExchange exchange) throws IOException {

@@ -42,6 +42,7 @@
         <div><span>외부 공유</span><strong id="boardServerShareState">확인 중</strong></div>
         <div><span>룸 관리 UI 버전</span><strong id="boardRoomAdminUiVersion">-</strong></div>
         <div><span>서버 버전</span><strong id="boardServerVersion">-</strong></div>
+        <div><span>활성 룸</span><strong id="boardServerActiveRooms">-</strong></div>
       </div>
       <div class="board-server-remote-admin">
         <div class="board-server-remote-admin-copy">
@@ -61,7 +62,7 @@
       <div class="panel-heading">
         <div>
           <h2>보드게임 룸 생성</h2>
-          <p>룸별 설정은 SQLite에 저장합니다. 생성 시 참가자별 SOOP 방송 상태를 확인하고, 서버가 만든 실제 보드 프리뷰를 확인한 뒤 배치를 확정합니다. DRAFT 룸은 여러 개 만들 수 있고, 현재 보드게임 모듈은 한 번에 1개의 룸만 활성화합니다.</p>
+          <p>룸별 설정은 SQLite에 저장합니다. 생성 시 참가자별 SOOP 방송 상태를 확인하고, 서버가 만든 실제 보드 프리뷰를 확인한 뒤 배치를 확정합니다. DRAFT 룸은 여러 개 만들 수 있고, 동시에 활성화할 수 있는 룸 수는 서버 관리 콘솔의 활성 룸 상한을 따릅니다.</p>
         </div>
       </div>
 
@@ -263,6 +264,10 @@
             "v" + (state.roomAdminUiVersion || "-");
           document.getElementById("boardServerVersion").textContent =
             "v" + (state.version || "-");
+          document.getElementById("boardServerActiveRooms").textContent =
+            String(state.activeRoomCount ?? 0)
+              + " / "
+              + String(state.activeRoomLimit ?? 1);
           const share = document.getElementById("boardServerShareState");
           share.textContent = state.sharingConfigured ? "공개 URL 설정됨" : "로컬/직접 주소 사용";
           share.dataset.ready = state.sharingConfigured ? "true" : "false";

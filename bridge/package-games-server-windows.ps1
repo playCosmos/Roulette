@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.6.1",
+    [string]$Version = "0.7.0",
     [switch]$SkipBuild
 )
 
@@ -95,7 +95,7 @@ RamyaniGamesServer Windows x64
 1. RamyaniGamesServer.exe를 실행합니다.
 2. 실제 서버 관리 UI: http://127.0.0.1:17830/
 3. 게임 운영자용 관리자 UI는 17832의 /admin/ 경로를 사용합니다.
-4. 17830은 서버 PC 로컬 전용이며 활성 관리자 세션/접속/인증 링크/SOOP 상태를 관리합니다.
+4. 17830은 서버 PC 로컬 전용이며 활성 관리자 세션/접속/인증 링크/SOOP 상태/활성 룸 상한/활성 룸 조회·종료를 관리합니다.
 5. 보드게임 DB: data/board-game.db
 
 클라이언트 / 원격 운영

@@ -2,6 +2,7 @@ package io.github.playcosmos.roulettebridge.room;
 
 import com.google.gson.JsonParser;
 import io.github.playcosmos.roulettebridge.db.BridgeDatabase;
+import io.github.playcosmos.roulettebridge.boardserver.ServerPolicyService;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
@@ -20,7 +21,8 @@ public final class RoomProbe {
             root = Files.createTempDirectory("roulette-room-probe-");
             var database = new BridgeDatabase(root.resolve("probe.db"));
             database.initialize();
-            var rooms = new RoomService(database, players -> players.stream()
+            var policies = new ServerPolicyService(database);
+            ParticipantLiveChecker liveChecker = players -> players.stream()
                 .map(player -> new PlayerConfig(
                     player.soopId(),
                     player.displayName(),
@@ -36,7 +38,16 @@ public final class RoomProbe {
                         null
                     )
                 ))
-                .toList());
+                .toList();
+            var rooms = new RoomService(
+                database,
+                liveChecker,
+                policies::activeRoomLimit
+            );
+            require(
+                policies.activeRoomLimit() == 1,
+                "default active room limit must be one"
+            );
 
             var cycleValidator = new FixedInstructionCycleValidator();
             require(
@@ -289,7 +300,10 @@ public final class RoomProbe {
             );
 
             var secondRoom = rooms.create(request);
-            require("DRAFT".equals(secondRoom.status()), "second room may exist only as DRAFT");
+            require(
+                "DRAFT".equals(secondRoom.status()),
+                "second room must start as DRAFT"
+            );
 
             boolean secondCommitBlocked = false;
             try {
@@ -297,16 +311,91 @@ public final class RoomProbe {
             } catch (IllegalStateException expected) {
                 secondCommitBlocked = true;
             }
-            require(secondCommitBlocked, "second READY room must be rejected");
+            require(
+                secondCommitBlocked,
+                "second room activation must be rejected at limit one"
+            );
             require(
                 "DRAFT".equals(rooms.find(secondRoom.roomId()).status()),
                 "rejected second room must remain DRAFT"
             );
 
-            expireRoom(database, secondRoom.roomId());
-            require(rooms.terminateExpiredRooms() >= 1, "expired room must auto-terminate");
+            policies.setActiveRoomLimit(2);
+            var secondReady = rooms.commitPreview(secondRoom.roomId());
             require(
-                "TERMINATED".equals(rooms.find(secondRoom.roomId()).lifecycle().state()),
+                "READY".equals(secondReady.status()),
+                "second room must activate after raising limit to two"
+            );
+            require(
+                rooms.listActiveRoomSummaries().size() == 2,
+                "two active rooms must be visible after raising the limit"
+            );
+            require(
+                rooms.listActiveRoomSummaries().stream().allMatch(
+                    room -> room.activatedAt() != null
+                        && !room.activatedAt().isBlank()
+                        && "Room Probe".equals(room.name())
+                ),
+                "active room summaries must expose room name and activation time"
+            );
+
+            policies.setActiveRoomLimit(1);
+            require(
+                rooms.listActiveRoomSummaries().size() == 2,
+                "lowering the limit must not terminate or change running rooms"
+            );
+            require(
+                "ACTIVE".equals(
+                    rooms.find(created.roomId()).lifecycle().state()
+                ),
+                "first running room must remain active after limit reduction"
+            );
+            require(
+                "ACTIVE".equals(
+                    rooms.find(secondRoom.roomId()).lifecycle().state()
+                ),
+                "second running room must remain active after limit reduction"
+            );
+
+            var thirdRoom = rooms.create(request);
+            boolean thirdCommitBlocked = false;
+            try {
+                rooms.commitPreview(thirdRoom.roomId());
+            } catch (IllegalStateException expected) {
+                thirdCommitBlocked = true;
+            }
+            require(
+                thirdCommitBlocked,
+                "new activation must be blocked while active count exceeds limit"
+            );
+
+            rooms.terminate(secondRoom.roomId());
+            require(
+                "TERMINATED".equals(
+                    rooms.find(secondRoom.roomId()).lifecycle().state()
+                ),
+                "explicit terminate must terminate the selected room"
+            );
+            require(
+                "ACTIVE".equals(
+                    rooms.find(created.roomId()).lifecycle().state()
+                ),
+                "terminating one room must not affect another active room"
+            );
+            require(
+                rooms.listActiveRoomSummaries().size() == 1,
+                "only one room must remain active after selected termination"
+            );
+
+            expireRoom(database, thirdRoom.roomId());
+            require(
+                rooms.terminateExpiredRooms() >= 1,
+                "expired draft room must auto-terminate"
+            );
+            require(
+                "TERMINATED".equals(
+                    rooms.find(thirdRoom.roomId()).lifecycle().state()
+                ),
                 "expired room lifecycle must be TERMINATED"
             );
 

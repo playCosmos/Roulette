@@ -61,7 +61,11 @@ public final class BoardGameServerMain {
             System.out.println("[games-server] recovered queued donations=" + recovered);
         }
 
-        var roomService = new RoomService(database);
+        var serverPolicies = new ServerPolicyService(database);
+        var roomService = new RoomService(
+            database,
+            serverPolicies::activeRoomLimit
+        );
         roomService.terminateExpiredRooms();
 
         var lifecycleExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -148,6 +152,8 @@ public final class BoardGameServerMain {
             websocket::connectedClients,
             soopState::snapshot,
             roomHttp,
+            roomService,
+            serverPolicies,
             clientHttp::adminBootstrapUrl,
             clientHttp::localAdminBootstrapUrl,
             clientHttp::activeAdminSessionCount,

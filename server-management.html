@@ -45,7 +45,25 @@
     .result[data-tone="error"]{color:#e8a2a6!important}
     .result[data-tone="success"]{color:#97d5aa!important}
     .notice{margin-top:12px;padding:11px 12px;border:1px solid #5c5234;border-radius:9px;background:#201c12;color:#cfbc7f;font-size:11px;line-height:1.6}
-    @media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.details{grid-template-columns:1fr}}
+    .room-policy{display:flex;flex-wrap:wrap;align-items:end;gap:9px;margin-top:10px}
+    .room-policy label{display:grid;gap:5px;color:#7f8a98;font-size:10px;font-weight:800}
+    .room-policy input{width:110px;padding:9px 10px;border:1px solid #303944;border-radius:8px;background:#0b0f14;color:#e5eaf0}
+    .room-policy-state{padding:9px 11px;border:1px solid #303944;border-radius:8px;background:#0d1116;color:#aab4c1;font-size:11px;font-weight:800}
+    .room-policy-state[data-over="true"]{border-color:#655936;background:#241f13;color:#e0ca88}
+    .room-list{display:grid;gap:9px;margin-top:12px}
+    .room-empty{padding:18px;border:1px dashed #303944;border-radius:10px;color:#778391;text-align:center;font-size:12px}
+    .room-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;padding:13px;border:1px solid #29313a;border-radius:10px;background:#0d1116}
+    .room-title{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+    .room-title strong{font-size:14px}
+    .room-code{padding:3px 6px;border:1px solid #34404c;border-radius:6px;color:#9facb9;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10px}
+    .room-state{padding:3px 6px;border-radius:999px;background:#17231b;color:#9bd5aa;font-size:10px;font-weight:900}
+    .room-state[data-state="PAUSED"]{background:#282313;color:#dfc774}
+    .room-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:10px}
+    .room-meta div{padding:7px 8px;border:1px solid #222a32;border-radius:7px}
+    .room-meta span{display:block;color:#6f7a87;font-size:9px;font-weight:800}
+    .room-meta strong{display:block;margin-top:3px;color:#d5dce4;font-size:11px;overflow-wrap:anywhere}
+    .room-actions{display:flex;align-items:center}
+    @media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.details{grid-template-columns:1fr}.room-meta{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media(max-width:560px){main{width:min(100% - 20px,1180px);margin-top:14px}.grid{grid-template-columns:1fr}header{flex-direction:column}.url-row{grid-template-columns:1fr}}
   </style>
 </head>
@@ -86,6 +104,11 @@
       <strong id="roomAdminUiVersion">-</strong>
       <small>17832 관리자 페이지</small>
     </article>
+    <article class="card">
+      <span>활성 보드게임 룸</span>
+      <strong id="activeRoomSummary">-</strong>
+      <small>현재 활성/일시정지 룸 · 상한</small>
+    </article>
   </section>
 
   <section class="panel">
@@ -98,6 +121,22 @@
       <div class="detail"><span>사용자 HTTP</span><strong id="clientEndpoint">-</strong></div>
       <div class="detail"><span>WebSocket</span><strong id="wsEndpoint">-</strong></div>
       <div class="detail"><span>Database</span><code id="database">-</code></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>활성 보드게임 룸</h2>
+    <p>활성/일시정지 상태의 룸을 서버에서 조회하고 관리합니다. 상한을 낮춰도 현재 진행 중인 룸은 자동 종료하거나 변경하지 않으며, 새 룸 활성화만 제한합니다.</p>
+    <div class="room-policy">
+      <label>활성 룸 상한
+        <input id="activeRoomLimit" type="number" min="1" max="32" step="1" value="1" />
+      </label>
+      <button id="saveActiveRoomLimit">상한 적용</button>
+      <div class="room-policy-state" id="activeRoomLimitState">확인 중</div>
+    </div>
+    <div class="notice">상한 변경은 진행 중인 보드의 위치·턴·대기 후원·일시정지 상태를 수정하지 않습니다. 룸 종료는 아래 목록에서 개별 룸의 종료 버튼을 눌렀을 때만 수행됩니다.</div>
+    <div class="room-list" id="activeRoomList">
+      <div class="room-empty">활성 룸을 조회하는 중입니다.</div>
     </div>
   </section>
 
@@ -151,6 +190,92 @@
     return minutes + "분";
   }
 
+  function formatDuration(seconds) {
+    const value = Math.max(0, Number(seconds) || 0);
+    const total = Math.floor(value);
+    const days = Math.floor(total / 86400);
+    const hours = Math.floor((total % 86400) / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+    if (days) return days + "일 " + hours + "시간 " + minutes + "분";
+    if (hours) return hours + "시간 " + minutes + "분";
+    if (minutes) return minutes + "분 " + secs + "초";
+    return secs + "초";
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
+  function renderActiveRooms(state) {
+    const activeRoomLimit = Number(state.activeRoomLimit ?? 1);
+    const activeRoomCount = Number(state.activeRoomCount ?? 0);
+    const overLimit = Boolean(state.activeRoomOverLimit);
+
+    ids("activeRoomSummary").textContent =
+      activeRoomCount + " / " + activeRoomLimit;
+
+    const limitInput = ids("activeRoomLimit");
+    if (document.activeElement !== limitInput) {
+      limitInput.value = String(activeRoomLimit);
+    }
+
+    const limitState = ids("activeRoomLimitState");
+    limitState.textContent = overLimit
+      ? "현재 " + activeRoomCount + "개 / 상한 " + activeRoomLimit + "개 · 초과 상태"
+      : "현재 " + activeRoomCount + "개 / 상한 " + activeRoomLimit + "개";
+    limitState.dataset.over = overLimit ? "true" : "false";
+
+    const list = ids("activeRoomList");
+    const rooms = Array.isArray(state.activeRooms) ? state.activeRooms : [];
+    if (!rooms.length) {
+      list.innerHTML = '<div class="room-empty">현재 활성 또는 일시정지 상태의 보드게임 룸이 없습니다.</div>';
+      return;
+    }
+
+    list.innerHTML = rooms.map((room) => {
+      const roomId = escapeHtml(room.roomId || "-");
+      const name = escapeHtml(room.name || "Room");
+      const lifecycleState = escapeHtml(room.lifecycleState || "-");
+      const playerCount = Number(room.playerCount ?? 0);
+      const elapsed = formatDuration(room.elapsedSeconds);
+      const remaining = room.remainingSeconds == null
+        ? "-"
+        : formatDuration(room.remainingSeconds);
+      const activatedAt = escapeHtml(formatTime(room.activatedAt));
+      const expiresAt = escapeHtml(formatTime(room.expiresAt));
+      const queued = Number(room.queuedDonations ?? 0);
+
+      return `
+        <article class="room-item" data-room-id="${roomId}">
+          <div>
+            <div class="room-title">
+              <strong>${name}</strong>
+              <span class="room-code">${roomId}</span>
+              <span class="room-state" data-state="${lifecycleState}">${lifecycleState}</span>
+            </div>
+            <div class="room-meta">
+              <div><span>참가자</span><strong>${playerCount}명</strong></div>
+              <div><span>진행시간</span><strong>${elapsed}</strong></div>
+              <div><span>남은시간</span><strong>${remaining}</strong></div>
+              <div><span>대기 후원</span><strong>${queued}건</strong></div>
+              <div><span>활성 시작</span><strong>${activatedAt}</strong></div>
+              <div><span>만료 예정</span><strong>${expiresAt}</strong></div>
+            </div>
+          </div>
+          <div class="room-actions">
+            <button class="danger terminate-room" data-room-id="${roomId}" data-room-name="${name}">룸 종료</button>
+          </div>
+        </article>
+      `;
+    }).join("");
+  }
+
   function setResult(message, tone = "") {
     const node = ids("result");
     node.textContent = message;
@@ -176,6 +301,7 @@
     ids("database").textContent = state.database || "-";
     ids("remoteAdminUrl").value = state.remoteAdminUrl || "";
     ids("localUserAdminUrl").value = state.localUserAdminUrl || "";
+    renderActiveRooms(state);
   }
 
   async function refresh(silent = false) {
@@ -190,7 +316,7 @@
     }
   }
 
-  async function action(name, button, confirmText) {
+  async function action(name, button, confirmText, payload = {}) {
     if (confirmText && !window.confirm(confirmText)) return;
     const previous = button.textContent;
     button.disabled = true;
@@ -199,7 +325,7 @@
       const response = await fetch("/api/server-management", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: name })
+        body: JSON.stringify({ action: name, ...payload })
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || ("HTTP " + response.status));
@@ -211,6 +337,18 @@
         setResult("관리자 인증 링크를 새로 발급했습니다. 기존 세션과 이전 링크는 무효입니다.", "success");
       } else if (name === "reconnectSoop") {
         setResult("SOOP 재연결을 요청했습니다.", "success");
+      } else if (name === "setActiveRoomLimit") {
+        setResult(
+          "활성 룸 상한을 "
+            + String(body.activeRoomLimit ?? payload.activeRoomLimit)
+            + "개로 변경했습니다. 진행 중인 룸에는 영향을 주지 않습니다.",
+          "success"
+        );
+      } else if (name === "terminateRoom") {
+        setResult(
+          "룸 " + String(body.terminatedRoomId || payload.roomId) + "을 종료했습니다.",
+          "success"
+        );
       }
     } catch (error) {
       setResult("관리 작업 실패: " + error.message, "error");
@@ -255,6 +393,34 @@
     "reconnectSoop",
     ids("reconnectSoop")
   ));
+
+  ids("saveActiveRoomLimit").addEventListener("click", () => {
+    const input = ids("activeRoomLimit");
+    const value = Number(input.value);
+    if (!Number.isInteger(value) || value < 1 || value > 32) {
+      setResult("활성 룸 상한은 1~32의 정수로 입력하세요.", "error");
+      return;
+    }
+    action(
+      "setActiveRoomLimit",
+      ids("saveActiveRoomLimit"),
+      "활성 룸 상한을 " + value + "개로 변경하시겠습니까?\n현재 진행 중인 룸은 종료되거나 변경되지 않습니다.",
+      { activeRoomLimit: value }
+    );
+  });
+
+  ids("activeRoomList").addEventListener("click", (event) => {
+    const button = event.target.closest(".terminate-room");
+    if (!button) return;
+    const roomId = button.dataset.roomId || "";
+    const roomName = button.dataset.roomName || roomId;
+    action(
+      "terminateRoom",
+      button,
+      "룸 '" + roomName + "' (" + roomId + ")을 종료하시겠습니까?\n이 작업은 해당 룸 하나만 종료하며 되돌릴 수 없습니다.",
+      { roomId }
+    );
+  });
 
   ids("refreshNow").addEventListener("click", () => refresh(false));
 

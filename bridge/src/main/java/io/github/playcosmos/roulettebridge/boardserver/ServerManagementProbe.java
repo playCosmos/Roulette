@@ -3,6 +3,9 @@ package io.github.playcosmos.roulettebridge.boardserver;
 import io.github.playcosmos.roulettebridge.room.BoardGameRuntimeEngine;
 import io.github.playcosmos.roulettebridge.room.RoomHttpHandler;
 import io.github.playcosmos.roulettebridge.room.RoomService;
+import java.util.List;
+
+import static io.github.playcosmos.roulettebridge.room.RoomModels.*;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -66,12 +69,47 @@ public final class ServerManagementProbe {
             );
             database.initialize();
 
-            var rooms = new RoomService(database, players -> players);
+            var policies = new ServerPolicyService(database);
+            var rooms = new RoomService(
+                database,
+                players -> players,
+                policies::activeRoomLimit
+            );
             var runtime = new BoardGameRuntimeEngine(
                 database,
                 event -> {}
             );
             var roomHttp = new RoomHttpHandler(rooms, runtime);
+
+            var roomRequest = new CreateRoomRequest(
+                "Management Probe Room",
+                List.of(
+                    new PlayerInput("probe-user", "Probe", null, 100)
+                ),
+                new BoardInput(
+                    "dimensions",
+                    8,
+                    6,
+                    null,
+                    "rounded"
+                ),
+                new MovementInput(
+                    "dice",
+                    1,
+                    false,
+                    false,
+                    false
+                ),
+                new RulesInput(
+                    "destinationOnly",
+                    true,
+                    true
+                ),
+                List.of(),
+                null
+            );
+            var firstRoom = rooms.create(roomRequest);
+            rooms.commitPreview(firstRoom.roomId());
 
             var activeSessions = new AtomicInteger(3);
             var remoteAdminUrl = new AtomicReference<>(
@@ -86,6 +124,8 @@ public final class ServerManagementProbe {
                 () -> 2,
                 () -> Map.of("status", "CONNECTED"),
                 roomHttp,
+                rooms,
+                policies,
                 remoteAdminUrl::get,
                 () -> "http://127.0.0.1:" + clientPort
                     + "/admin/?token=local",
@@ -138,12 +178,12 @@ public final class ServerManagementProbe {
                 "active admin session count missing"
             );
             require(
-                state.body().contains("\"version\":\"0.6.1\""),
+                state.body().contains("\"version\":\"0.7.0\""),
                 "server version missing"
             );
             require(
                 state.body().contains(
-                    "\"roomAdminUiVersion\":\"0.6.1\""
+                    "\"roomAdminUiVersion\":\"0.7.0\""
                 ),
                 "room admin UI version missing"
             );
@@ -152,6 +192,17 @@ public final class ServerManagementProbe {
                     "\"websocketClients\":2"
                 ),
                 "websocket client count missing"
+            );
+            require(
+                state.body().contains("\"activeRoomCount\":1")
+                    && state.body().contains(
+                        "\"activeRoomLimit\":1"
+                    )
+                    && state.body().contains(
+                        "\"name\":\"Management Probe Room\""
+                    )
+                    && state.body().contains("\"elapsedSeconds\":"),
+                "active room management summary missing"
             );
 
             var revoke = post(
@@ -190,6 +241,85 @@ public final class ServerManagementProbe {
                 reconnect.statusCode() == 200
                     && reconnects.get() == 1,
                 "SOOP reconnect action failed"
+            );
+
+            var raiseLimit = post(
+                client,
+                base,
+                "{\"action\":\"setActiveRoomLimit\","
+                    + "\"activeRoomLimit\":2}"
+            );
+            require(
+                raiseLimit.statusCode() == 200
+                    && policies.activeRoomLimit() == 2
+                    && "ACTIVE".equals(
+                        rooms.find(firstRoom.roomId())
+                            .lifecycle()
+                            .state()
+                    ),
+                "raising room limit must not affect running room"
+            );
+
+            var secondRoom = rooms.create(roomRequest);
+            rooms.commitPreview(secondRoom.roomId());
+            require(
+                rooms.listActiveRoomSummaries().size() == 2,
+                "second room must activate at limit two"
+            );
+
+            var lowerLimit = post(
+                client,
+                base,
+                "{\"action\":\"setActiveRoomLimit\","
+                    + "\"activeRoomLimit\":1}"
+            );
+            require(
+                lowerLimit.statusCode() == 200
+                    && policies.activeRoomLimit() == 1
+                    && rooms.listActiveRoomSummaries().size() == 2,
+                "lowering limit must leave existing rooms running"
+            );
+
+            var overLimitState = client.send(
+                HttpRequest.newBuilder(
+                    base.resolve("/api/server-management")
+                )
+                    .GET()
+                    .build(),
+                HttpResponse.BodyHandlers.ofString()
+            );
+            require(
+                overLimitState.body().contains(
+                    "\"activeRoomOverLimit\":true"
+                )
+                    && overLimitState.body().contains(
+                        "\"activeRoomCount\":2"
+                    ),
+                "over-limit state must be reported without room mutation"
+            );
+
+            var terminate = post(
+                client,
+                base,
+                "{\"action\":\"terminateRoom\","
+                    + "\"roomId\":\""
+                    + secondRoom.roomId()
+                    + "\"}"
+            );
+            require(
+                terminate.statusCode() == 200
+                    && "TERMINATED".equals(
+                        rooms.find(secondRoom.roomId())
+                            .lifecycle()
+                            .state()
+                    )
+                    && "ACTIVE".equals(
+                        rooms.find(firstRoom.roomId())
+                            .lifecycle()
+                            .state()
+                    )
+                    && rooms.listActiveRoomSummaries().size() == 1,
+                "selected room termination must not affect another room"
             );
 
             System.out.println("[server-management-probe] PASS");

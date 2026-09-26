@@ -61,6 +61,26 @@
       </div>
 
       <form class="board-room-form" id="boardRoomForm">
+        <fieldset class="board-room-preset-panel">
+          <legend>룸 설정 저장 / 불러오기</legend>
+          <div class="board-room-preset-grid">
+            <label>저장 이름
+              <input id="boardRoomPresetName" type="text" maxlength="80" autocomplete="off" placeholder="예: 기본 4인 보드" />
+            </label>
+            <label>저장된 설정
+              <select id="boardRoomPresetSelect">
+                <option value="">저장된 설정 선택</option>
+              </select>
+            </label>
+            <div class="board-room-preset-actions">
+              <button type="button" id="boardRoomPresetSave">현재 설정 저장</button>
+              <button type="button" id="boardRoomPresetLoad">불러오기</button>
+              <button type="button" id="boardRoomPresetDelete">삭제</button>
+            </div>
+          </div>
+          <p class="board-room-rule-note">이 브라우저에만 저장됩니다. 서버 재시작·프로그램 업데이트와 무관하며, 생성된 룸 ID·말 위치·진행상태는 저장하지 않습니다.</p>
+        </fieldset>
+
         <fieldset>
           <legend>룸 기본</legend>
           <div class="board-room-basic-grid">
@@ -84,11 +104,11 @@
 
         <fieldset>
           <legend>참가자 / 후원 트리거</legend>
-          <p class="board-room-rule-note">각 참가자의 SOOP ID와 일치하는 후원 중, 설정한 ‘턴 실행 별풍선’ 개수와 정확히 같은 단일 후원만 해당 참가자의 턴을 실행합니다. P1의 ‘모두 동일’을 켜면 P1의 별풍선 값이 전체 참가자에게 적용됩니다.</p>
+          <p class="board-room-rule-note">각 참가자의 SOOP ID와 일치하는 후원 중, 설정한 ‘턴 실행 별풍선’ 개수와 정확히 같은 단일 후원만 해당 참가자의 턴을 실행합니다. P1의 ‘모두 동일’을 체크하면 P1의 별풍선 값이 모든 참가자에게 적용됩니다.</p>
           <div class="board-room-player-list" id="boardRoomPlayers"></div>
           <div class="board-room-player-add-row">
             <button type="button" id="boardRoomAddPlayer">+ 참가자 추가</button>
-            <span id="boardRoomPlayerLimitState">4 / 6명</span>
+            <span id="boardRoomPlayerLimitState">최대 6명</span>
           </div>
         </fieldset>
 

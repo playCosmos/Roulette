@@ -801,3 +801,46 @@
   inset: 0;
 }
 
+
+
+.board-room-preset-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, .7fr) minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.board-room-preset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: end;
+}
+
+.board-room-preset-actions button {
+  min-height: 36px;
+}
+
+.board-room-preset-panel .board-room-rule-note {
+  margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .board-room-preset-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .board-room-preset-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .board-room-preset-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .board-room-preset-actions {
+    grid-column: auto;
+  }
+}

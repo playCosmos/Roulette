@@ -38,6 +38,12 @@
   const copyOverlayButton = $("boardRoomCopyOverlayButton");
   const openOverlayButton = $("boardRoomOpenOverlayButton");
   const bridgeOverlayUrl = $("overlayUrlInput");
+  const presetNameInput = $("boardRoomPresetName");
+  const presetSelect = $("boardRoomPresetSelect");
+  const presetSaveButton = $("boardRoomPresetSave");
+  const presetLoadButton = $("boardRoomPresetLoad");
+  const presetDeleteButton = $("boardRoomPresetDelete");
+  const PRESET_STORAGE_KEY = "ramyani.boardRoomPresets.v1";
 
   let currentRoom = null;
   let instructionSequence = 0;
@@ -235,6 +241,297 @@
       .replaceAll('"', "&quot;")
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;");
+  }
+
+  function readPresetStore() {
+    try {
+      const raw = localStorage.getItem(PRESET_STORAGE_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed
+        : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function writePresetStore(store) {
+    localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(store));
+  }
+
+  function refreshPresetSelect(selectedName = "") {
+    if (!presetSelect) return;
+    const store = readPresetStore();
+    const names = Object.keys(store).sort((a, b) =>
+      a.localeCompare(b, "ko")
+    );
+    presetSelect.innerHTML =
+      '<option value="">저장된 설정 선택</option>';
+    names.forEach((name) => {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      presetSelect.append(option);
+    });
+    if (selectedName && store[selectedName]) {
+      presetSelect.value = selectedName;
+    }
+  }
+
+  function captureInstructionPreset(row) {
+    const value = (field, fallback = "") =>
+      row.querySelector('[data-field="' + field + '"]')?.value ?? fallback;
+    const checked = (field) =>
+      row.querySelector('[data-field="' + field + '"]')?.checked === true;
+    return {
+      builtIn: row.dataset.builtIn === "true",
+      enabled: row.dataset.enabled !== "false",
+      actionType: row.dataset.actionType || "display",
+      direction: row.dataset.direction || "",
+      randomPlaceholder: row.dataset.randomPlaceholder === "true",
+      instructionId: value("instructionId"),
+      label: value("label"),
+      allocationMode: value("allocationMode", "count"),
+      allocationValue: value("allocationValue", "1"),
+      poolEnabled: checked("poolEnabled"),
+      poolWeight: value("poolWeight", "1"),
+      stepsMode: value("stepsMode", "fixed"),
+      stepsValue: value("stepsValue", "1"),
+      stepsMin: value("stepsMin", "1"),
+      stepsMax: value("stepsMax", "4"),
+      multiplierValue: value("multiplierValue", "2")
+    };
+  }
+
+  function captureRoomPreset() {
+    return {
+      schema: 1,
+      savedAt: new Date().toISOString(),
+      roomName: form.elements.namedItem("roomName")?.value || "Board Room",
+      retentionMinutes: form.elements.namedItem("retentionMinutes")?.value || "240",
+      pauseDonationMode: form.elements.namedItem("pauseDonationMode")?.value || "QUEUE",
+      pauseGraceSeconds: form.elements.namedItem("pauseGraceSeconds")?.value || "10",
+      players: playerRows().map((row) => ({
+        soopId: row.querySelector('[data-field="soopId"]')?.value || "",
+        displayName: row.querySelector('[data-field="displayName"]')?.value || "",
+        balloonTrigger: row.querySelector('[data-field="balloonTrigger"]')?.value || "100"
+      })),
+      sharedBalloon: sharedBalloonCheckbox()?.checked ?? true,
+      sizingMode: sizingMode.value,
+      columns: form.elements.namedItem("columns")?.value || "16",
+      rows: form.elements.namedItem("rows")?.value || "12",
+      cellCount: form.elements.namedItem("cellCount")?.value || "52",
+      layoutStyle: form.elements.namedItem("layoutStyle")?.value || "rounded",
+      diceEnabled: diceEnabled.checked,
+      yutEnabled: yutEnabled.checked,
+      diceCount: form.elements.namedItem("diceCount")?.value || "2",
+      extraThrowOnDouble: form.elements.namedItem("extraThrowOnDouble")?.checked === true,
+      extraThrowOnYutMo: form.elements.namedItem("extraThrowOnYutMo")?.checked === true,
+      randomPoolMode: randomPoolMode.value,
+      instructions: Array.from(
+        instructionRows.querySelectorAll(".board-room-instruction-row")
+      ).map(captureInstructionPreset)
+    };
+  }
+
+  function inferInstructionKind(item) {
+    if (item.actionType === "move") {
+      return item.direction === "backward" ? "backward" : "forward";
+    }
+    if (item.actionType === "skipThrow") return "skip";
+    if (item.actionType === "multiplyNextThrow") return "multiplier";
+    if (item.actionType === "ignoreNextLanding") return "ignoreLanding";
+    return "custom";
+  }
+
+  function restoreInstructions(items) {
+    instructionRows.innerHTML = "";
+    selectedInstructionRow = null;
+    instructionSequence = 0;
+    instructionEditorSequence = 0;
+
+    const list = Array.isArray(items) ? items : [];
+    list.forEach((item) => {
+      const row = addInstruction(
+        inferInstructionKind(item),
+        {
+          builtIn: Boolean(item.builtIn),
+          deferList: true
+        }
+      );
+
+      row.dataset.actionType = item.actionType || row.dataset.actionType;
+      row.dataset.direction = item.direction || row.dataset.direction || "";
+      row.dataset.randomPlaceholder =
+        item.randomPlaceholder ? "true" : "false";
+
+      const setValue = (field, value) => {
+        const input = row.querySelector('[data-field="' + field + '"]');
+        if (input && value !== undefined && value !== null) {
+          input.value = String(value);
+        }
+      };
+      const setChecked = (field, value) => {
+        const input = row.querySelector('[data-field="' + field + '"]');
+        if (input) input.checked = Boolean(value);
+      };
+
+      setValue("instructionId", item.instructionId);
+      setValue("label", item.label);
+      setValue("allocationMode", item.allocationMode);
+      setValue("allocationValue", item.allocationValue);
+      setChecked("poolEnabled", item.poolEnabled);
+      setValue("poolWeight", item.poolWeight);
+      setValue("stepsMode", item.stepsMode);
+      setValue("stepsValue", item.stepsValue);
+      setValue("stepsMin", item.stepsMin);
+      setValue("stepsMax", item.stepsMax);
+      setValue("multiplierValue", item.multiplierValue);
+
+      setInstructionEnabled(row, item.enabled !== false);
+      syncInstructionRow(row);
+    });
+
+    if (!instructionRows.querySelector(".board-room-instruction-row")) {
+      seedDefaultInstructions();
+    } else {
+      rebuildInstructionList();
+      selectInstruction(
+        instructionRows.querySelector(".board-room-instruction-row")
+      );
+    }
+    syncAllInstructionRows();
+  }
+
+  function restoreRoomPreset(preset) {
+    if (!preset || typeof preset !== "object") {
+      throw new Error("저장된 설정 형식이 올바르지 않습니다.");
+    }
+
+    const setValue = (name, value) => {
+      const input = form.elements.namedItem(name);
+      if (input && value !== undefined && value !== null) {
+        input.value = String(value);
+      }
+    };
+
+    setValue("roomName", preset.roomName ?? "Board Room");
+    setValue("retentionMinutes", preset.retentionMinutes ?? "240");
+    setValue("pauseDonationMode", preset.pauseDonationMode ?? "QUEUE");
+    setValue("pauseGraceSeconds", preset.pauseGraceSeconds ?? "10");
+    setValue("columns", preset.columns ?? "16");
+    setValue("rows", preset.rows ?? "12");
+    setValue("cellCount", preset.cellCount ?? "52");
+    setValue("layoutStyle", preset.layoutStyle ?? "rounded");
+    setValue("diceCount", preset.diceCount ?? "2");
+
+    sizingMode.value = preset.sizingMode === "cellCount"
+      ? "cellCount"
+      : "dimensions";
+    diceEnabled.checked = preset.diceEnabled !== false;
+    yutEnabled.checked = preset.yutEnabled !== false;
+
+    const extraDouble = form.elements.namedItem("extraThrowOnDouble");
+    if (extraDouble) {
+      extraDouble.checked = preset.extraThrowOnDouble !== false;
+    }
+    const extraYutMo = form.elements.namedItem("extraThrowOnYutMo");
+    if (extraYutMo) {
+      extraYutMo.checked = preset.extraThrowOnYutMo !== false;
+    }
+
+    playersRoot.innerHTML = "";
+    const savedPlayers = Array.isArray(preset.players)
+      ? preset.players.slice(0, 6)
+      : [];
+    (savedPlayers.length ? savedPlayers : [{}]).forEach((player) => {
+      addPlayerRow(player);
+    });
+    renumberPlayers(preset.sharedBalloon !== false);
+
+    randomPoolMode.value =
+      preset.randomPoolMode === "custom"
+        ? "custom"
+        : "inheritRatioInstructions";
+    restoreInstructions(preset.instructions);
+
+    syncBoardSizing();
+    syncMovement();
+    syncPauseDonationPolicy();
+    liveSummary.innerHTML = "";
+    previewPanel.hidden = true;
+    currentRoom = null;
+    showResult("저장된 룸 설정을 불러왔습니다.", "success");
+  }
+
+  function saveCurrentPreset() {
+    if (!presetNameInput) return;
+    const name = presetNameInput.value.trim();
+    if (!name) {
+      showResult("저장할 설정 이름을 입력하세요.", "error-text");
+      presetNameInput.focus();
+      return;
+    }
+
+    const store = readPresetStore();
+    if (
+      store[name]
+      && !window.confirm("'" + name + "' 설정을 덮어쓰시겠습니까?")
+    ) {
+      return;
+    }
+
+    try {
+      store[name] = captureRoomPreset();
+      writePresetStore(store);
+      refreshPresetSelect(name);
+      showResult("룸 설정 '" + name + "'을 이 브라우저에 저장했습니다.", "success");
+    } catch (error) {
+      showResult("룸 설정 저장 실패: " + error.message, "error-text");
+    }
+  }
+
+  function loadSelectedPreset() {
+    const name = presetSelect?.value || presetNameInput?.value.trim() || "";
+    if (!name) {
+      showResult("불러올 저장 설정을 선택하세요.", "error-text");
+      return;
+    }
+    const store = readPresetStore();
+    if (!store[name]) {
+      showResult("저장된 설정을 찾을 수 없습니다.", "error-text");
+      refreshPresetSelect();
+      return;
+    }
+    try {
+      restoreRoomPreset(store[name]);
+      if (presetNameInput) presetNameInput.value = name;
+      if (presetSelect) presetSelect.value = name;
+    } catch (error) {
+      showResult("룸 설정 불러오기 실패: " + error.message, "error-text");
+    }
+  }
+
+  function deleteSelectedPreset() {
+    const name = presetSelect?.value || "";
+    if (!name) {
+      showResult("삭제할 저장 설정을 선택하세요.", "error-text");
+      return;
+    }
+    if (!window.confirm("'" + name + "' 저장 설정을 삭제하시겠습니까?")) {
+      return;
+    }
+    const store = readPresetStore();
+    delete store[name];
+    try {
+      writePresetStore(store);
+      if (presetNameInput?.value === name) presetNameInput.value = "";
+      refreshPresetSelect();
+      showResult("저장 설정 '" + name + "'을 삭제했습니다.", "success");
+    } catch (error) {
+      showResult("저장 설정 삭제 실패: " + error.message, "error-text");
+    }
   }
 
   function normalizeInstructionId(value, fallback) {
@@ -1092,6 +1389,15 @@
     }
   }
 
+  presetSaveButton?.addEventListener("click", saveCurrentPreset);
+  presetLoadButton?.addEventListener("click", loadSelectedPreset);
+  presetDeleteButton?.addEventListener("click", deleteSelectedPreset);
+  presetSelect?.addEventListener("change", () => {
+    if (presetNameInput && presetSelect.value) {
+      presetNameInput.value = presetSelect.value;
+    }
+  });
+
   addPlayerButton?.addEventListener("click", () => {
     const p1Value = p1BalloonInput()?.value || "100";
     addPlayerRow({ balloonTrigger: p1Value });
@@ -1190,6 +1496,7 @@
     window.open(overlayUrl.value, "_blank", "noopener,noreferrer");
   });
 
+  refreshPresetSelect();
   renderPlayers();
   syncBoardSizing();
   syncMovement();

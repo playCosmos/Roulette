@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Ramyani Board Game · 룸 운영</title>
+  <link rel="stylesheet" href="./soop/admin/soop-admin.css" />
+  <link rel="stylesheet" href="./soop/admin/board-room-operation.css" />
+</head>
+<body>
+  <main class="admin-shell room-operation-shell">
+    <header class="admin-header room-operation-header">
+      <div>
+        <p class="eyebrow">RAMYANI / BOARD ROOM OPERATION</p>
+        <h1 id="roomOperationTitle">룸 운영</h1>
+        <p id="roomOperationMeta">룸 상태를 불러오는 중입니다.</p>
+      </div>
+      <div class="room-operation-header-actions">
+        <span class="connection" id="roomOperationStatus">확인 중</span>
+        <a class="nav-link" href="./board-admin.html">룸 생성 페이지</a>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>운영 제어</h2>
+          <p>일시정지는 SOOP 자동 턴 처리를 멈춥니다. 수동 턴과 위치 보정은 일시정지 중에도 사용할 수 있습니다.</p>
+        </div>
+      </div>
+      <div class="room-operation-controls">
+        <button type="button" id="roomPauseButton">일시정지</button>
+        <button type="button" id="roomResumeButton" hidden>재개</button>
+        <label class="room-operation-extend">시간 연장
+          <input id="roomExtendMinutes" type="number" min="1" max="120" step="1" value="60" />
+          <span>분</span>
+        </label>
+        <button type="button" id="roomExtendButton">연장</button>
+        <button type="button" class="danger" id="roomTerminateButton">룸 종료</button>
+      </div>
+      <p class="operation-result" id="roomOperationResult">대기 중</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>플레이어 운영</h2>
+          <p>이동값 생성은 실제 서버 턴과 동일한 규칙을 사용합니다. 특정 칸 이동은 위치만 보정하며 해당 칸 지시문은 발동하지 않습니다.</p>
+        </div>
+      </div>
+      <div class="room-player-operation-list" id="roomPlayerOperationList"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>현재 보드</h2>
+          <p>SOOP 자동 턴과 운영자 수동 조작이 동일한 서버 상태로 반영됩니다.</p>
+        </div>
+      </div>
+      <div class="room-operation-board-shell">
+        <iframe id="roomOperationBoard" title="현재 보드"></iframe>
+      </div>
+    </section>
+
+    <details class="panel room-fixed-settings" id="roomFixedSettings">
+      <summary>확정 설정 보기</summary>
+      <p class="room-fixed-settings-note">룸 생성 후에는 변경할 수 없는 값입니다.</p>
+      <div id="roomFixedSettingsContent"></div>
+    </details>
+  </main>
+
+  <script src="./soop/admin/board-room-operation.js"></script>
+</body>
+</html>

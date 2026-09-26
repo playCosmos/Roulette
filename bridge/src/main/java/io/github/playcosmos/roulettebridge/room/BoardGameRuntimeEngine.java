@@ -99,6 +99,181 @@ public final class BoardGameRuntimeEngine {
         );
     }
 
+    public synchronized BoardTurnEvent manualTurn(
+        String roomId,
+        String soopId
+    ) throws SQLException {
+        String normalizedRoomId = roomId == null ? "" : roomId.trim();
+        String normalizedSoopId = soopId == null ? "" : soopId.trim();
+
+        if (normalizedRoomId.isBlank()) {
+            throw new IllegalArgumentException("roomId is required");
+        }
+        if (normalizedSoopId.isBlank()) {
+            throw new IllegalArgumentException("soopId is required");
+        }
+
+        String displayName;
+        int balloonTrigger;
+
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 SELECT p.display_name, p.balloon_trigger
+                 FROM board_room br
+                 JOIN board_room_player p ON p.room_id = br.room_id
+                 WHERE br.room_id = ?
+                   AND p.soop_id = ?
+                   AND br.status = 'READY'
+                   AND br.lifecycle_state IN ('ACTIVE', 'PAUSED')
+                   AND br.expires_at IS NOT NULL
+                   AND datetime(br.expires_at) > datetime('now')
+                 LIMIT 1
+                 """)) {
+            statement.setString(1, normalizedRoomId);
+            statement.setString(2, normalizedSoopId);
+            try (var rows = statement.executeQuery()) {
+                if (!rows.next()) {
+                    throw new IllegalStateException(
+                        "manual turn is unavailable for this player or room state"
+                    );
+                }
+                displayName = rows.getString("display_name");
+                balloonTrigger = rows.getInt("balloon_trigger");
+            }
+        }
+
+        String manualEventId = "manual-turn-" + UUID.randomUUID();
+        var donation = new SoopDonation(
+            "operator",
+            normalizedSoopId,
+            displayName,
+            balloonTrigger,
+            0,
+            "{\"event_id\":\"" + manualEventId
+                + "\",\"source\":\"operator\"}",
+            System.currentTimeMillis()
+        );
+
+        var result = processRoom(
+            normalizedRoomId,
+            donation,
+            "event:" + manualEventId,
+            false
+        );
+
+        if (result.duplicate() || result.event() == null) {
+            throw new IllegalStateException("manual turn was not created");
+        }
+
+        dispatchEvents(List.of(result.event()));
+        return result.event();
+    }
+
+    public synchronized BoardTurnEvent setPlayerPosition(
+        String roomId,
+        String soopId,
+        int cellIndex
+    ) throws SQLException {
+        String normalizedRoomId = roomId == null ? "" : roomId.trim();
+        String normalizedSoopId = soopId == null ? "" : soopId.trim();
+
+        if (normalizedRoomId.isBlank()) {
+            throw new IllegalArgumentException("roomId is required");
+        }
+        if (normalizedSoopId.isBlank()) {
+            throw new IllegalArgumentException("soopId is required");
+        }
+
+        try (var connection = database.open()) {
+            connection.setAutoCommit(false);
+            try {
+                var room = loadRoom(connection, normalizedRoomId, false);
+                ensureRuntimeState(connection, room);
+
+                var board = loadRuntimeBoard(connection, normalizedRoomId);
+                if (cellIndex < 0 || cellIndex >= board.cellCount()) {
+                    throw new IllegalArgumentException(
+                        "cellIndex must be 0~" + (board.cellCount() - 1)
+                    );
+                }
+
+                var players = loadPlayerStates(connection, normalizedRoomId);
+                var player = players.stream()
+                    .filter(value -> value.soopId.equals(normalizedSoopId))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException(
+                        "player is not part of this room"
+                    ));
+
+                int startPosition = player.position;
+                player.position = cellIndex;
+
+                long sequence = readRuntimeSequence(
+                    connection,
+                    normalizedRoomId
+                ) + 1;
+                String createdAt = Instant.now().toString();
+                String eventId = "BGP" + Instant.now().toEpochMilli()
+                    + "-" + shortUuid();
+
+                persistPlayerState(connection, player, createdAt);
+                persistRuntimeBoard(
+                    connection,
+                    normalizedRoomId,
+                    board,
+                    sequence,
+                    createdAt
+                );
+
+                var event = new BoardTurnEvent(
+                    "board.turn",
+                    eventId,
+                    normalizedRoomId,
+                    sequence,
+                    "operator",
+                    "운영자",
+                    0,
+                    player.soopId,
+                    player.displayName,
+                    "manual-position",
+                    startPosition,
+                    player.position,
+                    player.laps,
+                    false,
+                    player.skipNextThrows,
+                    false,
+                    List.of(),
+                    List.of(),
+                    createdAt
+                );
+
+                insertEvent(
+                    connection,
+                    event,
+                    "operator-position:" + UUID.randomUUID(),
+                    "operator",
+                    0
+                );
+
+                connection.commit();
+                dispatchEvents(List.of(event));
+                return event;
+            } catch (IllegalArgumentException | IllegalStateException error) {
+                connection.rollback();
+                throw error;
+            } catch (Exception error) {
+                connection.rollback();
+                if (error instanceof SQLException sqlError) throw sqlError;
+                throw new SQLException(
+                    "failed to set manual player position",
+                    error
+                );
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
     public synchronized void terminateRoom(String roomId) throws SQLException {
         String now = Instant.now().toString();
         try (var connection = database.open()) {
@@ -342,6 +517,15 @@ public final class BoardGameRuntimeEngine {
         SoopDonation donation,
         String fingerprint
     ) throws SQLException {
+        return processRoom(roomId, donation, fingerprint, true);
+    }
+
+    private RoomProcessResult processRoom(
+        String roomId,
+        SoopDonation donation,
+        String fingerprint,
+        boolean requireActive
+    ) throws SQLException {
         try (var connection = database.open()) {
             connection.setAutoCommit(false);
             try {
@@ -351,7 +535,7 @@ public final class BoardGameRuntimeEngine {
                     return new RoomProcessResult(true, duplicate);
                 }
 
-                var room = loadRoom(connection, roomId, true);
+                var room = loadRoom(connection, roomId, requireActive);
                 ensureRuntimeState(connection, room);
 
                 var board = mutableBoard(loadRuntimeBoard(connection, roomId));

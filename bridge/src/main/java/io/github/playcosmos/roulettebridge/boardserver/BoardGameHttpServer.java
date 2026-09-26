@@ -66,7 +66,7 @@ public final class BoardGameHttpServer implements AutoCloseable {
             }
             var payload = new LinkedHashMap<String, Object>();
             payload.put("product", "RamyaniBoardGameServer");
-            payload.put("version", "0.2.1");
+            payload.put("version", "0.3.0");
             payload.put("instanceId", instanceId);
             payload.put("streamerId", this.config.streamerId());
             payload.put("database", databasePath.toString());

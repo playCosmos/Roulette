@@ -8,9 +8,12 @@ on:
       - "bridge/**"
       - "games/board/**"
       - "board-admin.html"
+      - "board-room.html"
       - "soop/admin/soop-admin.css"
       - "soop/admin/board-room-admin.css"
       - "soop/admin/board-room-admin.js"
+      - "soop/admin/board-room-operation.css"
+      - "soop/admin/board-room-operation.js"
       - ".github/workflows/board-server-windows-package.yml"
 
 permissions:
@@ -35,6 +38,8 @@ jobs:
         run: |
           node --check soop/admin/board-room-admin.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check soop/admin/board-room-operation.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --check games/board/js/throw-presentation.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --check games/board/js/board.js
@@ -58,11 +63,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           java -cp target/ramyani-game-server-0.2.0-SNAPSHOT.jar io.github.playcosmos.roulettebridge.room.MixedMovementProbe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -cp target/ramyani-game-server-0.2.0-SNAPSHOT.jar io.github.playcosmos.roulettebridge.room.RoomOperationProbe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build board-game-only Windows app
         working-directory: bridge
         shell: pwsh
-        run: ./package-board-server-windows.ps1 -Version 0.2.1 -SkipBuild
+        run: ./package-board-server-windows.ps1 -Version 0.3.0 -SkipBuild
 
       - name: Verify board-only package
         working-directory: bridge
@@ -75,9 +82,12 @@ jobs:
           if (-not (Test-Path (Join-Path $root "runtime/bin/server/jvm.dll"))) { throw "bundled runtime missing" }
           @(
             "web/board-admin.html",
+            "web/board-room.html",
             "web/soop/admin/soop-admin.css",
             "web/soop/admin/board-room-admin.css",
             "web/soop/admin/board-room-admin.js",
+            "web/soop/admin/board-room-operation.css",
+            "web/soop/admin/board-room-operation.js",
             "web/games/board/index.html",
             "web/games/board/rect.html",
             "web/games/board/js/board.js",
@@ -102,7 +112,7 @@ jobs:
       - name: Upload board-game-only package
         uses: actions/upload-artifact@v4
         with:
-          name: RamyaniBoardGameServer-Windows-x64-v0.2.1
+          name: RamyaniBoardGameServer-Windows-x64-v0.3.0
           path: bridge/dist-board/RamyaniBoardGameServer/**
           if-no-files-found: error
           retention-days: 30

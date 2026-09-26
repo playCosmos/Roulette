@@ -4921,6 +4921,7 @@
   function roomCellLabel(cell) {
     if (!cell) return "";
     if (cell.index === 0 || cell.type === "START") return "START";
+    if (cell.type === "NORMAL") return "";
 
     const action = cell.action;
     if (action && typeof action === "object") {

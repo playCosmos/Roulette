@@ -87,6 +87,30 @@ public final class RoomHttpHandler implements HttpHandler {
                 return;
             }
 
+            if (route.endsWith("/manual-turn")) {
+                if (!requireMethod(exchange, "POST")) return;
+                String roomId = route.substring(0, route.length() - "/manual-turn".length());
+                var request = readManualTurnRequest(exchange);
+                sendJson(exchange, 200, runtime.manualTurn(roomId, request.soopId()));
+                return;
+            }
+
+            if (route.endsWith("/position")) {
+                if (!requireMethod(exchange, "POST")) return;
+                String roomId = route.substring(0, route.length() - "/position".length());
+                var request = readPositionRequest(exchange);
+                sendJson(
+                    exchange,
+                    200,
+                    runtime.setPlayerPosition(
+                        roomId,
+                        request.soopId(),
+                        request.cellIndex()
+                    )
+                );
+                return;
+            }
+
             if (route.endsWith("/pause")) {
                 if (!requireMethod(exchange, "POST")) return;
                 String roomId = route.substring(0, route.length() - "/pause".length());
@@ -145,6 +169,78 @@ public final class RoomHttpHandler implements HttpHandler {
         } catch (SQLException error) {
             error.printStackTrace(System.err);
             sendJson(exchange, 500, error("database operation failed"));
+        }
+    }
+
+    private ManualTurnRequest readManualTurnRequest(
+        HttpExchange exchange
+    ) throws IOException {
+        byte[] bytes = exchange.getRequestBody().readNBytes(16 * 1024 + 1);
+        if (bytes.length > 16 * 1024) {
+            throw new IllegalArgumentException(
+                "manual turn request exceeds 16 KiB"
+            );
+        }
+        if (bytes.length == 0) {
+            throw new IllegalArgumentException(
+                "manual turn request body is required"
+            );
+        }
+
+        try {
+            var request = GSON.fromJson(
+                new String(bytes, StandardCharsets.UTF_8),
+                ManualTurnRequest.class
+            );
+            if (
+                request == null
+                || request.soopId() == null
+                || request.soopId().isBlank()
+            ) {
+                throw new IllegalArgumentException("soopId is required");
+            }
+            return new ManualTurnRequest(request.soopId().trim());
+        } catch (JsonParseException error) {
+            throw new IllegalArgumentException("invalid JSON body");
+        }
+    }
+
+    private PositionRequest readPositionRequest(
+        HttpExchange exchange
+    ) throws IOException {
+        byte[] bytes = exchange.getRequestBody().readNBytes(16 * 1024 + 1);
+        if (bytes.length > 16 * 1024) {
+            throw new IllegalArgumentException(
+                "position request exceeds 16 KiB"
+            );
+        }
+        if (bytes.length == 0) {
+            throw new IllegalArgumentException(
+                "position request body is required"
+            );
+        }
+
+        try {
+            var request = GSON.fromJson(
+                new String(bytes, StandardCharsets.UTF_8),
+                PositionRequest.class
+            );
+            if (
+                request == null
+                || request.soopId() == null
+                || request.soopId().isBlank()
+                || request.cellIndex() == null
+            ) {
+                throw new IllegalArgumentException(
+                    "soopId and cellIndex are required"
+                );
+            }
+            return new PositionRequest(
+                request.soopId().trim(),
+                request.cellIndex()
+            );
+        } catch (JsonParseException error) {
+            throw new IllegalArgumentException("invalid JSON body");
         }
     }
 
@@ -224,6 +320,13 @@ public final class RoomHttpHandler implements HttpHandler {
         String value = error.getMessage();
         return value == null || value.isBlank() ? error.getClass().getSimpleName() : value;
     }
+
+    private record ManualTurnRequest(String soopId) {}
+
+    private record PositionRequest(
+        String soopId,
+        Integer cellIndex
+    ) {}
 
     private record PauseRequest(
         String donationMode,

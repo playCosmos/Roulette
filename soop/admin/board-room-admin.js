@@ -813,7 +813,10 @@
         { method: "POST" }
       );
       renderRoom(snapshot);
-      showResult("보드 배치를 확정했습니다. 이후 전체 재배치는 차단됩니다.", "success");
+      showResult("보드 배치를 확정했습니다. 룸 운영 페이지로 이동합니다.", "success");
+      const operationUrl = new URL("./board-room.html", window.location.href);
+      operationUrl.searchParams.set("roomId", snapshot.roomId);
+      window.location.assign(operationUrl.toString());
     } catch (error) {
       showResult("배치 확정 실패: " + error.message, "error-text");
       rerollButton.disabled = false;

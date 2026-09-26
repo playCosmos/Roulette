@@ -25,8 +25,8 @@
     /(?:^|\/)(?:rect-)?instant\.html$/i.test(window.location.pathname);
   const ROOM_ID = String(params.get("roomId") || "").trim();
   const ROOM_PREVIEW_MODE = params.get("preview") === "1";
-  const ROOM_BOARD_SOURCE = params.get("board") === "committed" ? "committed" : "preview";
-  const ROOM_WS_URL = String(params.get("ws") || "").trim();
+  const ROOM_BOARD_SOURCE = ROOM_PREVIEW_MODE ? "preview" : "committed";
+  let roomWebSocketUrl = String(params.get("ws") || "").trim();
   const DEMO_PLAYER_COUNT = Math.min(
     MAX_PLAYERS,
     Math.max(1, Number.parseInt(params.get("players") || "4", 10) || 4)
@@ -5169,6 +5169,31 @@
     }
   }
 
+  async function resolveRoomWebSocketUrl() {
+    if (roomWebSocketUrl) return roomWebSocketUrl;
+
+    try {
+      const response = await fetch("/api/client/config", {
+        cache: "no-store",
+        headers: { "Accept": "application/json" }
+      });
+      if (response.ok) {
+        const config = await response.json();
+        const configured = String(config?.websocketUrl || "").trim();
+        if (configured) {
+          roomWebSocketUrl = configured;
+          return roomWebSocketUrl;
+        }
+      }
+    } catch (_) {
+    }
+
+    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+    roomWebSocketUrl =
+      scheme + "://" + window.location.hostname + ":17831";
+    return roomWebSocketUrl;
+  }
+
   async function syncRoomRuntimeState() {
     if (!ROOM_ID || ROOM_PREVIEW_MODE) return 0;
 
@@ -5198,8 +5223,11 @@
     return Number(runtime.sequence) || 0;
   }
 
-  function connectRoomWebSocket() {
-    if (!ROOM_ID || !ROOM_WS_URL || ROOM_PREVIEW_MODE) return;
+  async function connectRoomWebSocket() {
+    if (!ROOM_ID || ROOM_PREVIEW_MODE) return;
+
+    const resolvedWebSocketUrl = await resolveRoomWebSocketUrl();
+    if (!resolvedWebSocketUrl) return;
 
     let socket;
     let retryTimer = 0;
@@ -5210,7 +5238,7 @@
     const connect = () => {
       if (closed) return;
       try {
-        socket = new WebSocket(ROOM_WS_URL);
+        socket = new WebSocket(resolvedWebSocketUrl);
       } catch (_) {
         schedule();
         return;
@@ -5275,7 +5303,7 @@
       try {
         const loaded = await loadRoomBoard(ROOM_ID);
         if (!loaded) return;
-        connectRoomWebSocket();
+        await connectRoomWebSocket();
       } catch (error) {
         buildBoard();
         renderGlobalState();

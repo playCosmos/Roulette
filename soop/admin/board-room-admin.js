@@ -729,8 +729,6 @@
       : "/games/board/index.html";
     const url = new URL(page, clientBaseUrl());
     url.searchParams.set("roomId", snapshot.roomId);
-    url.searchParams.set("board", "committed");
-    url.searchParams.set("ws", currentWebSocketUrl());
     return url.toString();
   }
 

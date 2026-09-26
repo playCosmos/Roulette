@@ -24,3 +24,17 @@
 룸을 확정하면 운영 페이지로 이동한다. 운영 페이지 상단의 공용 오버레이 URL 하나를 모든 참가자에게 전달한다. 각 참가자는 동일 URL을 자신의 OBS 브라우저 소스에 사용한다.
 
 외부 인터넷 공유 시 config.json의 server.publicBaseUrl과 server.publicWebSocketUrl을 설정한다.
+
+
+## 짧은 룸 코드 / 공유 URL
+
+새 룸 ID는 기본 6자리 영문+숫자 코드로 생성한다. 혼동하기 쉬운 O/0, I/1은 사용하지 않는다.
+
+예: `ABC7K2`
+
+참가자에게 전달하는 보드 오버레이 URL은 룸 ID 외의 런타임 파라미터를 노출하지 않는다.
+
+- 일반 보드: `https://games.example.com/games/board/index.html?roomId=ABC7K2`
+- 직각 보드: `https://games.example.com/games/board/rect.html?roomId=ABC7K2`
+
+보드 클라이언트는 `/api/client/config`에서 WebSocket 주소를 자동 조회한다. 기존 UUID 형식의 룸 ID도 계속 조회할 수 있다.

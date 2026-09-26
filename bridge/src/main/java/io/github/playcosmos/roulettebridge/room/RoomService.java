@@ -12,7 +12,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static io.github.playcosmos.roulettebridge.room.RoomModels.*;
@@ -32,6 +31,10 @@ public final class RoomService {
     public static final int MAX_EXTENSION_MINUTES = 120;
     private static final int MAX_SAFE_LAYOUT_ATTEMPTS = 256;
     private static final double TARGET_GRID_RATIO = 4.0d / 3.0d;
+    private static final String ROOM_CODE_ALPHABET =
+        "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private static final int ROOM_CODE_LENGTH = 6;
+    private static final int ROOM_CODE_ATTEMPTS = 64;
 
     private final DatabaseAccess database;
     private final RoomLayoutGenerator layoutGenerator = new RoomLayoutGenerator();
@@ -89,7 +92,7 @@ public final class RoomService {
         return new ValidationResult(config, List.copyOf(errors));
     }
 
-    public RoomSnapshot create(CreateRoomRequest request) throws SQLException {
+    public synchronized RoomSnapshot create(CreateRoomRequest request) throws SQLException {
         var validation = validate(request);
         if (!validation.valid()) {
             throw new RoomValidationException(validation.errors());
@@ -131,14 +134,15 @@ public final class RoomService {
             config.randomPool()
         );
 
-        String roomId = UUID.randomUUID().toString();
         var createdAt = OffsetDateTime.now();
         String now = createdAt.toString();
         String expiresAt = createdAt.plusMinutes(retentionMinutes).toString();
+        String roomId;
 
         try (var connection = database.open()) {
             connection.setAutoCommit(false);
             try {
+                roomId = allocateRoomCode(connection);
                 try (var statement = connection.prepareStatement("""
                     INSERT INTO board_room(
                         room_id, name, status, config_json, preview_json,
@@ -599,6 +603,35 @@ public final class RoomService {
         String message = error.getMessage();
         return message != null
             && message.contains("UNIQUE constraint failed");
+    }
+
+    private static String allocateRoomCode(
+        java.sql.Connection connection
+    ) throws SQLException {
+        for (int attempt = 0; attempt < ROOM_CODE_ATTEMPTS; attempt += 1) {
+            var code = new StringBuilder(ROOM_CODE_LENGTH);
+            for (int i = 0; i < ROOM_CODE_LENGTH; i += 1) {
+                int index = ThreadLocalRandom.current().nextInt(
+                    ROOM_CODE_ALPHABET.length()
+                );
+                code.append(ROOM_CODE_ALPHABET.charAt(index));
+            }
+
+            String candidate = code.toString();
+            try (var statement = connection.prepareStatement(
+                "SELECT 1 FROM board_room WHERE room_id = ? LIMIT 1"
+            )) {
+                statement.setString(1, candidate);
+                try (var rows = statement.executeQuery()) {
+                    if (!rows.next()) return candidate;
+                }
+            }
+        }
+
+        throw new SQLException(
+            "failed to allocate unique room code after "
+                + ROOM_CODE_ATTEMPTS + " attempts"
+        );
     }
 
     private static void insertPlayers(

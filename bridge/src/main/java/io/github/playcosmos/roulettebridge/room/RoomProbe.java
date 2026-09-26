@@ -158,6 +158,10 @@ public final class RoomProbe {
             );
 
             var created = rooms.create(request);
+            require(
+                created.roomId().matches("[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}"),
+                "new room id must be a 6-character human-friendly code"
+            );
             require("DRAFT".equals(created.status()), "room must start as DRAFT");
             require(created.lifecycle() != null, "room lifecycle must be returned");
             require("DRAFT".equals(created.lifecycle().state()), "new room lifecycle must start DRAFT");

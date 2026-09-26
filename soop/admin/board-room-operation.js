@@ -113,10 +113,6 @@
       : "/games/board/index.html";
     const url = new URL(path, serverState.clientBaseUrl);
     url.searchParams.set("roomId", roomId);
-    url.searchParams.set("board", "committed");
-    if (serverState.websocketUrl) {
-      url.searchParams.set("ws", serverState.websocketUrl);
-    }
     return url.toString();
   }
 

@@ -70,7 +70,7 @@ public final class BoardGameHttpServer implements AutoCloseable {
             String websocketUrl = websocketUrl(exchange, clientBaseUrl);
 
             payload.put("product", "RamyaniGamesServer");
-            payload.put("version", "0.4.0");
+            payload.put("version", "0.4.1");
             payload.put("instanceId", instanceId);
             payload.put("streamerId", this.config.streamerId());
             payload.put("database", databasePath.toString());

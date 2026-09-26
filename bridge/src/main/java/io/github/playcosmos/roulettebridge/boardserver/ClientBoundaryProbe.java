@@ -95,6 +95,23 @@ public final class ClientBoundaryProbe {
                 "board client asset must be public"
             );
 
+            var configResponse = client.send(
+                HttpRequest.newBuilder(
+                    base.resolve("/api/client/config")
+                ).GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            );
+            require(
+                configResponse.statusCode() == 200,
+                "client config must be readable"
+            );
+            require(
+                configResponse.body().contains(
+                    "\"websocketUrl\":\"ws://127.0.0.1:" + websocketPort
+                ),
+                "client config must expose resolved websocket URL"
+            );
+
             var adminResponse = client.send(
                 HttpRequest.newBuilder(
                     base.resolve("/board-admin.html")

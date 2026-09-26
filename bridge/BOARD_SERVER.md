@@ -38,3 +38,17 @@ publicWebSocketUrl을 내부 WebSocket `17831`로 전달한다.
 - 기존 룰렛/티켓 기능: 독립 레거시 경로로 유지하며 현재 GamesServer 패키지에는 포함하지 않음
 
 향후 다른 방송용 게임은 `/games/<game>/` 클라이언트 경로와 서버 모듈을 추가하는 방식으로 확장한다.
+
+
+## 짧은 룸 코드 / 공유 URL
+
+새 룸 ID는 기본 6자리 영문+숫자 코드로 생성한다. 혼동하기 쉬운 O/0, I/1은 사용하지 않는다.
+
+예: `ABC7K2`
+
+참가자에게 전달하는 보드 오버레이 URL은 룸 ID 외의 런타임 파라미터를 노출하지 않는다.
+
+- 일반 보드: `https://games.example.com/games/board/index.html?roomId=ABC7K2`
+- 직각 보드: `https://games.example.com/games/board/rect.html?roomId=ABC7K2`
+
+보드 클라이언트는 `/api/client/config`에서 WebSocket 주소를 자동 조회한다. 기존 UUID 형식의 룸 ID도 계속 조회할 수 있다.

@@ -22,6 +22,7 @@ public final class GameClientHttpServer implements AutoCloseable {
     private final Path webRoot;
     private final RoomService rooms;
     private final BoardGameRuntimeEngine runtime;
+    private final BoardServerConfig config;
 
     public GameClientHttpServer(
         BoardServerConfig config,
@@ -30,6 +31,7 @@ public final class GameClientHttpServer implements AutoCloseable {
         BoardGameRuntimeEngine runtime
     ) throws IOException {
         var normalized = config.normalized();
+        this.config = normalized;
         this.webRoot = resolveWebRoot(
             workingDirectory,
             normalized.storage().webRoot()
@@ -46,6 +48,7 @@ public final class GameClientHttpServer implements AutoCloseable {
         this.server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
 
         server.createContext("/health", this::health);
+        server.createContext("/api/client/config", this::clientConfig);
         server.createContext("/api/board/rooms", this::readRoom);
         server.createContext("/games/board/", this::serveBoardAsset);
         server.createContext("/", exchange -> {
@@ -70,6 +73,61 @@ public final class GameClientHttpServer implements AutoCloseable {
             "product", "RamyaniGamesClient",
             "time", OffsetDateTime.now().toString()
         ));
+    }
+
+    private void clientConfig(HttpExchange exchange) throws IOException {
+        cors(exchange);
+        if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+            return;
+        }
+        if (!requireGetOrHead(exchange)) return;
+
+        sendJson(exchange, 200, Map.of(
+            "websocketUrl",
+            resolvedWebSocketUrl(exchange)
+        ));
+    }
+
+    private String resolvedWebSocketUrl(HttpExchange exchange) {
+        String configured = config.server().publicWebSocketUrl();
+        if (configured != null && !configured.isBlank()) {
+            return configured;
+        }
+
+        String host = exchange.getRequestHeaders().getFirst("X-Forwarded-Host");
+        if (host == null || host.isBlank()) {
+            host = exchange.getRequestHeaders().getFirst("Host");
+        }
+        if (host == null || host.isBlank()) {
+            host = "127.0.0.1";
+        }
+
+        int comma = host.indexOf(',');
+        if (comma >= 0) host = host.substring(0, comma).trim();
+
+        String hostname = host;
+        if (host.startsWith("[")) {
+            int close = host.indexOf(']');
+            if (close > 0) hostname = host.substring(0, close + 1);
+        } else {
+            int colon = host.lastIndexOf(':');
+            if (colon > 0 && host.indexOf(':') == colon) {
+                hostname = host.substring(0, colon);
+            }
+        }
+
+        String forwardedProto = exchange.getRequestHeaders().getFirst(
+            "X-Forwarded-Proto"
+        );
+        String scheme = forwardedProto != null
+            && forwardedProto.trim().equalsIgnoreCase("https")
+            ? "wss"
+            : "ws";
+
+        return scheme + "://" + hostname
+            + ":" + config.server().websocketPort();
     }
 
     private void readRoom(HttpExchange exchange) throws IOException {

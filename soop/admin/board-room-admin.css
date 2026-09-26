@@ -765,3 +765,49 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+.board-room-live-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.board-room-live-avatar,
+.board-room-live-avatar-fallback {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #404955;
+  border-radius: 50%;
+  background: #1b222b;
+}
+
+.board-room-live-avatar {
+  display: block;
+  object-fit: cover;
+  object-position: center;
+}
+
+.board-room-live-avatar-fallback {
+  display: grid;
+  place-items: center;
+  color: #d8dee7;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+
+.board-room-live-avatar-shell {
+  position: relative;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+}
+
+.board-room-live-avatar-shell .board-room-live-avatar,
+.board-room-live-avatar-shell .board-room-live-avatar-fallback {
+  position: absolute;
+  inset: 0;
+}

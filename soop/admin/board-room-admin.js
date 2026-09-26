@@ -656,6 +656,20 @@
     };
   }
 
+  function normalizeProfileImageUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    const normalized = raw.startsWith("//") ? "https:" + raw : raw;
+    try {
+      const parsed = new URL(normalized, window.location.href);
+      return parsed.protocol === "http:" || parsed.protocol === "https:"
+        ? parsed.href
+        : "";
+    } catch (_) {
+      return "";
+    }
+  }
+
   function liveText(status) {
     switch (status) {
       case "LIVE": return ["방송 중", "live"];
@@ -675,16 +689,38 @@
       const detail = player.live?.status === "LIVE"
         ? (player.live?.title || "방송 중")
         : (player.live?.error || "현재 방송을 찾지 못했습니다.");
+      const profileImageUrl = normalizeProfileImageUrl(player.profileImageUrl);
+      const avatarFallback = escapeAttribute(
+        String(player.displayName || player.soopId || "?").slice(0, 1)
+      );
+      const avatarMarkup = profileImageUrl
+        ? `<span class="board-room-live-avatar-shell"><img class="board-room-live-avatar" src="${escapeAttribute(profileImageUrl)}" alt="" referrerpolicy="no-referrer" /><span class="board-room-live-avatar-fallback">${avatarFallback}</span></span>`
+        : `<span class="board-room-live-avatar-fallback">${avatarFallback}</span>`;
       card.innerHTML = `
-        <div>
-          <strong>P${index + 1} ${escapeAttribute(player.displayName || player.soopId)}</strong>
-          <span>${escapeAttribute(player.soopId)}</span>
+        <div class="board-room-live-identity">
+          ${avatarMarkup}
+          <div>
+            <strong>P${index + 1} ${escapeAttribute(player.displayName || player.soopId)}</strong>
+            <span>${escapeAttribute(player.soopId)}</span>
+          </div>
         </div>
         <div class="board-room-live-state">
           <b>${label}</b>
           <span>${escapeAttribute(detail)}</span>
         </div>
       `;
+      const profileImage = card.querySelector(".board-room-live-avatar");
+      const profileFallback = card.querySelector(".board-room-live-avatar-shell .board-room-live-avatar-fallback");
+      if (profileImage && profileFallback) {
+        profileImage.addEventListener("load", () => {
+          profileFallback.hidden = true;
+        }, { once: true });
+        profileImage.addEventListener("error", () => {
+          profileImage.hidden = true;
+          profileFallback.hidden = false;
+        }, { once: true });
+      }
+
       liveSummary.append(card);
 
       const row = playersRoot.querySelectorAll(".board-room-player-row")[index];

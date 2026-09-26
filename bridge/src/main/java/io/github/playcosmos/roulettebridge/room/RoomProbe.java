@@ -24,7 +24,9 @@ public final class RoomProbe {
                 .map(player -> new PlayerConfig(
                     player.soopId(),
                     player.displayName(),
-                    player.profileImageUrl(),
+                    player.profileImageUrl() == null || player.profileImageUrl().isBlank()
+                        ? "https://example.test/profile/" + player.soopId() + ".png"
+                        : player.profileImageUrl(),
                     player.balloonTrigger(),
                     new PlayerLiveStatus(
                         "LIVE",
@@ -163,6 +165,13 @@ public final class RoomProbe {
                 "new room id must be a 6-character human-friendly code"
             );
             require("DRAFT".equals(created.status()), "room must start as DRAFT");
+            require(
+                created.config().players().stream().allMatch(
+                    player -> player.profileImageUrl() != null
+                        && player.profileImageUrl().startsWith("https://example.test/profile/")
+                ),
+                "checked SOOP profile image URL must be preserved in room config"
+            );
             require(created.lifecycle() != null, "room lifecycle must be returned");
             require("DRAFT".equals(created.lifecycle().state()), "new room lifecycle must start DRAFT");
             require(created.lifecycle().retentionMinutes() == 240, "default retention must be 240 minutes");

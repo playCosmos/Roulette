@@ -1688,7 +1688,22 @@
     const token = document.createElement("span");
     token.className = "player-token";
     token.dataset.playerId = player.id;
+    token.dataset.avatar = "false";
     token.title = player.name;
+
+    const avatar = document.createElement("img");
+    avatar.className = "player-token-avatar";
+    avatar.alt = "";
+    avatar.setAttribute("aria-hidden", "true");
+    avatar.referrerPolicy = "no-referrer";
+    avatar.draggable = false;
+    avatar.addEventListener("load", () => {
+      token.dataset.avatar = "true";
+    });
+    avatar.addEventListener("error", () => {
+      token.dataset.avatar = "false";
+      avatar.removeAttribute("src");
+    });
 
     const label = document.createElement("span");
     label.className = "player-token-label";
@@ -1706,7 +1721,8 @@
     effectBadges.dataset.visible = "false";
 
     overlay.append(bubble, effectBadges);
-    token.append(label, overlay);
+    token.append(avatar, label, overlay);
+    updatePlayerToken(token, player);
     renderDemoEffectBadges(player.id);
     return token;
   }
@@ -1721,8 +1737,25 @@
 
   function updatePlayerToken(token, player) {
     token.title = player.name;
+
     const label = token.querySelector(".player-token-label");
     if (label) label.textContent = player.shortLabel;
+
+    const avatar = token.querySelector(".player-token-avatar");
+    const nextAvatarUrl = normalizeProfileImageUrl(player.profileImageUrl);
+    if (avatar) {
+      const previousAvatarUrl = avatar.dataset.source || "";
+      if (previousAvatarUrl !== nextAvatarUrl) {
+        avatar.dataset.source = nextAvatarUrl;
+        token.dataset.avatar = "false";
+        if (nextAvatarUrl) {
+          avatar.src = nextAvatarUrl;
+        } else {
+          avatar.removeAttribute("src");
+        }
+      }
+    }
+
     renderDemoEffectBadges(player.id);
   }
 
@@ -2062,6 +2095,14 @@
     scheduleLayout();
   }
 
+  function normalizeProfileImageUrl(value) {
+    const normalized = String(value || "").trim();
+    if (!normalized) return "";
+    return normalized.startsWith("//")
+      ? "https:" + normalized
+      : normalized;
+  }
+
   function registerPlayer(input) {
     const id = String((input && input.id) || "").trim();
     const name = String((input && input.name) || id || "참가자").trim();
@@ -2076,6 +2117,11 @@
       id,
       name,
       shortLabel: String((input && input.shortLabel) || name.slice(0, 2)).trim() || "P",
+      profileImageUrl: normalizeProfileImageUrl(
+        input && input.profileImageUrl !== undefined
+          ? input.profileImageUrl
+          : (current ? current.profileImageUrl : "")
+      ),
       position: normalizeCell(
         input && input.position !== undefined
           ? input.position
@@ -4912,6 +4958,7 @@
         id: player.soopId || ("preview-player-" + index),
         name: player.displayName || player.soopId || ("참가자 " + (index + 1)),
         shortLabel: String(player.displayName || player.soopId || (index + 1)).slice(0, 1),
+        profileImageUrl: player.profileImageUrl || "",
         position: ROOM_PREVIEW_MODE ? 0 : (runtimePlayer?.position ?? 0)
       });
     }

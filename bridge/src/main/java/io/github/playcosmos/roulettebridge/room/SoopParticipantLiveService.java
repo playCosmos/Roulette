@@ -45,22 +45,31 @@ public final class SoopParticipantLiveService implements ParticipantLiveChecker 
         String displayName = player.displayName();
         String profileImageUrl = player.profileImageUrl();
 
-        if (displayName == null || displayName.isBlank()) {
+        boolean needsDisplayName =
+            displayName == null || displayName.isBlank();
+        boolean needsProfileImage =
+            profileImageUrl == null || profileImageUrl.isBlank();
+
+        if (needsDisplayName || needsProfileImage) {
             try {
                 var lookup = userLookup.lookup(player.soopId(), "id");
                 if (lookup.resolved() && lookup.match() != null) {
-                    displayName = lookup.match().nickname();
+                    if (needsDisplayName) {
+                        displayName = lookup.match().nickname();
+                    }
                     if (
-                        (profileImageUrl == null || profileImageUrl.isBlank())
+                        needsProfileImage
                         && lookup.match().profileImage() != null
                         && !lookup.match().profileImage().isBlank()
                     ) {
-                        profileImageUrl = lookup.match().profileImage();
+                        profileImageUrl = normalizeProfileImageUrl(
+                            lookup.match().profileImage()
+                        );
                     }
                 }
             } catch (Exception error) {
                 System.err.println(
-                    "[board-room] SOOP nickname lookup failed for "
+                    "[board-room] SOOP user lookup failed for "
                         + player.soopId() + ": " + message(unwrap(error))
                 );
             }
@@ -106,6 +115,14 @@ public final class SoopParticipantLiveService implements ParticipantLiveChecker 
                 )
             );
         }
+    }
+
+    private static String normalizeProfileImageUrl(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        if (trimmed.isBlank()) return null;
+        if (trimmed.startsWith("//")) return "https:" + trimmed;
+        return trimmed;
     }
 
     private static Throwable unwrap(Throwable error) {

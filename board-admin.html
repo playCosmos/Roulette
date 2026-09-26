@@ -110,7 +110,7 @@
           </div>
         </fieldset>
 
-                        <fieldset>
+                                <fieldset>
           <legend>이동값 생성</legend>
           <div class="board-room-generator-choice-grid">
             <section class="board-room-generator-card">
@@ -119,13 +119,13 @@
                 <strong>주사위</strong>
               </label>
               <div class="board-room-generator-suboptions" id="boardRoomDiceFields">
-                <label>주사위 개수
+                <label class="board-room-generator-primary-option">주사위 개수
                   <select name="diceCount">
                     <option value="1">1개</option>
                     <option value="2" selected>2개</option>
                   </select>
                 </label>
-                <label class="check-label">
+                <label class="check-label board-room-generator-bonus-option">
                   <input name="extraThrowOnDouble" type="checkbox" checked />
                   더블이 나오면 한번 더 던지기
                 </label>
@@ -138,7 +138,8 @@
                 <strong>윷</strong>
               </label>
               <div class="board-room-generator-suboptions" id="boardRoomYutFields">
-                <label class="check-label">
+                <span class="board-room-generator-option-spacer" aria-hidden="true"></span>
+                <label class="check-label board-room-generator-bonus-option">
                   <input name="extraThrowOnYutMo" type="checkbox" checked />
                   윷/모가 나오면 한번 더 던지기
                 </label>

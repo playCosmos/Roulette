@@ -489,11 +489,15 @@
 
 .board-room-generator-choice-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: 1fr;
+  gap: 10px;
 }
 
 .board-room-generator-card {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
   padding: 12px;
   border: 1px solid #2b323b;
   border-radius: 11px;
@@ -515,15 +519,28 @@
 
 .board-room-generator-suboptions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 11px;
-  padding-top: 11px;
-  border-top: 1px solid #272d35;
+  grid-template-columns: 190px minmax(260px, 1fr);
+  gap: 18px;
+  align-items: center;
+  min-width: 0;
 }
 
 .board-room-generator-suboptions[hidden] {
   display: none !important;
+}
+
+.board-room-generator-primary-option {
+  min-width: 0;
+}
+
+.board-room-generator-bonus-option {
+  justify-self: start;
+  margin: 0;
+}
+
+.board-room-generator-option-spacer {
+  display: block;
+  min-height: 1px;
 }
 
 .board-room-instruction-list-item {
@@ -581,8 +598,17 @@
 }
 
 @media (max-width: 700px) {
-  .board-room-generator-choice-grid,
+  .board-room-generator-card {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
   .board-room-generator-suboptions {
     grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .board-room-generator-option-spacer {
+    display: none;
   }
 }

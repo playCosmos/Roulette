@@ -41,6 +41,17 @@
         <div><span>클라이언트 주소</span><strong id="boardServerClientUrl">-</strong></div>
         <div><span>외부 공유</span><strong id="boardServerShareState">확인 중</strong></div>
       </div>
+      <div class="board-server-remote-admin">
+        <div class="board-server-remote-admin-copy">
+          <strong>원격 관리자 링크</strong>
+          <span>운영자로 지정할 참가자에게만 전달하세요. 최초 접속 후 URL의 토큰은 제거되고 해당 브라우저의 관리자 세션으로 전환됩니다.</span>
+        </div>
+        <div class="board-server-remote-admin-actions">
+          <input id="boardServerRemoteAdminUrl" type="text" readonly aria-label="원격 관리자 링크" />
+          <button type="button" id="boardServerCopyRemoteAdmin">링크 복사</button>
+        </div>
+        <div class="board-server-remote-admin-hint" id="boardServerRemoteAdminHint">원격 관리자 주소를 확인하는 중입니다.</div>
+      </div>
       <input id="overlayUrlInput" type="hidden" />
     </section>
 
@@ -249,12 +260,42 @@
           const share = document.getElementById("boardServerShareState");
           share.textContent = state.sharingConfigured ? "공개 URL 설정됨" : "로컬/직접 주소 사용";
           share.dataset.ready = state.sharingConfigured ? "true" : "false";
+
+          const remoteAdmin = document.getElementById("boardServerRemoteAdminUrl");
+          const remoteHint = document.getElementById("boardServerRemoteAdminHint");
+          remoteAdmin.value = state.remoteAdminUrl || "";
+          const localAdminUrl = /(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(remoteAdmin.value);
+          if (state.sharingConfigured && !localAdminUrl) {
+            remoteHint.textContent = "외부 관리자 링크 준비 완료 · 신뢰하는 운영자에게만 전달하세요.";
+            remoteHint.dataset.tone = "ready";
+          } else {
+            remoteHint.textContent = "현재 링크는 로컬 주소입니다. 원격 운영 전에 config.json의 publicBaseUrl을 공인 IP 또는 도메인 주소로 설정하세요.";
+            remoteHint.dataset.tone = "warning";
+          }
+
           const carrier = document.getElementById("overlayUrlInput");
           carrier.value = (state.clientBaseUrl || location.origin) + "/?ws=" + encodeURIComponent(state.websocketUrl || "");
         } catch (error) {
           badge.textContent = "서버 연결 대기";
         }
       }
+      document.getElementById("boardServerCopyRemoteAdmin").addEventListener("click", async () => {
+        const input = document.getElementById("boardServerRemoteAdminUrl");
+        const value = input.value.trim();
+        if (!value) return;
+        try {
+          await navigator.clipboard.writeText(value);
+        } catch (_) {
+          input.focus();
+          input.select();
+          document.execCommand("copy");
+        }
+        const button = document.getElementById("boardServerCopyRemoteAdmin");
+        const previous = button.textContent;
+        button.textContent = "복사됨";
+        window.setTimeout(() => { button.textContent = previous; }, 1200);
+      });
+
       refreshServerState();
       setInterval(refreshServerState, 3000);
     })();

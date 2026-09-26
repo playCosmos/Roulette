@@ -699,3 +699,69 @@
     flex-wrap: wrap;
   }
 }
+
+
+.board-server-remote-admin {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #33404e;
+  border-radius: 10px;
+  background: #10151b;
+}
+
+.board-server-remote-admin-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.board-server-remote-admin-copy strong {
+  color: #d9e0e8;
+  font-size: 12px;
+}
+
+.board-server-remote-admin-copy span {
+  color: #8793a1;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.board-server-remote-admin-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.board-server-remote-admin-actions input {
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+
+.board-server-remote-admin-hint {
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: #8b97a5;
+  background: #0d1116;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.board-server-remote-admin-hint[data-tone="ready"] {
+  border: 1px solid #355f44;
+  color: #91d3a6;
+  background: #102018;
+}
+
+.board-server-remote-admin-hint[data-tone="warning"] {
+  border: 1px solid #655936;
+  color: #d9c17e;
+  background: #211d12;
+}
+
+@media (max-width: 640px) {
+  .board-server-remote-admin-actions {
+    grid-template-columns: 1fr;
+  }
+}

@@ -26,6 +26,7 @@ public final class BoardGameHttpServer implements AutoCloseable {
     private final Path webRoot;
     private final String instanceId = UUID.randomUUID().toString();
     private final BoardServerConfig config;
+    private final Supplier<String> remoteAdminUrl;
 
     public BoardGameHttpServer(
         BoardServerConfig config,
@@ -33,9 +34,11 @@ public final class BoardGameHttpServer implements AutoCloseable {
         Path databasePath,
         IntSupplier websocketClientCount,
         Supplier<Map<String, Object>> soopState,
-        RoomHttpHandler rooms
+        RoomHttpHandler rooms,
+        Supplier<String> remoteAdminUrl
     ) throws IOException {
         this.config = config.normalized();
+        this.remoteAdminUrl = remoteAdminUrl;
         this.webRoot = resolveWebRoot(workingDirectory, this.config.storage().webRoot());
         this.server = HttpServer.create(
             new InetSocketAddress(this.config.server().host(), this.config.server().port()),
@@ -70,7 +73,7 @@ public final class BoardGameHttpServer implements AutoCloseable {
             String websocketUrl = websocketUrl(exchange, clientBaseUrl);
 
             payload.put("product", "RamyaniGamesServer");
-            payload.put("version", "0.4.1");
+            payload.put("version", "0.5.0");
             payload.put("instanceId", instanceId);
             payload.put("streamerId", this.config.streamerId());
             payload.put("database", databasePath.toString());
@@ -85,6 +88,8 @@ public final class BoardGameHttpServer implements AutoCloseable {
             );
             payload.put("clientPort", this.config.server().clientPort());
             payload.put("websocketPort", this.config.server().websocketPort());
+            payload.put("remoteAdminUrl", remoteAdminUrl.get());
+            payload.put("remoteAdminSessionHours", 12);
             payload.put("soop", soopState.get());
             sendJson(exchange, 200, payload);
         });

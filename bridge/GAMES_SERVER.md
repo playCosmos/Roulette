@@ -38,3 +38,24 @@
 - 직각 보드: `https://games.example.com/games/board/rect.html?roomId=ABC7K2`
 
 보드 클라이언트는 `/api/client/config`에서 WebSocket 주소를 자동 조회한다. 기존 UUID 형식의 룸 ID도 계속 조회할 수 있다.
+
+
+## 원격 관리자
+
+게임 서버 PC와 실제 운영자가 다른 PC일 수 있으므로 관리자 UI도 외부 공용 HTTP 포트에서 인증 후 사용할 수 있다.
+
+- 로컬 관리자 원본: `127.0.0.1:17830`
+- 참가자/원격 관리자 공용 HTTP: `0.0.0.0:17832`
+- 실시간 WebSocket: `0.0.0.0:17831`
+
+외부 운영자는 오버레이와 동일한 호스트/포트에서 `/admin/` 경로를 사용한다.
+
+예:
+
+`http://PUBLIC-IP:17832/admin/?token=<server-generated-token>`
+
+최초 토큰 검증에 성공하면 서버는 토큰을 URL에서 제거하고 12시간 관리자 세션 쿠키를 발급한다. 쿠키는 `HttpOnly`, `SameSite=Strict`이며 HTTPS 공개 주소에서는 `Secure`도 적용한다.
+
+관리자 API의 변경 요청은 17832에서 인증을 확인한 후 내부 `127.0.0.1:17830`으로 프록시한다. 따라서 17830은 포트포워딩하지 않는다.
+
+서버 PC의 로컬 관리자 화면에서 현재 원격 관리자 링크를 확인/복사할 수 있다. 서버 재시작 시 bootstrap token과 기존 세션은 폐기되고 새로 생성된다.

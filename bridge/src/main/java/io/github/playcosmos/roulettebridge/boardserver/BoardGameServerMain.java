@@ -135,19 +135,20 @@ public final class BoardGameServerMain {
             (bid, event) -> {}
         );
 
+        var clientHttp = new GameClientHttpServer(
+            config,
+            root,
+            roomService,
+            runtime
+        );
         var http = new BoardGameHttpServer(
             config,
             root,
             database.path(),
             websocket::connectedClients,
             soopState::snapshot,
-            roomHttp
-        );
-        var clientHttp = new GameClientHttpServer(
-            config,
-            root,
-            roomService,
-            runtime
+            roomHttp,
+            clientHttp::adminBootstrapUrl
         );
         http.start();
         clientHttp.start();
@@ -159,6 +160,9 @@ public final class BoardGameServerMain {
         System.out.println(
             "[board-client] http://" + config.server().clientHost()
                 + ":" + config.server().clientPort()
+        );
+        System.out.println(
+            "[remote-admin] " + clientHttp.adminBootstrapUrl()
         );
         if (!config.server().publicBaseUrl().isBlank()) {
             System.out.println(

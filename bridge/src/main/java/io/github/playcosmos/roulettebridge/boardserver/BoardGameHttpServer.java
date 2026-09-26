@@ -93,7 +93,6 @@ public final class BoardGameHttpServer implements AutoCloseable {
 
             payload.put("product", "RamyaniGamesServer");
             payload.put("version", VERSION);
-        payload.put("roomAdminUiVersion", ROOM_ADMIN_UI_VERSION);
             payload.put("roomAdminUiVersion", ROOM_ADMIN_UI_VERSION);
             payload.put("instanceId", instanceId);
             payload.put("streamerId", this.config.streamerId());
@@ -242,6 +241,7 @@ public final class BoardGameHttpServer implements AutoCloseable {
 
         payload.put("product", "RamyaniGamesServer");
         payload.put("version", VERSION);
+        payload.put("roomAdminUiVersion", ROOM_ADMIN_UI_VERSION);
         payload.put("instanceId", instanceId);
         payload.put("startedAt", startedAt);
         payload.put("time", OffsetDateTime.now().toString());

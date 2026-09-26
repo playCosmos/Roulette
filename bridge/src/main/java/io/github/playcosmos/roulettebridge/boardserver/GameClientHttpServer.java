@@ -103,13 +103,30 @@ public final class GameClientHttpServer implements AutoCloseable {
     public String adminBootstrapUrl() {
         String base = config.server().publicBaseUrl();
         if (base == null || base.isBlank()) {
-            base = "http://127.0.0.1:" + config.server().clientPort();
+            base = localAdminBootstrapBaseUrl();
         }
         while (base.endsWith("/")) {
             base = base.substring(0, base.length() - 1);
         }
         return base + "/admin/?token="
-            + URLEncoder.encode(adminBootstrapToken, StandardCharsets.UTF_8);
+            + encodedAdminBootstrapToken();
+    }
+
+    public String localAdminBootstrapUrl() {
+        return localAdminBootstrapBaseUrl()
+            + "/admin/?token="
+            + encodedAdminBootstrapToken();
+    }
+
+    private String localAdminBootstrapBaseUrl() {
+        return "http://127.0.0.1:" + config.server().clientPort();
+    }
+
+    private String encodedAdminBootstrapToken() {
+        return URLEncoder.encode(
+            adminBootstrapToken,
+            StandardCharsets.UTF_8
+        );
     }
 
     private void health(HttpExchange exchange) throws IOException {

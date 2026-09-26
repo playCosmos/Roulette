@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.5.0",
+    [string]$Version = "0.5.1",
     [switch]$SkipBuild
 )
 
@@ -92,8 +92,8 @@ RamyaniGamesServer Windows x64
 서버
 ----
 1. RamyaniGamesServer.exe를 실행합니다.
-2. 관리자 UI: http://127.0.0.1:17830/board-admin.html
-3. 관리자 API는 기본적으로 127.0.0.1:17830에만 바인딩됩니다.
+2. 사용자용 관리자 UI는 17832의 /admin/ 경로를 사용합니다.
+3. 실제 관리 백엔드는 127.0.0.1:17830에만 바인딩되며 내부 프록시용으로 유지됩니다.
 4. 보드게임 DB: data/board-game.db
 
 클라이언트 / 원격 운영

@@ -125,6 +125,12 @@ public final class ClientBoundaryProbe {
                 runtime
             );
             server.start();
+            require(
+                server.localAdminBootstrapUrl().startsWith(
+                    "http://127.0.0.1:" + clientPort + "/admin/?token="
+                ),
+                "local user-facing admin URL must use client port"
+            );
 
             var client = HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.NEVER)

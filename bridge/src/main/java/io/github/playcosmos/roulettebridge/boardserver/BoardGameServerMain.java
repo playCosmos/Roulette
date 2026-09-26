@@ -154,8 +154,7 @@ public final class BoardGameServerMain {
         clientHttp.start();
         soop.start();
 
-        String adminUrl = "http://127.0.0.1:"
-            + config.server().port() + "/board-admin.html";
+        String adminUrl = clientHttp.localAdminBootstrapUrl();
         System.out.println("[board-admin] " + adminUrl);
         System.out.println(
             "[board-client] http://" + config.server().clientHost()

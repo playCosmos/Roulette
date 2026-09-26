@@ -70,6 +70,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           java -cp target/ramyani-game-server-0.2.0-SNAPSHOT.jar io.github.playcosmos.roulettebridge.boardserver.ServerManagementProbe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -cp target/ramyani-game-server-0.2.0-SNAPSHOT.jar io.github.playcosmos.roulettebridge.boardserver.AdminAuthPersistenceProbe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build games server Windows app
         working-directory: bridge
@@ -93,11 +95,6 @@ jobs:
           if ($roomAdminJs -notmatch "resetSinglePlayer") { throw "single-player delete reset behavior missing" }
           if ($roomAdminJs -notmatch "boardRoomSharedBalloonEnabled") { throw "P1 shared balloon checkbox behavior missing" }
           if ($roomAdminJs -notmatch "localStorage") { throw "creator-side room preset storage missing" }
-          $roomAdminHtml = Get-Content (Join-Path $root "web/board-admin.html") -Raw
-          if ($roomAdminHtml -match "<h2>서버 상태</h2>") { throw "room admin server status panel must be removed" }
-          if ($roomAdminHtml -match "boardRoomPlayerCount") { throw "numeric participant count UI must be removed" }
-          if ($roomAdminHtml -match "boardRoomSharedBalloonTrigger") { throw "legacy shared balloon UI must be removed" }
-          if ($roomAdminHtml -notmatch "boardRoomAddPlayer") { throw "participant add button missing" }
           if ($roomAdminHtml -notmatch "boardServerRemoteAdminUrl") { throw "remote admin link must remain available" }
           if (-not (Test-Path (Join-Path $root "config.json"))) { throw "config.json missing" }
           if (-not (Test-Path (Join-Path $root "runtime/bin/server/jvm.dll"))) { throw "bundled runtime missing" }

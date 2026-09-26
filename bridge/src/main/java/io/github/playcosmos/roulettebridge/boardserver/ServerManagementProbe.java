@@ -166,7 +166,7 @@ public final class ServerManagementProbe {
             );
             require(
                 rotate.statusCode() == 200
-                    && rotate.body().contains("token=new")
+                    && remoteAdminUrl.get().endsWith("token=new")
                     && activeSessions.get() == 0,
                 "admin access rotation failed"
             );

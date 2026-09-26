@@ -40,6 +40,8 @@
         <div><span>Database</span><strong id="boardServerDb">-</strong></div>
         <div><span>클라이언트 주소</span><strong id="boardServerClientUrl">-</strong></div>
         <div><span>외부 공유</span><strong id="boardServerShareState">확인 중</strong></div>
+        <div><span>룸 관리 UI 버전</span><strong id="boardRoomAdminUiVersion">-</strong></div>
+        <div><span>서버 버전</span><strong id="boardServerVersion">-</strong></div>
       </div>
       <div class="board-server-remote-admin">
         <div class="board-server-remote-admin-copy">
@@ -257,6 +259,10 @@
           document.getElementById("boardServerWs").textContent = state.websocketUrl || "-";
           document.getElementById("boardServerDb").textContent = state.database || "-";
           document.getElementById("boardServerClientUrl").textContent = state.clientBaseUrl || "-";
+          document.getElementById("boardRoomAdminUiVersion").textContent =
+            "v" + (state.roomAdminUiVersion || "-");
+          document.getElementById("boardServerVersion").textContent =
+            "v" + (state.version || "-");
           const share = document.getElementById("boardServerShareState");
           share.textContent = state.sharingConfigured ? "공개 URL 설정됨" : "로컬/직접 주소 사용";
           share.dataset.ready = state.sharingConfigured ? "true" : "false";

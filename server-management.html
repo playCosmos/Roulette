@@ -81,6 +81,11 @@
       <strong id="uptime">-</strong>
       <small id="version">버전 확인 중</small>
     </article>
+    <article class="card">
+      <span>룸 관리 UI 버전</span>
+      <strong id="roomAdminUiVersion">-</strong>
+      <small>17832 관리자 페이지</small>
+    </article>
   </section>
 
   <section class="panel">
@@ -160,6 +165,7 @@
     ids("streamerId").textContent = "Streamer ID · " + (state.streamerId || "미설정");
     ids("uptime").textContent = formatUptime(state.startedAt);
     ids("version").textContent = "RamyaniGamesServer v" + (state.version || "-");
+    ids("roomAdminUiVersion").textContent = "v" + (state.roomAdminUiVersion || "-");
     ids("instanceId").textContent = state.instanceId || "-";
     ids("startedAt").textContent = formatTime(state.startedAt);
     ids("adminEndpoint").textContent =

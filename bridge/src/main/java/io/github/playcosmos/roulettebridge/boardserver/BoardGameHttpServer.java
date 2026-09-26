@@ -21,7 +21,8 @@ import java.util.function.Supplier;
 
 public final class BoardGameHttpServer implements AutoCloseable {
     private static final Gson GSON = new Gson();
-    private static final String VERSION = "0.6.0";
+    private static final String VERSION = "0.6.1";
+    private static final String ROOM_ADMIN_UI_VERSION = "0.6.1";
     private static final int MAX_MANAGEMENT_BODY_BYTES = 16 * 1024;
 
     private final HttpServer server;
@@ -92,6 +93,8 @@ public final class BoardGameHttpServer implements AutoCloseable {
 
             payload.put("product", "RamyaniGamesServer");
             payload.put("version", VERSION);
+        payload.put("roomAdminUiVersion", ROOM_ADMIN_UI_VERSION);
+            payload.put("roomAdminUiVersion", ROOM_ADMIN_UI_VERSION);
             payload.put("instanceId", instanceId);
             payload.put("streamerId", this.config.streamerId());
             payload.put("database", databasePath.toString());

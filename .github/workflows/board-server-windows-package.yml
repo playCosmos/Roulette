@@ -74,7 +74,7 @@ jobs:
       - name: Build games server Windows app
         working-directory: bridge
         shell: pwsh
-        run: ./package-games-server-windows.ps1 -Version 0.6.0 -SkipBuild
+        run: ./package-games-server-windows.ps1 -Version 0.6.1 -SkipBuild
 
       - name: Verify games server package
         working-directory: bridge
@@ -118,7 +118,7 @@ jobs:
       - name: Upload games server package
         uses: actions/upload-artifact@v4
         with:
-          name: RamyaniGamesServer-Windows-x64-v0.6.0
+          name: RamyaniGamesServer-Windows-x64-v0.6.1
           path: bridge/dist-games/RamyaniGamesServer/**
           if-no-files-found: error
           retention-days: 30

@@ -12,6 +12,9 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+
+import static io.github.playcosmos.roulettebridge.room.RoomModels.*;
 
 public final class ClientBoundaryProbe {
     private ClientBoundaryProbe() {}
@@ -139,6 +142,100 @@ public final class ClientBoundaryProbe {
                 .build();
             URI base = URI.create(
                 "http://127.0.0.1:" + clientPort
+            );
+
+            var roomRequest = new CreateRoomRequest(
+                "Room Code Boundary",
+                List.of(new PlayerInput("soop-a", "A", null, 100)),
+                new BoardInput("dimensions", 8, 6, null, "rounded"),
+                new MovementInput("dice", 1, false, false, false),
+                new RulesInput("destinationOnly", true, true),
+                List.of(),
+                new RandomPoolInput("custom", List.of(), null)
+            );
+            var draftRoom = rooms.create(roomRequest);
+            String roomCode = draftRoom.roomId();
+            require(
+                roomCode.length() == 6,
+                "room code must be six characters"
+            );
+
+            var draftCodeRead = client.send(
+                HttpRequest.newBuilder(
+                    base.resolve(
+                        "/api/board/rooms/" + roomCode
+                            + "?roomCode=" + roomCode
+                    )
+                ).GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            );
+            require(
+                draftCodeRead.statusCode() == 401,
+                "draft room code must not authorize public overlay reads"
+            );
+
+            rooms.commitPreview(roomCode);
+
+            var missingCodeRead = client.send(
+                HttpRequest.newBuilder(
+                    base.resolve("/api/board/rooms/" + roomCode)
+                ).GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            );
+            require(
+                missingCodeRead.statusCode() == 401,
+                "public room read must require the six-character room code"
+            );
+
+            String wrongRoomCode = roomCode.equals("AAAAAA")
+                ? "BBBBBB"
+                : "AAAAAA";
+            var wrongCodeRead = client.send(
+                HttpRequest.newBuilder(
+                    base.resolve(
+                        "/api/board/rooms/" + roomCode
+                            + "?roomCode=" + wrongRoomCode
+                    )
+                ).GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            );
+            require(
+                wrongCodeRead.statusCode() == 401,
+                "wrong room code must not authorize public overlay reads"
+            );
+
+            var roomCodeRead = client.send(
+                HttpRequest.newBuilder(
+                    base.resolve(
+                        "/api/board/rooms/" + roomCode
+                            + "?roomCode=" + roomCode
+                    )
+                ).GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            );
+            require(
+                roomCodeRead.statusCode() == 200
+                    && roomCodeRead.body().contains(
+                        "\"roomId\":\"" + roomCode + "\""
+                    ),
+                "committed room code must authorize room snapshot reads"
+            );
+
+            var runtimeCodeRead = client.send(
+                HttpRequest.newBuilder(
+                    base.resolve(
+                        "/api/board/rooms/" + roomCode
+                            + "/runtime?roomCode=" + roomCode
+                    )
+                ).GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            );
+            require(
+                runtimeCodeRead.statusCode() == 200
+                    && runtimeCodeRead.body().contains(
+                        "\"roomId\":\"" + roomCode + "\""
+                    ),
+                "committed room code must authorize runtime reads"
             );
 
             var boardResponse = client.send(

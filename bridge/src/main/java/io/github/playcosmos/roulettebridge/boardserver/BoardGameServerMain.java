@@ -46,27 +46,43 @@ public final class BoardGameServerMain {
         System.out.println("[games-server] config=" + configPath);
         System.out.println("[games-server] database=" + database.path());
 
-        var websocket = new BoardGameWebSocketServer(
-            config.server().clientHost(),
-            config.server().websocketPort()
-        );
-        websocket.start();
-
-        var runtime = new BoardGameRuntimeEngine(
-            database,
-            event -> websocket.broadcastEvent(GSON.toJson(event))
-        );
-        int recovered = runtime.recoverQueuedDonations();
-        if (recovered > 0) {
-            System.out.println("[games-server] recovered queued donations=" + recovered);
-        }
-
         var serverPolicies = new ServerPolicyService(database);
         var roomService = new RoomService(
             database,
             serverPolicies::activeRoomLimit
         );
         roomService.terminateExpiredRooms();
+
+        var websocket = new BoardGameWebSocketServer(
+            config.server().clientHost(),
+            config.server().websocketPort(),
+            roomCode -> {
+                try {
+                    var room = roomService.find(roomCode);
+                    var lifecycle = room.lifecycle();
+                    if (!"READY".equals(room.status()) || lifecycle == null) {
+                        return false;
+                    }
+                    String state = lifecycle.state();
+                    return "ACTIVE".equals(state) || "PAUSED".equals(state);
+                } catch (Exception error) {
+                    return false;
+                }
+            }
+        );
+        websocket.start();
+
+        var runtime = new BoardGameRuntimeEngine(
+            database,
+            event -> websocket.broadcastEvent(
+                event.roomId(),
+                GSON.toJson(event)
+            )
+        );
+        int recovered = runtime.recoverQueuedDonations();
+        if (recovered > 0) {
+            System.out.println("[games-server] recovered queued donations=" + recovered);
+        }
 
         var lifecycleExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "board-room-lifecycle");

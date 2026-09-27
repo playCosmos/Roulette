@@ -112,7 +112,7 @@
       ? "/games/board/rect.html"
       : "/games/board/index.html";
     const url = new URL(path, serverState.clientBaseUrl);
-    url.searchParams.set("roomId", roomId);
+    url.searchParams.set("roomCode", roomId);
     return url.toString();
   }
 
@@ -334,7 +334,7 @@
   function ensureBoardFrame() {
     if (!roomId || !serverState?.websocketUrl || boardLoadedForRoom === roomId) return;
     const url = new URL("./games/board/index.html", window.location.href);
-    url.searchParams.set("roomId", roomId);
+    url.searchParams.set("roomCode", roomId);
     url.searchParams.set("board", "committed");
     url.searchParams.set("ws", serverState.websocketUrl);
     boardFrame.src = url.toString();

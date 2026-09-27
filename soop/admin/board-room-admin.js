@@ -1136,7 +1136,7 @@
       ? "/games/board/rect.html"
       : "/games/board/index.html";
     const url = new URL(page, clientBaseUrl());
-    url.searchParams.set("roomId", snapshot.roomId);
+    url.searchParams.set("roomCode", snapshot.roomId);
     return url.toString();
   }
 
@@ -1144,7 +1144,7 @@
     const style = snapshot?.config?.board?.layoutStyle || "rounded";
     const page = style === "rect" ? "./games/board/rect.html" : "./games/board/index.html";
     const url = new URL(page, window.location.href);
-    url.searchParams.set("roomId", snapshot.roomId);
+    url.searchParams.set("roomCode", snapshot.roomId);
     url.searchParams.set("preview", "1");
     url.searchParams.set("_", String(Date.now()));
     return url.toString();

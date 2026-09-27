@@ -24,6 +24,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
@@ -260,25 +261,38 @@ public final class GameClientHttpServer implements AutoCloseable {
         }
 
         String route = path.substring(base.length());
-        try {
-            Object payload;
-            if (route.endsWith("/runtime")) {
-                String roomId = route.substring(
-                    0,
-                    route.length() - "/runtime".length()
+        boolean runtimeRoute = route.endsWith("/runtime");
+        String roomId;
+
+        if (runtimeRoute) {
+            roomId = route.substring(
+                0,
+                route.length() - "/runtime".length()
+            );
+        } else {
+            if (route.contains("/")) {
+                sendJson(
+                    exchange,
+                    404,
+                    Map.of("error", "route not found")
                 );
-                payload = runtime.snapshot(roomId);
-            } else {
-                if (route.contains("/")) {
-                    sendJson(
-                        exchange,
-                        404,
-                        Map.of("error", "route not found")
-                    );
-                    return;
-                }
-                payload = rooms.find(route);
+                return;
             }
+            roomId = route;
+        }
+
+        if (!hasRoomReadAccess(exchange, roomId)) {
+            sendJson(exchange, 401, Map.of(
+                "error",
+                "valid committed room code required"
+            ));
+            return;
+        }
+
+        try {
+            Object payload = runtimeRoute
+                ? runtime.snapshot(roomId)
+                : rooms.find(roomId);
 
             if ("HEAD".equalsIgnoreCase(exchange.getRequestMethod())) {
                 exchange.sendResponseHeaders(200, -1);
@@ -293,6 +307,51 @@ public final class GameClientHttpServer implements AutoCloseable {
                 Map.of("error", safeMessage(error))
             );
         }
+    }
+
+    private boolean hasRoomReadAccess(
+        HttpExchange exchange,
+        String roomId
+    ) {
+        if (isAdminSession(exchange)) return true;
+
+        String normalizedRoomId = normalizeRoomCode(roomId);
+        String suppliedRoomCode = normalizeRoomCode(
+            queryParameter(
+                exchange.getRequestURI().getRawQuery(),
+                "roomCode"
+            )
+        );
+
+        if (
+            normalizedRoomId.length() != 6
+            || suppliedRoomCode.length() != 6
+            || !constantTimeEquals(
+                suppliedRoomCode,
+                normalizedRoomId
+            )
+        ) {
+            return false;
+        }
+
+        try {
+            var room = rooms.find(normalizedRoomId);
+            var lifecycle = room.lifecycle();
+            if (!"READY".equals(room.status()) || lifecycle == null) {
+                return false;
+            }
+
+            String state = lifecycle.state();
+            return "ACTIVE".equals(state) || "PAUSED".equals(state);
+        } catch (Exception error) {
+            return false;
+        }
+    }
+
+    private static String normalizeRoomCode(String value) {
+        return value == null
+            ? ""
+            : value.trim().toUpperCase(Locale.ROOT);
     }
 
     private void serveAdmin(HttpExchange exchange) throws IOException {

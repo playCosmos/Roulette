@@ -6,6 +6,7 @@ import java.security.MessageDigest;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Locale;
 import java.util.function.Supplier;
 
 public final class AdminAuthStore {
@@ -17,6 +18,12 @@ public final class AdminAuthStore {
     public AdminAuthStore(DatabaseAccess database) {
         this.database = database;
     }
+
+    public record ApprovalRequest(
+        String code,
+        String status,
+        Instant expiresAt
+    ) {}
 
     public String bootstrapTokenOrCreate(
         Supplier<String> tokenSupplier
@@ -83,11 +90,7 @@ public final class AdminAuthStore {
                     );
                     statement.executeUpdate();
                 }
-                try (var statement = connection.prepareStatement(
-                    "DELETE FROM board_admin_session"
-                )) {
-                    statement.executeUpdate();
-                }
+                deleteAllSessionsAndApprovals(connection);
                 connection.commit();
             } catch (SQLException error) {
                 connection.rollback();
@@ -187,30 +190,209 @@ public final class AdminAuthStore {
         }
     }
 
-    public int revokeAllSessions() throws SQLException {
-        cleanupExpired(Instant.now());
-        try (var connection = database.open()) {
-            int active;
-            try (var count = connection.prepareStatement(
-                     "SELECT COUNT(*) FROM board_admin_session"
-                 );
-                 var rows = count.executeQuery()) {
-                active = rows.next() ? rows.getInt(1) : 0;
-            }
-            try (var delete = connection.prepareStatement(
-                "DELETE FROM board_admin_session"
-            )) {
-                delete.executeUpdate();
-            }
-            return active;
+    public boolean createApprovalRequest(
+        String requestId,
+        String approvalCode,
+        Instant expiresAt
+    ) throws SQLException {
+        Instant now = Instant.now();
+        cleanupExpiredApprovalRequests(now);
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 INSERT OR IGNORE INTO board_admin_approval_request(
+                   request_hash, approval_code, status,
+                   expires_at, created_at, approved_at
+                 ) VALUES (?, ?, 'PENDING', ?, ?, NULL)
+                 """)) {
+            statement.setString(1, hash(requestId));
+            statement.setString(
+                2,
+                normalizeApprovalCode(approvalCode)
+            );
+            statement.setString(3, expiresAt.toString());
+            statement.setString(4, now.toString());
+            return statement.executeUpdate() == 1;
         }
     }
 
-    private static String hash(String sessionId) {
+    public ApprovalRequest findApprovalRequest(
+        String requestId,
+        Instant now
+    ) throws SQLException {
+        cleanupExpiredApprovalRequests(now);
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 SELECT approval_code, status, expires_at
+                 FROM board_admin_approval_request
+                 WHERE request_hash = ?
+                 """)) {
+            statement.setString(1, hash(requestId));
+            try (var rows = statement.executeQuery()) {
+                if (!rows.next()) return null;
+                return new ApprovalRequest(
+                    rows.getString(1),
+                    rows.getString(2),
+                    Instant.parse(rows.getString(3))
+                );
+            }
+        }
+    }
+
+    public boolean approveApprovalRequest(
+        String approvalCode,
+        Instant now
+    ) throws SQLException {
+        cleanupExpiredApprovalRequests(now);
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 UPDATE board_admin_approval_request
+                 SET status = 'APPROVED', approved_at = ?
+                 WHERE approval_code = ?
+                   AND status = 'PENDING'
+                   AND expires_at > ?
+                 """)) {
+            statement.setString(1, now.toString());
+            statement.setString(
+                2,
+                normalizeApprovalCode(approvalCode)
+            );
+            statement.setString(3, now.toString());
+            return statement.executeUpdate() == 1;
+        }
+    }
+
+    public boolean consumeApprovedApprovalRequest(
+        String requestId,
+        Instant now
+    ) throws SQLException {
+        try (var connection = database.open()) {
+            connection.setAutoCommit(false);
+            try {
+                String requestHash = hash(requestId);
+                boolean approved = false;
+                try (var select = connection.prepareStatement("""
+                    SELECT status, expires_at
+                    FROM board_admin_approval_request
+                    WHERE request_hash = ?
+                    """)) {
+                    select.setString(1, requestHash);
+                    try (var rows = select.executeQuery()) {
+                        if (rows.next()) {
+                            Instant expiresAt = Instant.parse(
+                                rows.getString(2)
+                            );
+                            approved =
+                                "APPROVED".equals(rows.getString(1))
+                                && expiresAt.isAfter(now);
+                        }
+                    }
+                }
+
+                if (!approved) {
+                    connection.commit();
+                    return false;
+                }
+
+                try (var delete = connection.prepareStatement("""
+                    DELETE FROM board_admin_approval_request
+                    WHERE request_hash = ?
+                    """)) {
+                    delete.setString(1, requestHash);
+                    if (delete.executeUpdate() != 1) {
+                        connection.rollback();
+                        return false;
+                    }
+                }
+
+                connection.commit();
+                return true;
+            } catch (SQLException error) {
+                connection.rollback();
+                throw error;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    public int countPendingApprovalRequests(Instant now)
+        throws SQLException {
+        cleanupExpiredApprovalRequests(now);
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 SELECT COUNT(*)
+                 FROM board_admin_approval_request
+                 WHERE status = 'PENDING'
+                 """);
+             var rows = statement.executeQuery()) {
+            return rows.next() ? rows.getInt(1) : 0;
+        }
+    }
+
+    public void cleanupExpiredApprovalRequests(Instant now)
+        throws SQLException {
+        try (var connection = database.open();
+             var statement = connection.prepareStatement("""
+                 DELETE FROM board_admin_approval_request
+                 WHERE expires_at <= ?
+                 """)) {
+            statement.setString(1, now.toString());
+            statement.executeUpdate();
+        }
+    }
+
+    public int revokeAllSessions() throws SQLException {
+        Instant now = Instant.now();
+        cleanupExpired(now);
+        cleanupExpiredApprovalRequests(now);
+        try (var connection = database.open()) {
+            connection.setAutoCommit(false);
+            try {
+                int active;
+                try (var count = connection.prepareStatement(
+                         "SELECT COUNT(*) FROM board_admin_session"
+                     );
+                     var rows = count.executeQuery()) {
+                    active = rows.next() ? rows.getInt(1) : 0;
+                }
+                deleteAllSessionsAndApprovals(connection);
+                connection.commit();
+                return active;
+            } catch (SQLException error) {
+                connection.rollback();
+                throw error;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    private static void deleteAllSessionsAndApprovals(
+        java.sql.Connection connection
+    ) throws SQLException {
+        try (var deleteSessions = connection.prepareStatement(
+            "DELETE FROM board_admin_session"
+        )) {
+            deleteSessions.executeUpdate();
+        }
+        try (var deleteApprovals = connection.prepareStatement(
+            "DELETE FROM board_admin_approval_request"
+        )) {
+            deleteApprovals.executeUpdate();
+        }
+    }
+
+    private static String normalizeApprovalCode(String code) {
+        return code == null
+            ? ""
+            : code.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static String hash(String value) {
         try {
             byte[] digest = MessageDigest
                 .getInstance("SHA-256")
-                .digest(sessionId.getBytes(StandardCharsets.UTF_8));
+                .digest(value.getBytes(StandardCharsets.UTF_8));
             return HASH_ENCODER.encodeToString(digest);
         } catch (Exception error) {
             throw new IllegalStateException(

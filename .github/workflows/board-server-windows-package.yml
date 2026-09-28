@@ -72,6 +72,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           java -cp target/ramyani-game-server-0.2.0-SNAPSHOT.jar io.github.playcosmos.roulettebridge.boardserver.AdminAuthPersistenceProbe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -cp target/ramyani-game-server-0.2.0-SNAPSHOT.jar io.github.playcosmos.roulettebridge.boardserver.BoardServerConfigPersistenceProbe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build games server Windows app
         working-directory: bridge
@@ -98,7 +100,8 @@ jobs:
           if ($roomAdminHtml -match "boardServerRemoteAdminUrl") { throw "remote admin link must not appear in room creator" }
           if ($roomAdminJs -notmatch "RAMYANI_BOARD_LAST_ROOM_META") { throw "last-created room cookie persistence missing" }
           if ($roomAdminJs -notmatch "DEFAULT_PLAYER_COUNT = 2") { throw "room creator must default to two participants" }
-          if (-not (Test-Path (Join-Path $root "config.json"))) { throw "config.json missing" }
+          if (Test-Path (Join-Path $root "config.json")) { throw "live config.json must not be shipped because updates must preserve an existing config" }
+          if (-not (Test-Path (Join-Path $root "config.example.json"))) { throw "config.example.json missing" }
           if (-not (Test-Path (Join-Path $root "runtime/bin/server/jvm.dll"))) { throw "bundled runtime missing" }
           @(
             "web/server-management.html",

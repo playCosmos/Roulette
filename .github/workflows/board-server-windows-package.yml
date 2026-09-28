@@ -95,7 +95,9 @@ jobs:
           if ($roomAdminJs -notmatch "resetSinglePlayer") { throw "single-player delete reset behavior missing" }
           if ($roomAdminJs -notmatch "boardRoomSharedBalloonEnabled") { throw "P1 shared balloon checkbox behavior missing" }
           if ($roomAdminJs -notmatch "localStorage") { throw "creator-side room preset storage missing" }
-          if ($roomAdminHtml -notmatch "boardServerRemoteAdminUrl") { throw "remote admin link must remain available" }
+          if ($roomAdminHtml -match "boardServerRemoteAdminUrl") { throw "remote admin link must not appear in room creator" }
+          if ($roomAdminJs -notmatch "RAMYANI_BOARD_LAST_ROOM_META") { throw "last-created room cookie persistence missing" }
+          if ($roomAdminJs -notmatch "DEFAULT_PLAYER_COUNT = 2") { throw "room creator must default to two participants" }
           if (-not (Test-Path (Join-Path $root "config.json"))) { throw "config.json missing" }
           if (-not (Test-Path (Join-Path $root "runtime/bin/server/jvm.dll"))) { throw "bundled runtime missing" }
           @(

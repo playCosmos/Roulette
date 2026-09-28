@@ -248,21 +248,6 @@
           document.getElementById("boardServerVersion").textContent =
             "서버 v" + (state.version || "-");
 
-          const remoteAdmin = document.getElementById("boardServerRemoteAdminUrl");
-          const remoteHint = document.getElementById("boardServerRemoteAdminHint");
-          if (remoteAdmin) remoteAdmin.value = state.remoteAdminUrl || "";
-
-          if (remoteHint && remoteAdmin) {
-            const localAdminUrl = /(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(remoteAdmin.value);
-            if (state.sharingConfigured && !localAdminUrl) {
-              remoteHint.textContent = "외부 관리자 링크 준비 완료 · 신뢰하는 운영자에게만 전달하세요.";
-              remoteHint.dataset.tone = "ready";
-            } else {
-              remoteHint.textContent = "현재 링크는 로컬 주소입니다. 원격 운영 전에 config.json의 publicBaseUrl을 공인 IP 또는 도메인 주소로 설정하세요.";
-              remoteHint.dataset.tone = "warning";
-            }
-          }
-
           const carrier = document.getElementById("overlayUrlInput");
           if (carrier) {
             carrier.value =
@@ -273,24 +258,6 @@
         } catch (_) {
         }
       }
-
-      document.getElementById("boardServerCopyRemoteAdmin")?.addEventListener("click", async () => {
-        const input = document.getElementById("boardServerRemoteAdminUrl");
-        const value = input?.value.trim() || "";
-        if (!value) return;
-        try {
-          await navigator.clipboard.writeText(value);
-        } catch (_) {
-          input.focus();
-          input.select();
-          document.execCommand("copy");
-        }
-        const button = document.getElementById("boardServerCopyRemoteAdmin");
-        if (!button) return;
-        const previous = button.textContent;
-        button.textContent = "복사됨";
-        window.setTimeout(() => { button.textContent = previous; }, 1200);
-      });
 
       refreshRoomAdminMeta();
       setInterval(refreshRoomAdminMeta, 3000);

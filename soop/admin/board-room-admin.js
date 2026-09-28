@@ -44,6 +44,12 @@
   const presetLoadButton = $("boardRoomPresetLoad");
   const presetDeleteButton = $("boardRoomPresetDelete");
   const PRESET_STORAGE_KEY = "ramyani.boardRoomPresets.v1";
+  const LAST_ROOM_COOKIE_PREFIX = "RAMYANI_BOARD_LAST_ROOM_";
+  const LAST_ROOM_COOKIE_META = "RAMYANI_BOARD_LAST_ROOM_META";
+  const LAST_ROOM_COOKIE_CHUNK_SIZE = 3000;
+  const LAST_ROOM_COOKIE_MAX_CHUNKS = 12;
+  const LAST_ROOM_COOKIE_MAX_AGE = 60 * 60 * 24 * 180;
+  const DEFAULT_PLAYER_COUNT = 2;
 
   let currentRoom = null;
   let instructionSequence = 0;
@@ -230,8 +236,107 @@
 
   function renderPlayers() {
     playersRoot.innerHTML = "";
-    for (let index = 0; index < 4; index += 1) {
+    for (let index = 0; index < DEFAULT_PLAYER_COUNT; index += 1) {
       addPlayerRow();
+    }
+  }
+
+  function cookieAttributes(maxAge = LAST_ROOM_COOKIE_MAX_AGE) {
+    return [
+      "Path=/admin/",
+      "Max-Age=" + maxAge,
+      "SameSite=Strict",
+      window.location.protocol === "https:" ? "Secure" : ""
+    ].filter(Boolean).join("; ");
+  }
+
+  function readCookie(name) {
+    const prefix = name + "=";
+    for (const item of document.cookie.split(";")) {
+      const value = item.trim();
+      if (value.startsWith(prefix)) {
+        return value.substring(prefix.length);
+      }
+    }
+    return "";
+  }
+
+  function writeCookie(name, value, maxAge = LAST_ROOM_COOKIE_MAX_AGE) {
+    document.cookie =
+      name + "=" + value + "; " + cookieAttributes(maxAge);
+  }
+
+  function deleteCookie(name) {
+    writeCookie(name, "", 0);
+  }
+
+  function clearLastCreatedRoomCookies() {
+    const meta = readCookie(LAST_ROOM_COOKIE_META);
+    const count = Math.min(
+      LAST_ROOM_COOKIE_MAX_CHUNKS,
+      Math.max(0, Number.parseInt(meta, 10) || 0)
+    );
+    for (let index = 0; index < Math.max(count, LAST_ROOM_COOKIE_MAX_CHUNKS); index += 1) {
+      deleteCookie(LAST_ROOM_COOKIE_PREFIX + index);
+    }
+    deleteCookie(LAST_ROOM_COOKIE_META);
+  }
+
+  function saveLastCreatedRoomCookie() {
+    const encoded = encodeURIComponent(
+      JSON.stringify(captureRoomPreset())
+    );
+    const chunks = [];
+    for (
+      let offset = 0;
+      offset < encoded.length;
+      offset += LAST_ROOM_COOKIE_CHUNK_SIZE
+    ) {
+      chunks.push(
+        encoded.slice(offset, offset + LAST_ROOM_COOKIE_CHUNK_SIZE)
+      );
+    }
+
+    if (chunks.length > LAST_ROOM_COOKIE_MAX_CHUNKS) {
+      throw new Error(
+        "마지막 룸 설정이 쿠키 저장 한도보다 큽니다."
+      );
+    }
+
+    clearLastCreatedRoomCookies();
+    chunks.forEach((chunk, index) => {
+      writeCookie(LAST_ROOM_COOKIE_PREFIX + index, chunk);
+    });
+    writeCookie(LAST_ROOM_COOKIE_META, String(chunks.length));
+  }
+
+  function readLastCreatedRoomCookie() {
+    const count = Math.min(
+      LAST_ROOM_COOKIE_MAX_CHUNKS,
+      Math.max(
+        0,
+        Number.parseInt(
+          readCookie(LAST_ROOM_COOKIE_META),
+          10
+        ) || 0
+      )
+    );
+    if (!count) return null;
+
+    let encoded = "";
+    for (let index = 0; index < count; index += 1) {
+      const chunk = readCookie(LAST_ROOM_COOKIE_PREFIX + index);
+      if (!chunk) return null;
+      encoded += chunk;
+    }
+
+    try {
+      const parsed = JSON.parse(decodeURIComponent(encoded));
+      return parsed && typeof parsed === "object"
+        ? parsed
+        : null;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -404,7 +509,7 @@
     syncAllInstructionRows();
   }
 
-  function restoreRoomPreset(preset) {
+  function restoreRoomPreset(preset, options = {}) {
     if (!preset || typeof preset !== "object") {
       throw new Error("저장된 설정 형식이 올바르지 않습니다.");
     }
@@ -462,7 +567,29 @@
     liveSummary.innerHTML = "";
     previewPanel.hidden = true;
     currentRoom = null;
-    showResult("저장된 룸 설정을 불러왔습니다.", "success");
+    if (!options.silent) {
+      showResult("저장된 룸 설정을 불러왔습니다.", "success");
+    }
+  }
+
+  function restoreLastCreatedRoomCookie() {
+    const preset = readLastCreatedRoomCookie();
+    if (!preset) return false;
+    try {
+      restoreRoomPreset(preset, { silent: true });
+      showResult(
+        "마지막으로 생성한 룸 설정을 쿠키에서 복원했습니다.",
+        "success"
+      );
+      return true;
+    } catch (error) {
+      clearLastCreatedRoomCookies();
+      console.warn(
+        "[board-room-admin] last room cookie restore failed",
+        error
+      );
+      return false;
+    }
   }
 
   function saveCurrentPreset() {
@@ -1245,7 +1372,23 @@
         body: JSON.stringify(collectRequest())
       });
       renderRoom(snapshot);
-      showResult("룸을 생성했습니다. 참가자 방송 상태와 보드 프리뷰를 확인하세요.", "success");
+      try {
+        saveLastCreatedRoomCookie();
+        showResult(
+          "룸을 생성했습니다. 입력한 참가자/보드/지시문 설정을 쿠키에 기억했습니다.",
+          "success"
+        );
+      } catch (cookieError) {
+        console.warn(
+          "[board-room-admin] last room cookie save failed",
+          cookieError
+        );
+        showResult(
+          "룸을 생성했습니다. 다만 마지막 룸 설정을 쿠키에 저장하지 못했습니다: "
+            + cookieError.message,
+          "working"
+        );
+      }
     } catch (error) {
       showResult("룸 생성 실패: " + error.message, "error-text");
     } finally {
@@ -1504,6 +1647,7 @@
   seedDefaultInstructions();
   syncAllInstructionRows();
   rebuildInstructionList();
+  restoreLastCreatedRoomCookie();
   syncExtensionAvailability();
   window.setInterval(syncExtensionAvailability, 1000);
 })();

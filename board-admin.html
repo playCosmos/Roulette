@@ -37,20 +37,7 @@
       </div>
     </header>
 
-    <section class="panel">
-      <div class="board-server-remote-admin">
-        <div class="board-server-remote-admin-copy">
-          <strong>원격 관리자 링크</strong>
-          <span>운영자로 지정할 참가자에게만 전달하세요. 최초 접속 후 URL의 토큰은 제거되고 해당 브라우저의 관리자 세션으로 전환됩니다.</span>
-        </div>
-        <div class="board-server-remote-admin-actions">
-          <input id="boardServerRemoteAdminUrl" type="text" readonly aria-label="원격 관리자 링크" />
-          <button type="button" id="boardServerCopyRemoteAdmin">링크 복사</button>
-        </div>
-        <div class="board-server-remote-admin-hint" id="boardServerRemoteAdminHint">원격 관리자 주소를 확인하는 중입니다.</div>
-      </div>
-      <input id="overlayUrlInput" type="hidden" />
-    </section>
+    <input id="overlayUrlInput" type="hidden" />
 
     <section class="panel board-room-panel" id="boardRoomPanel">
       <div class="panel-heading">
@@ -65,7 +52,7 @@
           <legend>룸 설정 저장 / 불러오기</legend>
           <div class="board-room-preset-grid">
             <label>저장 이름
-              <input id="boardRoomPresetName" type="text" maxlength="80" autocomplete="off" placeholder="예: 기본 4인 보드" />
+              <input id="boardRoomPresetName" type="text" maxlength="80" autocomplete="off" placeholder="예: 기본 2인 보드" />
             </label>
             <label>저장된 설정
               <select id="boardRoomPresetSelect">
@@ -78,7 +65,7 @@
               <button type="button" id="boardRoomPresetDelete">삭제</button>
             </div>
           </div>
-          <p class="board-room-rule-note">이 브라우저에만 저장됩니다. 서버 재시작·프로그램 업데이트와 무관하며, 생성된 룸 ID·말 위치·진행상태는 저장하지 않습니다.</p>
+          <p class="board-room-rule-note">이 브라우저에만 저장됩니다. 직접 저장한 프리셋은 localStorage에 유지되고, 마지막으로 실제 룸 생성에 사용한 참가자·보드·이동·지시문 설정은 이 페이지 쿠키에도 자동 저장됩니다. 생성된 룸 ID·말 위치·진행상태는 저장하지 않습니다.</p>
         </fieldset>
 
         <fieldset>

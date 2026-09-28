@@ -35,6 +35,7 @@ public final class GameClientHttpServer implements AutoCloseable {
     private static final Base64.Encoder TOKEN_ENCODER =
         Base64.getUrlEncoder().withoutPadding();
     private static final String SESSION_COOKIE = "RAMYANI_ADMIN_SESSION";
+    private static final String ROOM_COOKIE = "RAMYANI_BOARD_ROOM";
     private static final Duration SESSION_TTL = Duration.ofHours(12);
     private static final int MAX_PROXY_BODY_BYTES = 1024 * 1024;
 
@@ -322,6 +323,11 @@ public final class GameClientHttpServer implements AutoCloseable {
                 "roomCode"
             )
         );
+        if (suppliedRoomCode.isBlank()) {
+            suppliedRoomCode = normalizeRoomCode(
+                requestCookie(exchange, ROOM_COOKIE)
+            );
+        }
 
         if (
             normalizedRoomId.length() != 6
@@ -449,6 +455,23 @@ public final class GameClientHttpServer implements AutoCloseable {
             );
         }
         return true;
+    }
+
+    private static String requestCookie(
+        HttpExchange exchange,
+        String name
+    ) {
+        String cookie = exchange.getRequestHeaders().getFirst("Cookie");
+        if (cookie == null || cookie.isBlank()) return null;
+
+        for (String item : cookie.split(";")) {
+            String value = item.trim();
+            int equals = value.indexOf('=');
+            if (equals <= 0) continue;
+            if (!name.equals(value.substring(0, equals))) continue;
+            return value.substring(equals + 1);
+        }
+        return null;
     }
 
     private boolean isAdminSession(HttpExchange exchange) {

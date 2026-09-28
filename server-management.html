@@ -85,6 +85,11 @@
       <small>브라우저 인증 세션 기준</small>
     </article>
     <article class="card">
+      <span>관리자 승인 대기</span>
+      <strong id="pendingAdminApprovals">-</strong>
+      <small>10분 유효 6자리 승인 요청</small>
+    </article>
+    <article class="card">
       <span>WebSocket 접속</span>
       <strong id="wsClients">-</strong>
       <small>현재 연결된 게임/OBS 클라이언트</small>
@@ -151,7 +156,12 @@
       <input id="localUserAdminUrl" readonly aria-label="서버 PC 사용자 관리자 링크" />
       <button id="openUserAdmin">사용자 관리자 열기</button>
     </div>
-    <div class="notice">관리자 인증 링크 재발급을 실행하면 현재 로그인된 모든 관리자 세션과 이전에 전달한 인증 링크가 즉시 무효화됩니다. 재발급 후에는 새 링크를 운영자에게 다시 전달해야 합니다.</div>
+    <div class="url-row">
+      <input id="adminApprovalCode" maxlength="6" autocomplete="off" spellcheck="false" placeholder="6자리 승인 코드" aria-label="관리자 승인 코드" />
+      <button id="approveAdminAccess">승인</button>
+    </div>
+    <div class="notice">인증 링크이나 토큰을 받지 못한 사용자는 17832의 <code>/admin/</code>에서 6자리 승인 코드를 요청할 수 있습니다. 사용자가 알려준 코드를 위에 입력해 승인하면 해당 브라우저에 12시간 관리자 세션이 발급됩니다. 승인 코드는 관리자 권한 자체가 아니라 10분 유효 1회성 요청 식별자입니다.</div>
+    <div class="notice">관리자 인증 링크 재발급을 실행하면 현재 로그인된 모든 관리자 세션과 이전에 전달한 인증 링크가 즉시 무효화되며, 대기 중인 승인 요청도 함께 폐기됩니다.</div>
   </section>
 
   <section class="panel">
@@ -285,6 +295,7 @@
   function render(state) {
     lastState = state;
     ids("adminSessions").textContent = String(state.activeAdminSessions ?? 0);
+    ids("pendingAdminApprovals").textContent = String(state.pendingAdminApprovals ?? 0);
     ids("wsClients").textContent = String(state.websocketClients ?? 0);
     ids("soopStatus").textContent = state.soop?.status || "-";
     ids("streamerId").textContent = "Streamer ID · " + (state.streamerId || "미설정");
@@ -334,7 +345,14 @@
       if (name === "revokeAdminSessions") {
         setResult("관리자 세션 " + (body.revokedSessions ?? 0) + "개를 해제했습니다.", "success");
       } else if (name === "rotateAdminAccess") {
-        setResult("관리자 인증 링크를 새로 발급했습니다. 기존 세션과 이전 링크는 무효입니다.", "success");
+        setResult("관리자 인증 링크를 새로 발급했습니다. 기존 세션·이전 링크·대기 승인 요청은 무효입니다.", "success");
+      } else if (name === "approveAdminAccess") {
+        setResult(
+          "관리자 승인 코드 " + String(body.approvalCode || payload.approvalCode)
+            + "를 승인했습니다.",
+          "success"
+        );
+        ids("adminApprovalCode").value = "";
       } else if (name === "reconnectSoop") {
         setResult("SOOP 재연결을 요청했습니다.", "success");
       } else if (name === "setActiveRoomLimit") {
@@ -388,6 +406,30 @@
     ids("rotateAccess"),
     "관리자 인증 링크를 재발급하시겠습니까?\n현재 관리자 세션과 이전에 전달한 인증 링크가 모두 무효화됩니다."
   ));
+
+  ids("approveAdminAccess").addEventListener("click", () => {
+    const input = ids("adminApprovalCode");
+    const code = input.value.trim().toUpperCase();
+    input.value = code;
+    if (!/^[A-HJ-NP-Z2-9]{6}$/.test(code)) {
+      setResult("승인 코드는 영문/숫자 6자리로 입력하세요.", "error");
+      input.focus();
+      return;
+    }
+    action(
+      "approveAdminAccess",
+      ids("approveAdminAccess"),
+      "관리자 승인 코드 " + code + "를 승인하시겠습니까?",
+      { approvalCode: code }
+    );
+  });
+
+  ids("adminApprovalCode").addEventListener("input", (event) => {
+    event.target.value = event.target.value
+      .toUpperCase()
+      .replace(/[^A-HJ-NP-Z2-9]/g, "")
+      .slice(0, 6);
+  });
 
   ids("reconnectSoop").addEventListener("click", () => action(
     "reconnectSoop",

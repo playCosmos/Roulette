@@ -9,6 +9,7 @@ on:
       - "games/board/**"
       - "board-admin.html"
       - "board-room.html"
+      - "server-management.html"
       - "soop/admin/soop-admin.css"
       - "soop/admin/board-room-admin.css"
       - "soop/admin/board-room-admin.js"
@@ -89,6 +90,7 @@ jobs:
           if (-not (Test-Path $exe)) { throw "RamyaniGamesServer.exe missing" }
           $roomAdminHtml = Get-Content (Join-Path $root "web/board-admin.html") -Raw
           $roomAdminJs = Get-Content (Join-Path $root "web/soop/admin/board-room-admin.js") -Raw
+          $serverManagementHtml = Get-Content (Join-Path $root "web/server-management.html") -Raw
           if ($roomAdminHtml -match "<h2>서버 상태</h2>") { throw "room admin server status panel must be removed" }
           if ($roomAdminHtml -match "boardRoomPlayerCount") { throw "numeric participant count control must be removed" }
           if ($roomAdminHtml -match "boardRoomSharedBalloonTrigger") { throw "legacy shared balloon bulk control must be removed" }
@@ -100,6 +102,8 @@ jobs:
           if ($roomAdminHtml -match "boardServerRemoteAdminUrl") { throw "remote admin link must not appear in room creator" }
           if ($roomAdminJs -notmatch "RAMYANI_BOARD_LAST_ROOM_META") { throw "last-created room cookie persistence missing" }
           if ($roomAdminJs -notmatch "DEFAULT_PLAYER_COUNT = 2") { throw "room creator must default to two participants" }
+          if ($serverManagementHtml -notmatch "remoteAdminToken") { throw "server management admin token copy control missing" }
+          if ($serverManagementHtml -notmatch "adminApprovalCode") { throw "server management six-character approval control missing" }
           if (Test-Path (Join-Path $root "config.json")) { throw "live config.json must not be shipped because updates must preserve an existing config" }
           if (-not (Test-Path (Join-Path $root "config.example.json"))) { throw "config.example.json missing" }
           if (-not (Test-Path (Join-Path $root "runtime/bin/server/jvm.dll"))) { throw "bundled runtime missing" }

@@ -153,6 +153,10 @@
       <button id="copyRemoteAdmin">원격 링크 복사</button>
     </div>
     <div class="url-row">
+      <input id="remoteAdminToken" readonly aria-label="관리자 인증 토큰" />
+      <button id="copyRemoteAdminToken">토큰만 복사</button>
+    </div>
+    <div class="url-row">
       <input id="localUserAdminUrl" readonly aria-label="서버 PC 사용자 관리자 링크" />
       <button id="openUserAdmin">사용자 관리자 열기</button>
     </div>
@@ -312,6 +316,13 @@
     ids("database").textContent = state.database || "-";
     ids("remoteAdminUrl").value = state.remoteAdminUrl || "";
     ids("localUserAdminUrl").value = state.localUserAdminUrl || "";
+    try {
+      ids("remoteAdminToken").value =
+        new URL(state.remoteAdminUrl || "", location.href)
+          .searchParams.get("token") || "";
+    } catch (_) {
+      ids("remoteAdminToken").value = "";
+    }
     renderActiveRooms(state);
   }
 
@@ -387,6 +398,20 @@
       ids("remoteAdminUrl").select();
       document.execCommand("copy");
       setResult("원격 관리자 인증 링크를 복사했습니다.", "success");
+    }
+  });
+
+  ids("copyRemoteAdminToken").addEventListener("click", async () => {
+    const value = ids("remoteAdminToken").value.trim();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setResult("관리자 인증 토큰만 복사했습니다.", "success");
+    } catch (_) {
+      ids("remoteAdminToken").focus();
+      ids("remoteAdminToken").select();
+      document.execCommand("copy");
+      setResult("관리자 인증 토큰만 복사했습니다.", "success");
     }
   });
 

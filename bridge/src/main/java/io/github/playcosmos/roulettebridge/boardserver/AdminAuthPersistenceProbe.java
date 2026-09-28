@@ -61,6 +61,56 @@ public final class AdminAuthPersistenceProbe {
                 "refreshed expiry must persist"
             );
 
+            Instant approvalExpiry = Instant.now().plusSeconds(600);
+            require(
+                reopenedAgain.createApprovalRequest(
+                    "approval-request-secret",
+                    "ABC7K2",
+                    approvalExpiry
+                ),
+                "approval request must be created"
+            );
+            var approvalReopened = new AdminAuthStore(database);
+            var pending = approvalReopened.findApprovalRequest(
+                "approval-request-secret",
+                Instant.now()
+            );
+            require(
+                pending != null
+                    && "PENDING".equals(pending.status())
+                    && "ABC7K2".equals(pending.code()),
+                "approval request must survive store recreation"
+            );
+            require(
+                approvalReopened.approveApprovalRequest(
+                    "ABC7K2",
+                    Instant.now()
+                ),
+                "approval code must be approvable"
+            );
+            require(
+                approvalReopened.consumeApprovedApprovalRequest(
+                    "approval-request-secret",
+                    "approved-session",
+                    Instant.now().plusSeconds(3600),
+                    Instant.now()
+                ),
+                "approved request must exchange for a session"
+            );
+            require(
+                approvalReopened.findApprovalRequest(
+                    "approval-request-secret",
+                    Instant.now()
+                ) == null,
+                "approved request must be one-time"
+            );
+            require(
+                approvalReopened.sessionExpiresAt(
+                    "approved-session"
+                ) != null,
+                "approved session must persist"
+            );
+
             reopenedAgain.rotateBootstrapToken("rotated-token");
             require(
                 "rotated-token".equals(

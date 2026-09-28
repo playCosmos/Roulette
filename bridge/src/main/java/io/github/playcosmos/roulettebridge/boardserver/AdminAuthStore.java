@@ -263,6 +263,8 @@ public final class AdminAuthStore {
 
     public boolean consumeApprovedApprovalRequest(
         String requestId,
+        String sessionId,
+        Instant sessionExpiresAt,
         Instant now
     ) throws SQLException {
         try (var connection = database.open()) {
@@ -291,6 +293,19 @@ public final class AdminAuthStore {
                 if (!approved) {
                     connection.commit();
                     return false;
+                }
+
+                String sessionNow = now.toString();
+                try (var insert = connection.prepareStatement("""
+                    INSERT INTO board_admin_session(
+                      session_hash, expires_at, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?)
+                    """)) {
+                    insert.setString(1, hash(sessionId));
+                    insert.setString(2, sessionExpiresAt.toString());
+                    insert.setString(3, sessionNow);
+                    insert.setString(4, sessionNow);
+                    insert.executeUpdate();
                 }
 
                 try (var delete = connection.prepareStatement("""

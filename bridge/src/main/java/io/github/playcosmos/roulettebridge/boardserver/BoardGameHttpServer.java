@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Executors;
+import java.util.function.Function;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
@@ -39,6 +40,8 @@ public final class BoardGameHttpServer implements AutoCloseable {
     private final Supplier<String> remoteAdminUrl;
     private final Supplier<String> localUserAdminUrl;
     private final IntSupplier adminSessionCount;
+    private final IntSupplier pendingAdminApprovals;
+    private final Function<String, Boolean> approveAdminAccess;
     private final Supplier<Integer> revokeAdminSessions;
     private final Supplier<String> rotateAdminAccess;
     private final Runnable reconnectSoop;
@@ -57,6 +60,8 @@ public final class BoardGameHttpServer implements AutoCloseable {
         Supplier<String> remoteAdminUrl,
         Supplier<String> localUserAdminUrl,
         IntSupplier adminSessionCount,
+        IntSupplier pendingAdminApprovals,
+        Function<String, Boolean> approveAdminAccess,
         Supplier<Integer> revokeAdminSessions,
         Supplier<String> rotateAdminAccess,
         Runnable reconnectSoop
@@ -67,6 +72,8 @@ public final class BoardGameHttpServer implements AutoCloseable {
         this.remoteAdminUrl = remoteAdminUrl;
         this.localUserAdminUrl = localUserAdminUrl;
         this.adminSessionCount = adminSessionCount;
+        this.pendingAdminApprovals = pendingAdminApprovals;
+        this.approveAdminAccess = approveAdminAccess;
         this.revokeAdminSessions = revokeAdminSessions;
         this.rotateAdminAccess = rotateAdminAccess;
         this.reconnectSoop = reconnectSoop;
@@ -228,6 +235,43 @@ public final class BoardGameHttpServer implements AutoCloseable {
                 result.put("remoteAdminUrl", nextUrl);
                 result.put("revokedSessions", true);
             }
+            case "approveAdminAccess" -> {
+                String approvalCode = String.valueOf(
+                    request.getOrDefault("approvalCode", "")
+                ).trim().toUpperCase(java.util.Locale.ROOT);
+                if (!approvalCode.matches("[A-HJ-NP-Z2-9]{6}")) {
+                    sendJson(
+                        exchange,
+                        400,
+                        Map.of("error", "6-character approval code is required")
+                    );
+                    return;
+                }
+                boolean approved;
+                try {
+                    approved = Boolean.TRUE.equals(
+                        approveAdminAccess.apply(approvalCode)
+                    );
+                } catch (Exception error) {
+                    sendJson(
+                        exchange,
+                        500,
+                        Map.of("error", "failed to approve administrator access")
+                    );
+                    return;
+                }
+                if (!approved) {
+                    sendJson(
+                        exchange,
+                        404,
+                        Map.of("error", "pending approval code not found or expired")
+                    );
+                    return;
+                }
+                result.put("action", action);
+                result.put("approvalCode", approvalCode);
+                result.put("approved", true);
+            }
             case "reconnectSoop" -> {
                 reconnectSoop.run();
                 result.put("action", action);
@@ -340,6 +384,7 @@ public final class BoardGameHttpServer implements AutoCloseable {
         payload.put("websocketPort", this.config.server().websocketPort());
         payload.put("websocketClients", websocketClientCount.getAsInt());
         payload.put("activeAdminSessions", adminSessionCount.getAsInt());
+        payload.put("pendingAdminApprovals", pendingAdminApprovals.getAsInt());
         payload.put("adminSessionHours", 12);
         payload.put("clientBaseUrl", clientBaseUrl);
         payload.put("websocketUrl", websocketUrl);

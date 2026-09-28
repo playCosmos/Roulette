@@ -175,6 +175,8 @@ public final class BoardGameServerMain {
             clientHttp::adminBootstrapUrl,
             clientHttp::localAdminBootstrapUrl,
             clientHttp::activeAdminSessionCount,
+            clientHttp::pendingAdminApprovalCount,
+            clientHttp::approveAdminAccess,
             clientHttp::revokeAdminSessions,
             clientHttp::rotateAdminAccess,
             soop::reconnectNow

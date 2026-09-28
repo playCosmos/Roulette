@@ -57,7 +57,10 @@ if (-not (Test-Path $Exe)) {
     throw "Packaged games server executable was not created"
 }
 
-Copy-Item (Join-Path $BridgeRoot "board-config.example.json") (Join-Path $AppRoot "config.json") -Force
+# Do not ship a live config.json. The server creates config.json on first
+# launch only when it is missing. This keeps an existing config.json intact
+# when a newer package is extracted over an installed server.
+Copy-Item (Join-Path $BridgeRoot "board-config.example.json") (Join-Path $AppRoot "config.example.json") -Force
 
 $WebRoot = Join-Path $AppRoot "web"
 New-Item -ItemType Directory -Path $WebRoot -Force | Out-Null
@@ -97,6 +100,13 @@ RamyaniGamesServer Windows x64
 3. 게임 운영자용 관리자 UI는 17832의 /admin/ 경로를 사용합니다.
 4. 17830은 서버 PC 로컬 전용이며 활성 관리자 세션/접속/인증 링크/SOOP 상태/활성 룸 상한/활성 룸 조회·종료를 관리합니다.
 5. 보드게임 DB: data/board-game.db
+
+설정 파일 / 업데이트
+--------------------
+1. 배포본에는 실제 config.json 대신 참고용 config.example.json만 포함합니다.
+2. 최초 실행 시 config.json이 없으면 서버가 기본 설정으로 자동 생성합니다.
+3. 기존 config.json이 있으면 그 파일을 그대로 사용하며 업데이트 패키지가 덮어쓰지 않습니다.
+4. 업데이트 시 data/와 기존 config.json을 유지한 채 새 프로그램 파일을 덮어쓰는 구성을 기준으로 합니다.
 
 클라이언트 / 원격 운영
 ---------------------

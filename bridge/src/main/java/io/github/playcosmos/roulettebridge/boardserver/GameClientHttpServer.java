@@ -36,6 +36,10 @@ public final class GameClientHttpServer implements AutoCloseable {
         Base64.getUrlEncoder().withoutPadding();
     private static final String SESSION_COOKIE = "RAMYANI_ADMIN_SESSION";
     private static final Duration SESSION_TTL = Duration.ofHours(12);
+    private static final Duration APPROVAL_TTL = Duration.ofMinutes(10);
+    private static final int MAX_PENDING_APPROVALS = 32;
+    private static final String APPROVAL_ALPHABET =
+        "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final int MAX_PROXY_BODY_BYTES = 1024 * 1024;
 
     private final HttpServer server;
@@ -96,6 +100,7 @@ public final class GameClientHttpServer implements AutoCloseable {
         server.createContext("/api/state", this::proxyAdminState);
         server.createContext("/api/board/rooms", this::boardRooms);
         server.createContext("/games/board/", this::serveBoardAsset);
+        server.createContext("/api/admin/access", this::adminAccess);
         server.createContext("/admin", this::serveAdmin);
         server.createContext("/", exchange -> {
             exchange.sendResponseHeaders(404, -1);
@@ -152,6 +157,34 @@ public final class GameClientHttpServer implements AutoCloseable {
                     + error.getMessage()
             );
             return 0;
+        }
+    }
+
+    public int pendingAdminApprovalCount() {
+        try {
+            return adminAuthStore.countPendingApprovalRequests(
+                Instant.now()
+            );
+        } catch (java.sql.SQLException error) {
+            System.err.println(
+                "[admin-auth] approval count failed: "
+                    + error.getMessage()
+            );
+            return 0;
+        }
+    }
+
+    public boolean approveAdminAccess(String approvalCode) {
+        try {
+            return adminAuthStore.approveApprovalRequest(
+                approvalCode,
+                Instant.now()
+            );
+        } catch (java.sql.SQLException error) {
+            throw new IllegalStateException(
+                "failed to approve administrator access",
+                error
+            );
         }
     }
 
@@ -365,12 +398,20 @@ public final class GameClientHttpServer implements AutoCloseable {
             return;
         }
 
-        if (acceptBootstrapToken(exchange)) {
-            return;
-        }
-
-        if (!isAdminSession(exchange)) {
-            sendAdminAuthenticationRequired(exchange);
+        String suppliedToken = queryParameter(
+            exchange.getRequestURI().getRawQuery(),
+            "token"
+        );
+        if (isAdminSession(exchange)) {
+            if (suppliedToken != null) {
+                redirectAfterAuthentication(exchange);
+                return;
+            }
+        } else {
+            if (acceptBootstrapToken(exchange)) {
+                return;
+            }
+            sendAdminAuthenticationRequired(exchange, "");
             return;
         }
 
@@ -403,7 +444,10 @@ public final class GameClientHttpServer implements AutoCloseable {
         if (supplied == null) return false;
 
         if (!constantTimeEquals(supplied, adminBootstrapToken.get())) {
-            sendAdminAuthenticationRequired(exchange);
+            sendAdminAuthenticationRequired(
+                exchange,
+                "입력한 관리자 토큰이 올바르지 않습니다."
+            );
             return true;
         }
 
@@ -422,6 +466,31 @@ public final class GameClientHttpServer implements AutoCloseable {
             return true;
         }
 
+        setAdminSessionCookie(exchange, sessionId);
+        redirectAfterAuthentication(exchange);
+        return true;
+    }
+
+    private void redirectAfterAuthentication(
+        HttpExchange exchange
+    ) throws IOException {
+        String path = exchange.getRequestURI().getPath();
+        if ("/admin".equals(path) || "/admin/".equals(path)) {
+            redirect(exchange, "/admin/board-admin.html");
+            return;
+        }
+        redirect(
+            exchange,
+            path + queryWithoutToken(
+                exchange.getRequestURI().getRawQuery()
+            )
+        );
+    }
+
+    private void setAdminSessionCookie(
+        HttpExchange exchange,
+        String sessionId
+    ) {
         StringBuilder cookie = new StringBuilder();
         cookie.append(SESSION_COOKIE)
             .append("=")
@@ -436,19 +505,6 @@ public final class GameClientHttpServer implements AutoCloseable {
             "Set-Cookie",
             cookie.toString()
         );
-
-        String path = exchange.getRequestURI().getPath();
-        if ("/admin".equals(path) || "/admin/".equals(path)) {
-            redirect(exchange, "/admin/board-admin.html");
-        } else {
-            redirect(
-                exchange,
-                path + queryWithoutToken(
-                    exchange.getRequestURI().getRawQuery()
-                )
-            );
-        }
-        return true;
     }
 
     private boolean isAdminSession(HttpExchange exchange) {
@@ -492,6 +548,163 @@ public final class GameClientHttpServer implements AutoCloseable {
             }
         }
         return false;
+    }
+
+    private void adminAccess(HttpExchange exchange) throws IOException {
+        String path = exchange.getRequestURI().getPath();
+        if ("/api/admin/access/request".equals(path)) {
+            createAdminApprovalRequest(exchange);
+            return;
+        }
+        if ("/api/admin/access/status".equals(path)) {
+            pollAdminApprovalRequest(exchange);
+            return;
+        }
+        exchange.sendResponseHeaders(404, -1);
+        exchange.close();
+    }
+
+    private void createAdminApprovalRequest(
+        HttpExchange exchange
+    ) throws IOException {
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+        if (isAdminSession(exchange)) {
+            sendJson(exchange, 200, Map.of(
+                "status", "AUTHENTICATED",
+                "redirect", "/admin/board-admin.html"
+            ));
+            return;
+        }
+
+        try {
+            Instant now = Instant.now();
+            int pending = adminAuthStore.countPendingApprovalRequests(now);
+            if (pending >= MAX_PENDING_APPROVALS) {
+                sendJson(exchange, 429, Map.of(
+                    "error", "too many pending administrator approvals"
+                ));
+                return;
+            }
+
+            String requestId = randomToken(24);
+            String approvalCode = "";
+            boolean created = false;
+            Instant expiresAt = now.plus(APPROVAL_TTL);
+            for (int attempt = 0; attempt < 32; attempt += 1) {
+                approvalCode = randomApprovalCode();
+                if (adminAuthStore.createApprovalRequest(
+                    requestId,
+                    approvalCode,
+                    expiresAt
+                )) {
+                    created = true;
+                    break;
+                }
+            }
+
+            if (!created) {
+                sendJson(exchange, 503, Map.of(
+                    "error", "failed to allocate administrator approval code"
+                ));
+                return;
+            }
+
+            sendJson(exchange, 201, Map.of(
+                "status", "PENDING",
+                "requestId", requestId,
+                "approvalCode", approvalCode,
+                "expiresAt", expiresAt.toString(),
+                "expiresInSeconds", APPROVAL_TTL.toSeconds()
+            ));
+        } catch (java.sql.SQLException error) {
+            sendJson(exchange, 500, Map.of(
+                "error", "administrator approval storage failed"
+            ));
+        }
+    }
+
+    private void pollAdminApprovalRequest(
+        HttpExchange exchange
+    ) throws IOException {
+        if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+        if (isAdminSession(exchange)) {
+            sendJson(exchange, 200, Map.of(
+                "status", "AUTHENTICATED",
+                "redirect", "/admin/board-admin.html"
+            ));
+            return;
+        }
+
+        String requestId = queryParameter(
+            exchange.getRequestURI().getRawQuery(),
+            "requestId"
+        );
+        if (
+            requestId == null
+            || requestId.length() < 20
+            || requestId.length() > 160
+        ) {
+            sendJson(exchange, 400, Map.of(
+                "error", "valid requestId is required"
+            ));
+            return;
+        }
+
+        try {
+            Instant now = Instant.now();
+            var request = adminAuthStore.findApprovalRequest(
+                requestId,
+                now
+            );
+            if (request == null) {
+                sendJson(exchange, 410, Map.of(
+                    "status", "EXPIRED"
+                ));
+                return;
+            }
+
+            if (!"APPROVED".equals(request.status())) {
+                sendJson(exchange, 200, Map.of(
+                    "status", request.status(),
+                    "approvalCode", request.code(),
+                    "expiresAt", request.expiresAt().toString()
+                ));
+                return;
+            }
+
+            String sessionId = randomToken(32);
+            boolean consumed =
+                adminAuthStore.consumeApprovedApprovalRequest(
+                    requestId,
+                    sessionId,
+                    now.plus(SESSION_TTL),
+                    now
+                );
+            if (!consumed) {
+                sendJson(exchange, 409, Map.of(
+                    "status", "EXPIRED"
+                ));
+                return;
+            }
+
+            setAdminSessionCookie(exchange, sessionId);
+            sendJson(exchange, 200, Map.of(
+                "status", "APPROVED",
+                "redirect", "/admin/board-admin.html"
+            ));
+        } catch (java.sql.SQLException error) {
+            sendJson(exchange, 500, Map.of(
+                "error", "administrator approval status failed"
+            ));
+        }
     }
 
     private void proxyToLocalAdmin(HttpExchange exchange) throws IOException {
@@ -748,6 +961,18 @@ public final class GameClientHttpServer implements AutoCloseable {
         return TOKEN_ENCODER.encodeToString(bytes);
     }
 
+    private static String randomApprovalCode() {
+        StringBuilder code = new StringBuilder(6);
+        for (int index = 0; index < 6; index += 1) {
+            code.append(
+                APPROVAL_ALPHABET.charAt(
+                    SECURE_RANDOM.nextInt(APPROVAL_ALPHABET.length())
+                )
+            );
+        }
+        return code.toString();
+    }
+
     private static boolean constantTimeEquals(
         String left,
         String right
@@ -806,9 +1031,15 @@ public final class GameClientHttpServer implements AutoCloseable {
     }
 
     private static void sendAdminAuthenticationRequired(
-        HttpExchange exchange
+        HttpExchange exchange,
+        String errorMessage
     ) throws IOException {
-        byte[] body = """
+        String error = errorMessage == null || errorMessage.isBlank()
+            ? ""
+            : "<p class=\"error\">"
+                + escapeHtml(errorMessage)
+                + "</p>";
+        String html = """
             <!doctype html>
             <html lang="ko">
             <head>
@@ -817,23 +1048,164 @@ public final class GameClientHttpServer implements AutoCloseable {
               <meta name="color-scheme" content="dark">
               <title>Ramyani Games Server · 관리자 인증</title>
               <style>
+                *{box-sizing:border-box}
                 body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0a0d11;color:#d8dee7;font-family:system-ui,sans-serif}
-                main{width:min(520px,calc(100% - 32px));padding:24px;border:1px solid #303842;border-radius:16px;background:#11161d;box-sizing:border-box}
+                main{width:min(620px,calc(100% - 32px));padding:24px;border:1px solid #303842;border-radius:16px;background:#11161d}
                 h1{margin:0 0 10px;font-size:22px}
-                p{margin:0;color:#929dab;line-height:1.65}
+                h2{margin:22px 0 7px;font-size:15px}
+                p{margin:0;color:#929dab;line-height:1.65;font-size:13px}
+                form,.approval-actions{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:10px}
+                input{min-width:0;padding:11px 12px;border:1px solid #303944;border-radius:9px;background:#0b0f14;color:#e7ebf0;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+                button{padding:10px 13px;border:1px solid #3b4856;border-radius:9px;background:#19222c;color:#e8edf3;font-weight:800;cursor:pointer}
+                button:disabled{opacity:.55;cursor:wait}
                 .tag{display:inline-block;margin-bottom:12px;padding:4px 8px;border:1px solid #4b5f73;border-radius:999px;color:#a7bfd6;font-size:11px;font-weight:800}
+                .section{margin-top:18px;padding-top:17px;border-top:1px solid #272f38}
+                .error{margin-top:12px;color:#e6a0a4}
+                .approval{display:none;margin-top:12px;padding:14px;border:1px solid #394858;border-radius:10px;background:#0d131a}
+                .approval[data-visible="true"]{display:block}
+                .approval-code{margin:7px 0;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:30px;font-weight:900;letter-spacing:.18em;color:#dfe8f2}
+                .status{margin-top:8px;color:#a6b4c2}
+                @media(max-width:520px){form,.approval-actions{grid-template-columns:1fr}}
               </style>
             </head>
             <body>
               <main>
                 <span class="tag">ADMIN</span>
-                <h1>관리자 인증이 필요합니다.</h1>
-                <p>서버 운영자가 전달한 관리자 링크로 처음 접속해야 합니다. 인증 후에는 주소에서 접근 토큰이 제거되고 이 브라우저의 관리자 세션으로 전환됩니다.</p>
+                <h1>관리자 인증</h1>
+                <p>인증 링크를 받은 경우 그대로 접속할 수 있습니다. 링크 대신 토큰 값만 전달받았다면 아래에 직접 입력할 수도 있습니다.</p>
+                """ + error + """
+                <section class="section">
+                  <h2>관리자 토큰 입력</h2>
+                  <form method="get" action="/admin/">
+                    <input name="token" autocomplete="off" spellcheck="false" required placeholder="관리자 토큰" aria-label="관리자 토큰">
+                    <button type="submit">토큰으로 인증</button>
+                  </form>
+                </section>
+                <section class="section">
+                  <h2>토큰이 없는 경우</h2>
+                  <p>승인 요청을 만들면 10분 동안 유효한 6자리 코드가 생성됩니다. 이 코드를 서버 관리자에게 알려주세요.</p>
+                  <div class="approval-actions">
+                    <button type="button" id="requestApproval">6자리 승인 코드 요청</button>
+                  </div>
+                  <div class="approval" id="approvalBox">
+                    <p>서버 관리자에게 아래 코드를 전달하세요.</p>
+                    <div class="approval-code" id="approvalCode">------</div>
+                    <p class="status" id="approvalStatus">승인 대기 중…</p>
+                  </div>
+                </section>
               </main>
+              <script>
+              (() => {
+                const button = document.getElementById("requestApproval");
+                const box = document.getElementById("approvalBox");
+                const code = document.getElementById("approvalCode");
+                const status = document.getElementById("approvalStatus");
+                const storageKey = "ramyani.adminApproval.v1";
+                let timer = 0;
+
+                function clearSaved() {
+                  sessionStorage.removeItem(storageKey);
+                }
+
+                function saveRequest(value) {
+                  sessionStorage.setItem(storageKey, JSON.stringify(value));
+                }
+
+                function showRequest(value) {
+                  box.dataset.visible = "true";
+                  code.textContent = value.approvalCode || "------";
+                  status.textContent = "서버 관리자 승인 대기 중…";
+                  button.disabled = true;
+                }
+
+                async function poll(value) {
+                  window.clearTimeout(timer);
+                  try {
+                    const response = await fetch(
+                      "/api/admin/access/status?requestId="
+                        + encodeURIComponent(value.requestId),
+                      { cache: "no-store" }
+                    );
+                    const body = await response.json().catch(() => ({}));
+                    if (body.status === "APPROVED" || body.status === "AUTHENTICATED") {
+                      clearSaved();
+                      status.textContent = "승인되었습니다. 관리자 페이지로 이동합니다.";
+                      window.location.replace(body.redirect || "/admin/board-admin.html");
+                      return;
+                    }
+                    if (body.status === "EXPIRED" || response.status === 410) {
+                      clearSaved();
+                      status.textContent = "승인 코드가 만료되었습니다. 새 코드를 요청하세요.";
+                      button.disabled = false;
+                      return;
+                    }
+                    if (!response.ok) {
+                      throw new Error(body.error || ("HTTP " + response.status));
+                    }
+                    if (body.approvalCode) {
+                      value.approvalCode = body.approvalCode;
+                      saveRequest(value);
+                      code.textContent = body.approvalCode;
+                    }
+                    timer = window.setTimeout(() => poll(value), 1500);
+                  } catch (error) {
+                    status.textContent = "승인 상태 확인 실패 · 자동 재시도 중";
+                    timer = window.setTimeout(() => poll(value), 3000);
+                  }
+                }
+
+                button.addEventListener("click", async () => {
+                  button.disabled = true;
+                  status.textContent = "승인 코드 생성 중…";
+                  try {
+                    const response = await fetch("/api/admin/access/request", {
+                      method: "POST",
+                      headers: { "Accept": "application/json" }
+                    });
+                    const body = await response.json().catch(() => ({}));
+                    if (body.status === "AUTHENTICATED") {
+                      window.location.replace(body.redirect || "/admin/board-admin.html");
+                      return;
+                    }
+                    if (!response.ok) {
+                      throw new Error(body.error || ("HTTP " + response.status));
+                    }
+                    const value = {
+                      requestId: body.requestId,
+                      approvalCode: body.approvalCode,
+                      expiresAt: body.expiresAt
+                    };
+                    saveRequest(value);
+                    showRequest(value);
+                    poll(value);
+                  } catch (error) {
+                    box.dataset.visible = "true";
+                    code.textContent = "------";
+                    status.textContent = "승인 요청 실패: " + error.message;
+                    button.disabled = false;
+                  }
+                });
+
+                try {
+                  const saved = JSON.parse(sessionStorage.getItem(storageKey) || "null");
+                  if (saved?.requestId) {
+                    showRequest(saved);
+                    poll(saved);
+                  }
+                } catch (_) {
+                  clearSaved();
+                }
+
+                window.addEventListener("beforeunload", () => {
+                  window.clearTimeout(timer);
+                }, { once: true });
+              })();
+              </script>
             </body>
             </html>
-            """.getBytes(StandardCharsets.UTF_8);
+            """;
 
+        byte[] body = html.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set(
             "Content-Type",
             "text/html; charset=utf-8"
@@ -846,6 +1218,15 @@ public final class GameClientHttpServer implements AutoCloseable {
         try (var output = exchange.getResponseBody()) {
             output.write(body);
         }
+    }
+
+    private static String escapeHtml(String value) {
+        return String.valueOf(value)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#39;");
     }
 
     private static void redirect(

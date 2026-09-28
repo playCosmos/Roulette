@@ -116,6 +116,8 @@ public final class ServerManagementProbe {
                 "http://example.test:17832/admin/?token=old"
             );
             var reconnects = new AtomicInteger(0);
+            var pendingApprovals = new AtomicInteger(1);
+            var approvedCodes = new java.util.HashSet<String>();
 
             server = new BoardGameHttpServer(
                 config,
@@ -130,6 +132,13 @@ public final class ServerManagementProbe {
                 () -> "http://127.0.0.1:" + clientPort
                     + "/admin/?token=local",
                 activeSessions::get,
+                pendingApprovals::get,
+                code -> {
+                    if (!"ABC7K2".equals(code)) return false;
+                    pendingApprovals.set(0);
+                    approvedCodes.add(code);
+                    return true;
+                },
                 () -> activeSessions.getAndSet(0),
                 () -> {
                     activeSessions.set(0);
@@ -176,6 +185,12 @@ public final class ServerManagementProbe {
                     "\"activeAdminSessions\":3"
                 ),
                 "active admin session count missing"
+            );
+            require(
+                state.body().contains(
+                    "\"pendingAdminApprovals\":1"
+                ),
+                "pending admin approval count missing"
             );
             require(
                 state.body().contains("\"version\":\"0.8.1\""),
@@ -230,6 +245,19 @@ public final class ServerManagementProbe {
                     && remoteAdminUrl.get().endsWith("token=new")
                     && activeSessions.get() == 0,
                 "admin access rotation failed"
+            );
+
+            var approve = post(
+                client,
+                base,
+                "{\"action\":\"approveAdminAccess\","
+                    + "\"approvalCode\":\"ABC7K2\"}"
+            );
+            require(
+                approve.statusCode() == 200
+                    && approvedCodes.contains("ABC7K2")
+                    && pendingApprovals.get() == 0,
+                "admin approval action failed"
             );
 
             var reconnect = post(

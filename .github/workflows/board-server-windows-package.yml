@@ -3,7 +3,7 @@ name: Ramyani Games Server Windows Package
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, "fix/participant-soop-channels"]
     paths:
       - "bridge/**"
       - "games/board/**"

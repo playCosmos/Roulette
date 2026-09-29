@@ -54,7 +54,7 @@ public final class BoardGameRuntimeEngine {
     public synchronized ProcessResult process(SoopDonation donation) throws SQLException {
         validateDonation(donation);
         String fingerprint = fingerprint(donation);
-        var matches = findMatchingRooms(donation.donorId(), donation.balloonCount());
+        var matches = findMatchingRooms(donation.streamerId(), donation.balloonCount());
 
         var events = new ArrayList<BoardTurnEvent>();
         int duplicateRooms = 0;
@@ -541,7 +541,7 @@ public final class BoardGameRuntimeEngine {
                 var board = mutableBoard(loadRuntimeBoard(connection, roomId));
                 var players = loadPlayerStates(connection, roomId);
                 var player = players.stream()
-                    .filter(value -> value.soopId.equals(donation.donorId()))
+                    .filter(value -> value.soopId.equals(donation.streamerId()))
                     .findFirst()
                     .orElseThrow(() -> new SQLException("matched room player state is missing"));
 
@@ -1514,6 +1514,9 @@ public final class BoardGameRuntimeEngine {
 
     private static void validateDonation(SoopDonation donation) {
         Objects.requireNonNull(donation, "donation");
+        if (donation.streamerId() == null || donation.streamerId().isBlank()) {
+            throw new IllegalArgumentException("streamerId is required");
+        }
         if (donation.donorId() == null || donation.donorId().isBlank()) {
             throw new IllegalArgumentException("donorId is required");
         }

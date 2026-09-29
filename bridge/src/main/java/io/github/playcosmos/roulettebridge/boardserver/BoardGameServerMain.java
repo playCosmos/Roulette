@@ -7,6 +7,7 @@ import io.github.playcosmos.roulettebridge.operations.WindowsConsoleEncoding;
 import io.github.playcosmos.roulettebridge.room.BoardGameRuntimeEngine;
 import io.github.playcosmos.roulettebridge.room.RoomHttpHandler;
 import io.github.playcosmos.roulettebridge.room.RoomService;
+import io.github.playcosmos.roulettebridge.soop.BoardParticipantSoopManager;
 import io.github.playcosmos.roulettebridge.soop.SoopBridgeAdapter;
 import io.github.playcosmos.roulettebridge.soop.SoopRuntimeState;
 import java.awt.Desktop;
@@ -100,7 +101,6 @@ public final class BoardGameServerMain {
             }
         }, 1, 1, TimeUnit.MINUTES);
 
-        var roomHttp = new RoomHttpHandler(roomService, runtime);
         var soopState = new SoopRuntimeState(config.streamerId());
 
         var bridgeConfig = new BridgeConfig(
@@ -128,6 +128,13 @@ public final class BoardGameServerMain {
         var soop = new SoopBridgeAdapter(
             bridgeConfig,
             soopState,
+            donation -> {},
+            (bid, event) -> {}
+        );
+
+        var participantSoop = new BoardParticipantSoopManager(
+            roomService,
+            bridgeConfig,
             donation -> {
                 try {
                     var result = runtime.process(donation);
@@ -138,7 +145,8 @@ public final class BoardGameServerMain {
                         result.ignoredRooms() > 0
                     ) {
                         System.out.println(
-                            "[board-game] donor=" + donation.donorId()
+                            "[board-game] channel=" + donation.streamerId()
+                                + " donor=" + donation.donorId()
                                 + " balloons=" + donation.balloonCount()
                                 + " matched=" + result.matchedRooms()
                                 + " processed=" + result.processedRooms()
@@ -148,11 +156,18 @@ public final class BoardGameServerMain {
                         );
                     }
                 } catch (Exception error) {
-                    System.err.println("[board-game] donation processing failed: " + error.getMessage());
+                    System.err.println(
+                        "[board-game] donation processing failed: "
+                            + error.getMessage()
+                    );
                     error.printStackTrace(System.err);
                 }
-            },
-            (bid, event) -> {}
+            }
+        );
+        var roomHttp = new RoomHttpHandler(
+            roomService,
+            runtime,
+            participantSoop
         );
 
         var adminAuthStore = new AdminAuthStore(database);
@@ -184,6 +199,7 @@ public final class BoardGameServerMain {
         http.start();
         clientHttp.start();
         soop.start();
+        participantSoop.start();
 
         String adminUrl = clientHttp.localAdminBootstrapUrl();
         String serverManagementUrl = "http://127.0.0.1:"
@@ -219,6 +235,7 @@ public final class BoardGameServerMain {
             try { websocket.stop(2000); }
             catch (InterruptedException error) { Thread.currentThread().interrupt(); }
             catch (Exception ignored) {}
+            try { participantSoop.close(); } catch (Exception ignored) {}
             try { soop.close(); } catch (Exception ignored) {}
             try { fileLog.close(); } catch (Exception ignored) {}
             shutdown.countDown();

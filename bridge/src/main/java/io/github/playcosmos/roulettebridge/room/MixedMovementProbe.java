@@ -66,7 +66,7 @@ public final class MixedMovementProbe {
             );
 
             var first = runtime.process(new SoopDonation(
-                "streamer", "soop-a", "A", 100, 1, "mixed-1", 1_000L
+                "soop-a", "viewer-a", "A", 100, 1, "mixed-1", 1_000L
             ));
             require(first.events().size() == 1, "first mixed turn missing");
             var firstTurn = first.events().get(0);
@@ -78,7 +78,7 @@ public final class MixedMovementProbe {
                 "dice turn must not switch to yut");
 
             var second = runtime.process(new SoopDonation(
-                "streamer", "soop-a", "A", 100, 2, "mixed-2", 2_000L
+                "soop-a", "viewer-a", "A", 100, 2, "mixed-2", 2_000L
             ));
             require(second.events().size() == 1, "second mixed turn missing");
             var secondTurn = second.events().get(0);

@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import io.github.playcosmos.roulettebridge.soop.BoardParticipantSoopManager;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
@@ -19,10 +20,20 @@ public final class RoomHttpHandler implements HttpHandler {
 
     private final RoomService rooms;
     private final BoardGameRuntimeEngine runtime;
+    private final BoardParticipantSoopManager participantSoop;
 
     public RoomHttpHandler(RoomService rooms, BoardGameRuntimeEngine runtime) {
+        this(rooms, runtime, null);
+    }
+
+    public RoomHttpHandler(
+        RoomService rooms,
+        BoardGameRuntimeEngine runtime,
+        BoardParticipantSoopManager participantSoop
+    ) {
         this.rooms = rooms;
         this.runtime = runtime;
+        this.participantSoop = participantSoop;
     }
 
     @Override
@@ -76,7 +87,9 @@ public final class RoomHttpHandler implements HttpHandler {
             if (route.endsWith("/preview/commit")) {
                 if (!requireMethod(exchange, "POST")) return;
                 String roomId = route.substring(0, route.length() - "/preview/commit".length());
-                sendJson(exchange, 200, rooms.commitPreview(roomId));
+                var committed = rooms.commitPreview(roomId);
+                if (participantSoop != null) participantSoop.refreshNow();
+                sendJson(exchange, 200, committed);
                 return;
             }
 
@@ -84,6 +97,19 @@ public final class RoomHttpHandler implements HttpHandler {
                 if (!requireMethod(exchange, "GET")) return;
                 String roomId = route.substring(0, route.length() - "/runtime".length());
                 sendJson(exchange, 200, runtime.snapshot(roomId));
+                return;
+            }
+
+            if (route.endsWith("/soop-channels")) {
+                if (!requireMethod(exchange, "GET")) return;
+                String roomId = route.substring(0, route.length() - "/soop-channels".length());
+                sendJson(
+                    exchange,
+                    200,
+                    participantSoop == null
+                        ? java.util.List.of()
+                        : participantSoop.snapshot(roomId)
+                );
                 return;
             }
 
@@ -136,6 +162,7 @@ public final class RoomHttpHandler implements HttpHandler {
                 if (!requireMethod(exchange, "POST")) return;
                 String roomId = route.substring(0, route.length() - "/terminate".length());
                 runtime.terminateRoom(roomId);
+                if (participantSoop != null) participantSoop.refreshNow();
                 sendJson(exchange, 200, rooms.find(roomId));
                 return;
             }

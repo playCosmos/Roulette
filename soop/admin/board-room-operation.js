@@ -25,6 +25,7 @@
 
   let room = null;
   let runtime = null;
+  let soopChannels = [];
   let serverState = null;
   let socket = null;
   let refreshTimer = 0;
@@ -36,6 +37,14 @@
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;");
+  }
+
+  function receiptTime(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) return "-";
+    const millis = numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+    const date = new Date(millis);
+    return Number.isNaN(date.getTime()) ? "-" : date.toLocaleTimeString();
   }
 
   async function fetchJson(url, options = {}) {
@@ -220,14 +229,29 @@
     const runtimeById = new Map(
       (runtime?.players || []).map((player) => [String(player.soopId), player])
     );
+    const channelById = new Map(
+      (soopChannels || []).map((channel) => [String(channel.soopId), channel])
+    );
     const cellCount = Number(runtime?.board?.cellCount || room?.config?.board?.cellCount || 0);
     const operable = roomOperable();
 
     playerList.innerHTML = "";
     (room?.config?.players || []).forEach((player, index) => {
       const current = runtimeById.get(String(player.soopId)) || {};
+      const channel = channelById.get(String(player.soopId)) || {};
       const position = Number(current.position) || 0;
       const laps = Number(current.laps) || 0;
+      const channelStatus = String(channel.status || "WAITING");
+      const recentDonations = Array.isArray(channel.recentDonations)
+        ? channel.recentDonations.slice(0, 5)
+        : [];
+      const recentDonationRows = recentDonations.map((donation) => `
+        <div class="room-player-soop-receipt">
+          <span>${escapeHtml(receiptTime(donation.occurredAtEpochMs))}</span>
+          <strong>${escapeHtml(donation.nickname || donation.donorId || "익명")}</strong>
+          <span>${Number(donation.balloonCount) || 0}개</span>
+        </div>
+      `).join("");
 
       const card = document.createElement("article");
       card.className = "room-player-operation-card";
@@ -241,6 +265,20 @@
             <span>현재 칸</span>
             <strong>${position}</strong>
             <small>${laps} lap</small>
+          </div>
+        </div>
+        <div class="room-player-soop-monitor" data-state="${escapeHtml(channelStatus)}">
+          <div class="room-player-soop-head">
+            <span>SOOP 채널 · ${escapeHtml(player.soopId)}</span>
+            <strong>${escapeHtml(channelStatus)}</strong>
+          </div>
+          <div class="room-player-soop-stats">
+            <span>트리거 ${Number(player.balloonTrigger) || 0}개</span>
+            <span>수신 ${Number(channel.donationEvents) || 0}건</span>
+            <span>누적 ${Number(channel.totalBalloons) || 0}개</span>
+          </div>
+          <div class="room-player-soop-recent">
+            ${recentDonationRows || '<div class="room-player-soop-empty">최근 별풍선 수신 없음</div>'}
           </div>
         </div>
         <div class="room-player-operation-actions">
@@ -362,6 +400,7 @@
       );
 
       let nextRuntime = runtime;
+      let nextSoopChannels = soopChannels;
       if (String(nextRoom?.lifecycle?.state || "") !== "TERMINATED") {
         try {
           nextRuntime = await fetchJson(
@@ -370,10 +409,18 @@
         } catch (_) {
           // Keep the last valid runtime snapshot while the room record remains readable.
         }
+        try {
+          nextSoopChannels = await fetchJson(
+            "/api/board/rooms/" + encodeURIComponent(roomId) + "/soop-channels"
+          );
+        } catch (_) {
+          // Keep the last valid participant-channel snapshot.
+        }
       }
 
       room = nextRoom;
       runtime = nextRuntime;
+      soopChannels = Array.isArray(nextSoopChannels) ? nextSoopChannels : soopChannels;
       render();
     } catch (error) {
       statusBadge.textContent = "오류";
